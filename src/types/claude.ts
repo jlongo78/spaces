@@ -131,7 +131,7 @@ export interface ModelUsage {
   webSearchRequests?: number;
 }
 
-// Claudesk internal types
+// Spaces internal types
 export interface Project {
   id: string;
   name: string;

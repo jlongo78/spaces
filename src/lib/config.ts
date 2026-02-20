@@ -10,13 +10,13 @@ export const config = {
   claudeProjectsDir: path.join(homeDir, '.claude', 'projects'),
   statsPath: path.join(homeDir, '.claude', 'stats-cache.json'),
 
-  // Claudesk data directory (READ-WRITE)
-  claudeskDir: path.join(homeDir, '.claudesk'),
-  dbPath: path.join(homeDir, '.claudesk', 'claudesk.db'),
-  configPath: path.join(homeDir, '.claudesk', 'config.json'),
+  // Spaces data directory (READ-WRITE)
+  spacesDir: path.join(homeDir, '.spaces'),
+  dbPath: path.join(homeDir, '.spaces', 'spaces.db'),
+  configPath: path.join(homeDir, '.spaces', 'config.json'),
 
   // Server
-  port: parseInt(process.env.CLAUDESK_PORT || '3457', 10),
+  port: parseInt(process.env.SPACES_PORT || '3457', 10),
 
   // Cost rates ($ per 1M tokens)
   costRates: {
@@ -27,8 +27,8 @@ export const config = {
   } as Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>,
 };
 
-export function ensureClaudeskDir() {
-  if (!fs.existsSync(config.claudeskDir)) {
-    fs.mkdirSync(config.claudeskDir, { recursive: true });
+export function ensureSpacesDir() {
+  if (!fs.existsSync(config.spacesDir)) {
+    fs.mkdirSync(config.spacesDir, { recursive: true });
   }
 }

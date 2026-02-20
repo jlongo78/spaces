@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const PORT = parseInt(process.env.CLAUDESK_WS_PORT || '3458', 10);
+const PORT = parseInt(process.env.SPACES_WS_PORT || '3458', 10);
 
 // Session store: keeps ptys alive across WebSocket reconnections
 // Key: paneId, Value: { pty, ws (current WebSocket or null), buffer (rolling output) }

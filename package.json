@@ -1,9 +1,9 @@
 {
-  "name": "claudesk",
+  "name": "spaces",
   "version": "0.1.0",
-  "description": "Browser-based workspace manager for Claude Code sessions",
+  "description": "Agent workspace manager for Claude, Codex, Gemini, and more",
   "bin": {
-    "claudesk": "./bin/claudesk.js"
+    "spaces": "./bin/spaces.js"
   },
   "scripts": {
     "dev": "next dev --port 3457",

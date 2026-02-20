@@ -82,7 +82,7 @@ export default function TerminalPage() {
   // ─── BroadcastChannel for cross-window sync ────────────────
 
   useEffect(() => {
-    const channel = new BroadcastChannel('claudesk-panes');
+    const channel = new BroadcastChannel('spaces-panes');
     channelRef.current = channel;
 
     channel.onmessage = (event) => {
@@ -232,7 +232,7 @@ export default function TerminalPage() {
     const y = pane.winY ?? Math.round(screen.height / 2 - h / 2);
     const features = `left=${x},top=${y},width=${w},height=${h},menubar=no,toolbar=no,location=no,status=no`;
 
-    window.open(`/terminal/pane/${pane.id}`, `claudesk-pane-${pane.id}`, features);
+    window.open(`/terminal/pane/${pane.id}`, `spaces-pane-${pane.id}`, features);
     setPoppedOut(prev => new Set(prev).add(pane.id));
 
     // Mark in DB

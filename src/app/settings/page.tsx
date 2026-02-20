@@ -37,7 +37,7 @@ export default function SettingsPage() {
             <div>
               <label className="text-muted-foreground text-xs">Spaces Database</label>
               <p className="font-mono text-xs mt-1 p-2 bg-zinc-50 dark:bg-zinc-800 rounded">
-                ~/.claudesk/claudesk.db
+                ~/.spaces/spaces.db
               </p>
             </div>
           </div>

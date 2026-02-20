@@ -34,13 +34,13 @@ export async function initWatcher() {
           await fullSync();
           sseManager.broadcast('sync', { type: event, file: filePath, timestamp: Date.now() });
         } catch (err) {
-          console.error('[claudesk] Watcher sync error:', err);
+          console.error('[spaces] Watcher sync error:', err);
         }
       }, 1000);
     });
 
-    console.log('[claudesk] File watcher started on', config.claudeProjectsDir);
+    console.log('[spaces] File watcher started on', config.claudeProjectsDir);
   } catch (err) {
-    console.error('[claudesk] Failed to start file watcher:', err);
+    console.error('[spaces] Failed to start file watcher:', err);
   }
 }

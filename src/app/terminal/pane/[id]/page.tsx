@@ -33,7 +33,7 @@ export default function PopoutPanePage({ params }: { params: Promise<{ id: strin
   // Set up BroadcastChannel for cross-window communication
   useEffect(() => {
     if (!paneId) return;
-    const channel = new BroadcastChannel('claudesk-panes');
+    const channel = new BroadcastChannel('spaces-panes');
     channelRef.current = channel;
 
     // Notify main window we're open

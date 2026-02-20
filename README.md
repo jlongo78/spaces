@@ -2,7 +2,7 @@
 
 A local workspace manager for AI coding agents. Run Claude Code, Codex CLI, Gemini CLI, Aider, or any custom agent side-by-side in a browser-based terminal grid.
 
-Spaces reads your `~/.claude/` directory to index past sessions, and provides a multiplexed terminal UI where you can launch, resume, and organize agent sessions across workspaces.
+Spaces reads your `~/.claude/` directory to index past sessions, and provides a multiplexed terminal UI where you can launch, resume, and organize agent sessions across spaces.
 
 ## Features
 
@@ -16,13 +16,13 @@ Spaces reads your `~/.claude/` directory to index past sessions, and provides a 
 - **Custom commands** - run any CLI tool
 - **Plain shell**
 
-**Spaces (workspaces)** - Group panes into named, color-coded spaces. Switch between them instantly. Pop-out windows remember their position and size, close when you switch, and restore when you switch back.
+**Spaces** - Group panes into named, color-coded spaces. Switch between them instantly. Pop-out windows remember their position and size, close when you switch, and restore when you switch back.
 
 **Session browser** - Browse, search, and filter all your Claude Code sessions. Full-text search (SQLite FTS5) across message content. View conversations with rendered markdown, syntax-highlighted code blocks, collapsible thinking blocks, and tool-use cards.
 
 **Dashboard & analytics** - Session counts, message totals, model usage breakdown, activity heatmap, cost estimates, and recent session list.
 
-**Everything local** - All data stays on your machine. `~/.claude/` is read-only (never modified). Spaces stores its own metadata (workspace layouts, tags, stars) in `~/.claudesk/claudesk.db`.
+**Everything local** - All data stays on your machine. `~/.claude/` is read-only (never modified). Spaces stores its own metadata (layouts, tags, stars) in `~/.spaces/spaces.db`.
 
 ## Quick Start
 
@@ -55,8 +55,8 @@ Open [http://localhost:3457](http://localhost:3457).
 ### Development
 
 ```bash
-npm run dev          # Next.js dev server on :3457
-node bin/terminal-server.js   # Terminal WebSocket server on :3458
+npm run dev                    # Next.js dev server on :3457
+node bin/terminal-server.js    # Terminal WebSocket server on :3458
 ```
 
 ## How It Works
@@ -69,9 +69,9 @@ Browser (localhost:3457)
     |
 Next.js + Terminal Server
     |
-    |-- Reads: ~/.claude/          (read-only, session transcripts)
-    |-- Owns:  ~/.claudesk/        (SQLite DB, config)
-    |-- Spawns: node-pty processes  (one per terminal pane)
+    |-- Reads: ~/.claude/        (read-only, session transcripts)
+    |-- Owns:  ~/.spaces/        (SQLite DB, config)
+    |-- Spawns: node-pty         (one PTY per terminal pane)
 ```
 
 When you open a pane, the terminal server spawns a PTY process and bridges it to the browser over WebSocket. For agent panes, it injects the appropriate CLI command (e.g. `claude`, `claude --resume <id>`, `codex`, etc.) into the shell.
@@ -83,7 +83,7 @@ Claude Code sessions are auto-detected: when you start a new Claude pane, Spaces
 ```
 src/
   app/                    # Next.js pages + API routes
-    terminal/             # Spaces (terminal grid) - the main UI
+    terminal/             # Spaces - the main terminal grid UI
     sessions/             # Session browser + viewer
     analytics/            # Usage charts and stats
     projects/             # Project list
@@ -104,7 +104,7 @@ src/
     config.ts             # Paths and configuration
 bin/
   terminal-server.js      # WebSocket PTY server
-  claudesk.js             # Launcher script
+  spaces.js               # Launcher script
 ```
 
 ## Tech Stack
@@ -124,12 +124,12 @@ bin/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAUDESK_PORT` | `3457` | Web UI port |
-| `CLAUDESK_WS_PORT` | `3458` | Terminal WebSocket port |
+| `SPACES_PORT` | `3457` | Web UI port |
+| `SPACES_WS_PORT` | `3458` | Terminal WebSocket port |
 
 Data directories:
 - `~/.claude/` - Claude Code sessions (read-only)
-- `~/.claudesk/claudesk.db` - Spaces database (auto-created)
+- `~/.spaces/spaces.db` - Spaces database (auto-created)
 
 ## License
 

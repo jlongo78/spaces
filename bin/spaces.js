@@ -5,8 +5,8 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
-const PORT = process.env.CLAUDESK_PORT || 3457;
-const WS_PORT = process.env.CLAUDESK_WS_PORT || 3458;
+const PORT = process.env.SPACES_PORT || 3457;
+const WS_PORT = process.env.SPACES_WS_PORT || 3458;
 const projectDir = path.join(__dirname, '..');
 
 console.log('');
@@ -30,7 +30,7 @@ const termServer = spawn('node', [
   path.join(__dirname, 'terminal-server.js'),
 ], {
   cwd: projectDir,
-  env: { ...process.env, CLAUDESK_WS_PORT: String(WS_PORT) },
+  env: { ...process.env, SPACES_WS_PORT: String(WS_PORT) },
   stdio: 'pipe',
 });
 
