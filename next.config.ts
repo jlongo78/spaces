@@ -6,7 +6,9 @@ const nextConfig: NextConfig = {
   basePath: isElectron ? undefined : (process.env.NEXT_PUBLIC_BASE_PATH || undefined),
   trailingSlash: true,
   serverExternalPackages: ['better-sqlite3', 'node-pty', 'ws'],
-  turbopack: {},
+  turbopack: {
+    root: process.cwd(),
+  },
   ...(isElectron ? { output: 'standalone' } : {}),
 };
 

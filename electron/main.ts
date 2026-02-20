@@ -76,14 +76,34 @@ async function startNextServer(): Promise<void> {
   }
 
   const standaloneDir = path.join(process.resourcesPath, 'standalone');
-  const serverPath = path.join(standaloneDir, 'server.js');
+
+  // Next.js standalone output nests files under the project's path relative
+  // to the detected workspace root. Find server.js wherever it landed.
+  const fs = require('fs');
+  function findServerJs(dir: string): string | null {
+    const candidate = path.join(dir, 'server.js');
+    if (fs.existsSync(candidate)) return candidate;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== '.next') {
+        const found = findServerJs(path.join(dir, entry.name));
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  const serverPath = findServerJs(standaloneDir);
+  if (!serverPath) {
+    throw new Error(`Could not find server.js in ${standaloneDir}`);
+  }
+  const serverDir = path.dirname(serverPath);
 
   // Set env vars for standalone server
   process.env.PORT = String(NEXT_PORT);
   process.env.HOSTNAME = '127.0.0.1';
 
-  // The standalone server needs to find its static files
-  process.env.NEXT_DIST_DIR = path.join(standaloneDir, '.next');
+  // The standalone server needs to find its .next directory (sibling to server.js)
+  process.env.NEXT_DIST_DIR = path.join(serverDir, '.next');
 
   console.log(`[Electron] Starting Next.js standalone server from ${serverPath}`);
   require(serverPath);

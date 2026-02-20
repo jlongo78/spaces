@@ -1,5 +1,5 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import pty from 'node-pty';
+import * as pty from 'node-pty';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';

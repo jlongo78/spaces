@@ -5,6 +5,8 @@ import { Shield, Loader2, Settings } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
+const iconSrc = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/spaces_icon.png`;
+
 const SESSION_KEY = 'spaces-terminal-token';
 
 interface TotpGateProps {
@@ -101,7 +103,8 @@ export function TotpGate({ children }: TotpGateProps) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-950">
         <div className="text-center space-y-4 max-w-sm">
-          <Shield className="w-12 h-12 mx-auto text-zinc-600" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={iconSrc} alt="Spaces" className="w-12 h-12 mx-auto opacity-40" />
           <h2 className="text-lg font-semibold text-white">2FA Required</h2>
           <p className="text-sm text-zinc-400">
             Two-factor authentication must be set up before you can use terminals.
@@ -122,7 +125,8 @@ export function TotpGate({ children }: TotpGateProps) {
   return (
     <div className="flex items-center justify-center h-screen bg-zinc-950">
       <div className="text-center space-y-4 max-w-sm">
-        <Shield className="w-12 h-12 mx-auto text-indigo-500" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={iconSrc} alt="Spaces" className="w-12 h-12 mx-auto" />
         <h2 className="text-lg font-semibold text-white">Terminal Verification</h2>
         <p className="text-sm text-zinc-400">
           Enter the 6-digit code from your authenticator app.

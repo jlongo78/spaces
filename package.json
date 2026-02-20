@@ -1,6 +1,6 @@
 {
   "name": "spaces",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Agent workspace manager for Claude, Codex, Gemini, and more",
   "main": "electron/dist/main.js",
   "bin": {
@@ -9,8 +9,8 @@
   "scripts": {
     "dev": "next dev --port 3457",
     "dev:desktop": "npm run compile && concurrently -n next,electron \"npm run dev\" \"wait-on http://127.0.0.1:3457 && electron .\"",
-    "compile": "tsc -p electron/tsconfig.json",
-    "build": "npm run rebuild:electron && ELECTRON=1 next build && npm run compile",
+    "compile": "esbuild electron/main.ts --bundle --platform=node --outfile=electron/dist/main.js --external:electron --external:node-pty && esbuild electron/preload.ts --bundle --platform=node --outfile=electron/dist/preload.js --external:electron",
+    "build": "npm run rebuild:electron && cross-env ELECTRON=1 next build && npm run compile",
     "pack": "npm run build && electron-builder --dir",
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:mac": "npm run build && electron-builder --mac",
@@ -57,8 +57,10 @@
     "@types/react-dom": "^19",
     "@types/ws": "^8.18.1",
     "concurrently": "^9.1.2",
+    "cross-env": "^10.1.0",
     "electron": "^34.3.0",
     "electron-builder": "^25.1.8",
+    "esbuild": "^0.27.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",

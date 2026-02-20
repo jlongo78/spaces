@@ -394,7 +394,8 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="w-full max-w-2xl">
             <div className="text-center mb-10">
-              <Layers className="w-12 h-12 mx-auto text-indigo-500 mb-4" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/spaces_icon.png`} alt="Spaces" className="w-16 h-16 mx-auto mb-4" />
               <h1 className="text-2xl font-bold mb-2">Spaces</h1>
               <p className="text-zinc-400 text-sm">Choose a workspace to open, or create a new one.</p>
             </div>
@@ -872,7 +873,8 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
       {visiblePanes.length === 0 && poppedOut.size === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3">
-            <Layers className="w-16 h-16 mx-auto text-zinc-700" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/spaces_icon.png`} alt="Spaces" className="w-16 h-16 mx-auto opacity-30" />
             <p className="text-zinc-500">No panes yet.</p>
             <p className="text-zinc-600 text-xs">Add a pane to start a shell, Claude, Codex, Gemini, or any agent.</p>
             <button
