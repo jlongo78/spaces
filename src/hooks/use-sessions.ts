@@ -298,11 +298,13 @@ export function useAddSessionToWorkspace() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId }),
       });
+      if (!res.ok) throw new Error('Failed to add session to workspace');
       return res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workspaces'] });
       qc.invalidateQueries({ queryKey: ['workspace-sessions'] });
+      qc.invalidateQueries({ queryKey: ['sessions'] });
       qc.invalidateQueries({ queryKey: ['session'] });
     },
   });
@@ -317,11 +319,13 @@ export function useRemoveSessionFromWorkspace() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId }),
       });
+      if (!res.ok) throw new Error('Failed to remove session from workspace');
       return res.json();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workspaces'] });
       qc.invalidateQueries({ queryKey: ['workspace-sessions'] });
+      qc.invalidateQueries({ queryKey: ['sessions'] });
       qc.invalidateQueries({ queryKey: ['session'] });
     },
   });

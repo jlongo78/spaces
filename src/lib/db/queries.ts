@@ -138,16 +138,22 @@ export function getSessions(params: SessionQueryParams = {}): { sessions: Sessio
     LIMIT ? OFFSET ?
   `).all(...queryParams, limit, offset) as SessionWithMeta[];
 
-  // Fetch tags for each session
+  // Fetch tags and workspaces for each session
   const tagStmt = db.prepare(`
     SELECT t.name FROM tags t
     JOIN session_tags st ON st.tag_id = t.id
     WHERE st.session_id = ?
   `);
+  const wsStmt = db.prepare(`
+    SELECT w.id, w.name, w.color FROM workspaces w
+    JOIN workspace_sessions ws ON ws.workspace_id = w.id
+    WHERE ws.session_id = ?
+  `);
 
   for (const row of rows) {
     const tags = tagStmt.all(row.id) as { name: string }[];
     row.tags = tags.map(t => t.name);
+    row.workspaces = wsStmt.all(row.id) as { id: number; name: string; color: string }[];
     row.starred = !!row.starred;
   }
 

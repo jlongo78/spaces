@@ -1,25 +1,24 @@
 'use client';
 
-import { MessageSquare, Hash, FolderOpen, DollarSign } from 'lucide-react';
-import { formatNumber, formatCost } from '@/lib/utils';
+import { MessageSquare, Hash, FolderOpen } from 'lucide-react';
+import { formatNumber } from '@/lib/utils';
 
 interface StatsCardsProps {
   totalSessions: number;
   totalMessages: number;
   totalProjects: number;
-  estimatedCost: number;
+  estimatedCost?: number;
 }
 
-export function StatsCards({ totalSessions, totalMessages, totalProjects, estimatedCost }: StatsCardsProps) {
+export function StatsCards({ totalSessions, totalMessages, totalProjects }: StatsCardsProps) {
   const cards = [
     { label: 'Sessions', value: formatNumber(totalSessions), icon: MessageSquare, color: 'text-blue-500' },
     { label: 'Messages', value: formatNumber(totalMessages), icon: Hash, color: 'text-green-500' },
     { label: 'Projects', value: String(totalProjects), icon: FolderOpen, color: 'text-purple-500' },
-    { label: 'Est. Cost', value: formatCost(estimatedCost), icon: DollarSign, color: 'text-amber-500' },
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-3 gap-4">
       {cards.map(({ label, value, icon: Icon, color }) => (
         <div
           key={label}

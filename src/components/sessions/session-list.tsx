@@ -154,16 +154,26 @@ function SessionRow({ session, isSelected, onToggle }: {
           </span>
         </div>
 
-        {/* Tag chips */}
-        {session.tags?.length > 0 && (
+        {/* Tag + workspace chips */}
+        {(session.tags?.length > 0 || session.workspaces?.length > 0) && (
           <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-            {session.tags.map((tag) => (
+            {session.tags?.map((tag) => (
               <span
                 key={tag}
                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300"
               >
                 <Tag className="w-2 h-2" />
                 {tag}
+              </span>
+            ))}
+            {session.workspaces?.map((ws) => (
+              <span
+                key={ws.id}
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium border"
+                style={{ backgroundColor: `${ws.color}15`, borderColor: `${ws.color}40`, color: ws.color }}
+              >
+                <Layers className="w-2 h-2" />
+                {ws.name}
               </span>
             ))}
           </div>

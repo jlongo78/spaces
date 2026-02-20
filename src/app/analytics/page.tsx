@@ -7,6 +7,7 @@ import { StatsCards } from '@/components/dashboard/stats-cards';
 import { Loader2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, Area, AreaChart } from 'recharts';
 import { getModelDisplayName } from '@/lib/cost-calculator';
+import { formatCost } from '@/lib/utils';
 
 export default function AnalyticsPage() {
   const { data, isLoading } = useAnalytics();
@@ -144,6 +145,13 @@ export default function AnalyticsPage() {
             </tbody>
           </table>
         </div>
+        {data.estimatedCost > 0 && (
+          <div className="px-4 py-3 border-t border-zinc-200 dark:border-zinc-800">
+            <p className="text-xs text-muted-foreground">
+              Estimated API cost equivalent: <span className="text-zinc-400">{formatCost(data.estimatedCost)}</span>
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

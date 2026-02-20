@@ -158,6 +158,7 @@ export interface SessionWithMeta {
   customName: string | null;
   notes: string | null;
   tags: string[];
+  workspaces: { id: number; name: string; color: string }[];
 }
 
 export interface Workspace {
