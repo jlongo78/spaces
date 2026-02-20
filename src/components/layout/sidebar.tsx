@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -12,6 +13,7 @@ import {
   Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { trackPageView } from '@/lib/telemetry';
 
 const nav = [
   { href: '/terminal', label: 'Spaces', icon: Layers },
@@ -22,8 +24,23 @@ const nav = [
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
+const routeNames: Record<string, string> = {
+  '/': 'dashboard',
+  '/terminal': 'terminal',
+  '/sessions': 'sessions',
+  '/projects': 'projects',
+  '/analytics': 'analytics',
+  '/settings': 'settings',
+};
+
 export function Sidebar() {
   const pathname = usePathname();
+
+  useEffect(() => {
+    const page = routeNames[pathname]
+      || (pathname.startsWith('/sessions/') ? 'session_detail' : pathname.slice(1));
+    trackPageView(page);
+  }, [pathname]);
 
   return (
     <aside className="w-56 border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex flex-col h-screen fixed left-0 top-0">

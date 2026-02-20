@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron';
 import path from 'path';
 import { startTerminalWsServer } from './terminal-server';
+import { initMainTelemetry, identifyInstall, trackMain, shutdownMainTelemetry } from './telemetry';
 
 const NEXT_PORT = 3457;
 const WS_PORT = 3458;
@@ -89,6 +90,12 @@ async function startNextServer(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  const startTime = Date.now();
+
+  // Initialize telemetry early
+  initMainTelemetry();
+  identifyInstall();
+
   // Start terminal WebSocket server
   startTerminalWsServer(WS_PORT);
 
@@ -103,10 +110,17 @@ app.whenReady().then(async () => {
     await waitForServer(`http://127.0.0.1:${NEXT_PORT}/`);
     mainWindow?.loadURL(`http://127.0.0.1:${NEXT_PORT}/`);
     mainWindow?.show();
+    trackMain('app_opened', { startupMs: Date.now() - startTime });
   } catch (err) {
+    trackMain('app_startup_failed', { error: String(err) });
     console.error('[Electron] Failed to start:', err);
     app.quit();
   }
+});
+
+app.on('before-quit', async () => {
+  trackMain('app_closed');
+  await shutdownMainTelemetry();
 });
 
 app.on('window-all-closed', () => {

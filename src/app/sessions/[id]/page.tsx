@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { track } from '@/lib/telemetry';
 
 export default function SessionViewerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -70,6 +71,11 @@ export default function SessionViewerPage({ params }: { params: Promise<{ id: st
       }
     }
   }, [messagesData, loadedPages]);
+
+  // ─── Track session view ──────────────────────────────
+  useEffect(() => {
+    track('session_viewed');
+  }, [id]);
 
   // ─── Initialize notes ─────────────────────────────────
   useEffect(() => {
@@ -162,7 +168,7 @@ export default function SessionViewerPage({ params }: { params: Promise<{ id: st
             </Link>
 
             <button
-              onClick={() => toggleStar.mutate(session.id)}
+              onClick={() => { toggleStar.mutate(session.id); track('session_starred'); }}
               className="flex-shrink-0"
             >
               <Star

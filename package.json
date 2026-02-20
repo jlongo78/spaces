@@ -10,7 +10,7 @@
     "dev": "next dev --port 3457",
     "dev:desktop": "npm run compile && concurrently -n next,electron \"npm run dev\" \"wait-on http://127.0.0.1:3457 && electron .\"",
     "compile": "tsc -p electron/tsconfig.json",
-    "build": "ELECTRON=1 next build && npm run compile",
+    "build": "npm run rebuild:electron && ELECTRON=1 next build && npm run compile",
     "pack": "npm run build && electron-builder --dir",
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:mac": "npm run build && electron-builder --mac",
@@ -18,7 +18,7 @@
     "server:build": "next build",
     "server:start": "next start --port 3457",
     "lint": "eslint",
-    "postinstall": "electron-rebuild -f -w better-sqlite3,node-pty 2>/dev/null || true"
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3,node-pty"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",
@@ -35,6 +35,8 @@
     "next": "16.1.6",
     "node-pty": "^1.1.0",
     "otpauth": "^9.5.0",
+    "posthog-js": "^1.352.0",
+    "posthog-node": "^5.21.2",
     "qrcode": "^1.5.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",

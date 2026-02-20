@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSync } from '@/hooks/use-sessions';
-import { Settings, RefreshCw, FolderOpen, Loader2, Shield, CheckCircle2 } from 'lucide-react';
+import { Settings, RefreshCw, FolderOpen, Loader2, Shield, CheckCircle2, BarChart3 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { track, setOptOut } from '@/lib/telemetry';
 
 const isServerEdition = process.env.NEXT_PUBLIC_EDITION === 'server';
 
@@ -22,6 +23,10 @@ export default function SettingsPage() {
   const [verifyLoading, setVerifyLoading] = useState(false);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
+  // Telemetry state
+  const [telemetryOptOut, setTelemetryOptOut] = useState(false);
+  const [telemetryLoading, setTelemetryLoading] = useState(true);
+
   useEffect(() => {
     if (!isServerEdition) {
       setTotpLoading(false);
@@ -36,9 +41,32 @@ export default function SettingsPage() {
       .catch(() => setTotpLoading(false));
   }, []);
 
+  useEffect(() => {
+    fetch(api('/api/config'))
+      .then(r => r.json())
+      .then(data => {
+        setTelemetryOptOut(data.telemetryOptOut);
+        setTelemetryLoading(false);
+      })
+      .catch(() => setTelemetryLoading(false));
+  }, []);
+
   const handleSync = async () => {
     const result = await sync.mutateAsync();
     setSyncResult(`Synced ${result.projects} projects, ${result.sessions} sessions, enriched ${result.enriched}`);
+    track('sync_completed', { projects: result.projects, sessions: result.sessions, enriched: result.enriched });
+  };
+
+  const handleTelemetryToggle = async () => {
+    const newOptOut = !telemetryOptOut;
+    setTelemetryOptOut(newOptOut);
+    setOptOut(newOptOut);
+    track('telemetry_toggled', { enabled: !newOptOut });
+    await fetch(api('/api/config'), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telemetryOptOut: newOptOut }),
+    });
   };
 
   const startSetup = async () => {
@@ -254,6 +282,34 @@ export default function SettingsPage() {
           </button>
           {syncResult && (
             <p className="text-xs text-green-600 mt-2">{syncResult}</p>
+          )}
+        </div>
+
+        {/* Telemetry */}
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
+          <h3 className="font-semibold flex items-center gap-2 mb-3">
+            <BarChart3 className="w-4 h-4" />
+            Telemetry
+          </h3>
+          <p className="text-sm text-muted-foreground mb-3">
+            Anonymous usage data helps us understand how Spaces is used and improve the product.
+            No file paths, session content, or personal information is ever collected.
+          </p>
+          {telemetryLoading ? (
+            <div className="flex items-center gap-2 text-sm text-zinc-400">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading...
+            </div>
+          ) : (
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!telemetryOptOut}
+                onChange={handleTelemetryToggle}
+                className="w-4 h-4 rounded border-zinc-300 dark:border-zinc-700 text-indigo-500 focus:ring-indigo-500"
+              />
+              <span className="text-sm">Send anonymous usage data</span>
+            </label>
           )}
         </div>
 

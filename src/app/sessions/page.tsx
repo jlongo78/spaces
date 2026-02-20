@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSessions, useProjects } from '@/hooks/use-sessions';
 import { SessionList } from '@/components/sessions/session-list';
 import { SessionFilters } from '@/components/sessions/session-filters';
 import { Loader2 } from 'lucide-react';
+import { track } from '@/lib/telemetry';
 
 export default function SessionsPage() {
   const [projectId, setProjectId] = useState<string>('');
@@ -13,6 +14,17 @@ export default function SessionsPage() {
   const [starred, setStarred] = useState(false);
   const [page, setPage] = useState(0);
   const limit = 30;
+
+  const searchTrackTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    if (!search) return;
+    clearTimeout(searchTrackTimer.current);
+    searchTrackTimer.current = setTimeout(() => {
+      track('sessions_searched');
+    }, 1000);
+    return () => clearTimeout(searchTrackTimer.current);
+  }, [search]);
 
   const { data: projects } = useProjects();
   const { data, isLoading } = useSessions({

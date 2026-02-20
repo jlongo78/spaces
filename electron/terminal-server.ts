@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
+import { trackMain } from './telemetry';
 
 // Session store: keeps ptys alive across WebSocket reconnections
 // Key: paneId, Value: { pty, ws, buffer, exited }
@@ -116,6 +117,7 @@ function detectNewClaudeSession(paneId: string, session: Session) {
               const newSessionId = m[1];
               clearInterval(interval);
               console.log(`[Session Detect] Pane ${paneId.slice(0, 8)}: detected session ${newSessionId}`);
+              trackMain('claude_session_detected');
               if (session.ws && session.ws.readyState === WebSocket.OPEN) {
                 session.ws.send(JSON.stringify({
                   type: 'session-detected',
@@ -160,6 +162,7 @@ export function startTerminalWsServer(port: number) {
       try { existing.pty.resize(cols, rows); } catch { /* ignore */ }
 
       ws.send(JSON.stringify({ type: 'ready', paneId, reattached: true }));
+      trackMain('terminal_reattached', { agentType });
 
       ws.on('message', (raw) => {
         try {
@@ -208,6 +211,7 @@ export function startTerminalWsServer(port: number) {
 
     const session: Session = { pty: term, ws, buffer: [], exited: false };
     sessions.set(paneId, session);
+    trackMain('terminal_spawned', { agentType });
 
     // Inject agent command into the shell
     const agent = AGENTS[agentType] || AGENTS.shell;
@@ -270,6 +274,7 @@ export function startTerminalWsServer(port: number) {
 
     term.onExit(({ exitCode }) => {
       session.exited = true;
+      trackMain('terminal_exited', { agentType, exitCode });
       if (session.ws && session.ws.readyState === WebSocket.OPEN) {
         session.ws.send(JSON.stringify({ type: 'exit', exitCode }));
       }

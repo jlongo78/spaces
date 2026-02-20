@@ -15,6 +15,7 @@ import { AGENT_TYPES, AGENT_LIST } from '@/lib/agents';
 import type { PaneData } from '@/lib/db/queries';
 import type { SessionWithMeta, Workspace } from '@/types/claude';
 import { api } from '@/lib/api';
+import { track } from '@/lib/telemetry';
 
 export default function TerminalPage() {
   return (
@@ -208,6 +209,7 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
     });
     const pane = await res.json();
     setPanes(prev => [...prev, pane]);
+    track('pane_created', { agentType: newAgentType });
     setShowAdd(false);
     setNewTitle('');
     setNewCwd('');
@@ -221,15 +223,17 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   }, [newTitle, newCwd, newColor, newClaudeSession, newAgentType, newAgentMode, newCustomCommand, selectedSession]);
 
   const closePane = useCallback(async (id: string) => {
+    const closing = panes.find(p => p.id === id);
     await fetch(api(`/api/panes/${id}`), { method: 'DELETE' });
     setPanes(prev => prev.filter(p => p.id !== id));
+    if (closing) track('pane_closed', { agentType: closing.agentType });
     if (maximized === id) setMaximized(null);
     setPoppedOut(prev => {
       const next = new Set(prev);
       next.delete(id);
       return next;
     });
-  }, [maximized]);
+  }, [maximized, panes]);
 
   const updatePane = useCallback(async (id: string, data: Partial<PaneData>) => {
     await fetch(api(`/api/panes/${id}`), {
@@ -310,10 +314,15 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
     await loadWorkspaces();
     await loadPanes();
     setShowWsPicker(false);
+    if (entered) {
+      track('workspace_switched');
+    } else {
+      track('workspace_entered');
+    }
     setEntered(true);
     // Trigger popout restore for the new workspace's panes
     setRestoreGen(prev => prev + 1);
-  }, [loadWorkspaces, loadPanes, closeAllPopouts]);
+  }, [loadWorkspaces, loadPanes, closeAllPopouts, entered]);
 
   const saveWorkspaceAs = useCallback(async () => {
     if (!saveAsName.trim() || !activeWorkspace) return;
@@ -335,12 +344,14 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
       body: JSON.stringify({ name: 'New Space', color: '#6366f1' }),
     });
     const ws = await res.json();
+    track('workspace_created');
     await switchWorkspace(ws.id);
   }, [switchWorkspace]);
 
   const deleteWorkspace = useCallback(async (wsId: number) => {
     closeAllPopouts();
     await fetch(api(`/api/workspaces/${wsId}`), { method: 'DELETE' });
+    track('workspace_deleted');
     await loadWorkspaces();
     await loadPanes();
     setShowWsPicker(false);

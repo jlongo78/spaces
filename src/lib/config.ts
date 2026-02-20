@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import crypto from 'crypto';
 
 export const config = {
   // Server
@@ -32,4 +33,41 @@ export function ensureUserSpacesDir(username: string) {
   if (!fs.existsSync(spacesDir)) {
     fs.mkdirSync(spacesDir, { recursive: true });
   }
+}
+
+export interface SpacesConfig {
+  installId: string;
+  telemetryOptOut: boolean;
+}
+
+export function readConfig(username: string): SpacesConfig {
+  const { configPath, spacesDir } = getUserPaths(username);
+  try {
+    if (fs.existsSync(configPath)) {
+      const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      return {
+        installId: raw.installId || crypto.randomUUID(),
+        telemetryOptOut: !!raw.telemetryOptOut,
+      };
+    }
+  } catch { /* corrupt file, recreate */ }
+
+  // Create fresh config
+  if (!fs.existsSync(spacesDir)) {
+    fs.mkdirSync(spacesDir, { recursive: true });
+  }
+  const config: SpacesConfig = {
+    installId: crypto.randomUUID(),
+    telemetryOptOut: false,
+  };
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  return config;
+}
+
+export function writeConfig(username: string, updates: Partial<SpacesConfig>) {
+  const current = readConfig(username);
+  const merged = { ...current, ...updates };
+  const { configPath } = getUserPaths(username);
+  fs.writeFileSync(configPath, JSON.stringify(merged, null, 2));
+  return merged;
 }
