@@ -62,6 +62,7 @@ export function upsertSession(session: {
 
 interface SessionQueryParams {
   projectId?: string;
+  projectPath?: string;
   starred?: boolean;
   tagId?: number;
   search?: string;
@@ -75,6 +76,7 @@ export function getSessions(params: SessionQueryParams = {}): { sessions: Sessio
   const db = getDb();
   const {
     projectId,
+    projectPath,
     starred,
     tagId,
     search,
@@ -90,6 +92,10 @@ export function getSessions(params: SessionQueryParams = {}): { sessions: Sessio
   if (projectId) {
     where.push('s.project_id = ?');
     queryParams.push(projectId);
+  }
+  if (projectPath) {
+    where.push('s.project_path = ?');
+    queryParams.push(projectPath);
   }
   if (starred !== undefined) {
     where.push('s.starred = ?');

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthUser } from '@/lib/auth';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 
 export async function GET(request: NextRequest) {
-  const dir = request.nextUrl.searchParams.get('path') || os.homedir();
+  const user = getAuthUser(request);
+  const dir = request.nextUrl.searchParams.get('path') || `/home/${user}`;
 
   try {
     const resolved = path.resolve(dir);

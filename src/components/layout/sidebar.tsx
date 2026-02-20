@@ -10,7 +10,6 @@ import {
   BarChart3,
   Settings,
   Search,
-  Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -29,9 +28,14 @@ export function Sidebar() {
   return (
     <aside className="w-56 border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex flex-col h-screen fixed left-0 top-0">
       <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
-        <Link href="/" className="flex items-center gap-2">
-          <Zap className="w-5 h-5 text-indigo-500" />
-          <span className="font-semibold text-lg">Spaces</span>
+        <Link href="/">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/spaces_logo.png`}
+            alt="Spaces"
+            width={180}
+            height={60}
+          />
         </Link>
       </div>
 

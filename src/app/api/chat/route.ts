@@ -1,10 +1,12 @@
 import { NextRequest } from 'next/server';
 import { spawn } from 'child_process';
+import { getAuthUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 // Start a new Claude session (not resuming an existing one)
 export async function POST(request: NextRequest) {
+  const user = getAuthUser(request);
   const body = await request.json();
   const { message, cwd } = body;
 
@@ -15,7 +17,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const workDir = cwd || process.env.HOME || process.env.USERPROFILE || '.';
+  const workDir = cwd || `/home/${user}`;
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({

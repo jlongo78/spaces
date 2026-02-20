@@ -1,4 +1,5 @@
-import { config } from '../config';
+import os from 'os';
+import { getUserPaths } from '../config';
 import { fullSync } from './indexer';
 import { sseManager } from '../events/sse';
 
@@ -9,9 +10,14 @@ export async function initWatcher() {
   if (watcherInitialized) return;
   watcherInitialized = true;
 
+  // Watch the server process user's claude directory for live-reload.
+  // Per-user sync happens lazily via ensureInitialized() on each request.
+  const processUser = os.userInfo().username;
+  const { claudeProjectsDir } = getUserPaths(processUser);
+
   try {
     const chokidar = await import('chokidar');
-    const watcher = chokidar.watch(config.claudeProjectsDir, {
+    const watcher = chokidar.watch(claudeProjectsDir, {
       ignoreInitial: true,
       depth: 3,
       persistent: true,
@@ -39,7 +45,7 @@ export async function initWatcher() {
       }, 1000);
     });
 
-    console.log('[spaces] File watcher started on', config.claudeProjectsDir);
+    console.log('[spaces] File watcher started on', claudeProjectsDir);
   } catch (err) {
     console.error('[spaces] Failed to start file watcher:', err);
   }

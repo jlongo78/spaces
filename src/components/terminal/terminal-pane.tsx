@@ -9,6 +9,7 @@ import type { PaneData } from '@/lib/db/queries';
 import 'xterm/css/xterm.css';
 
 const WS_PORT = 3458;
+const WS_PATH = process.env.NEXT_PUBLIC_WS_PATH;
 
 interface TerminalPaneProps {
   pane: PaneData;
@@ -18,9 +19,10 @@ interface TerminalPaneProps {
   onToggleMaximize: (id: string) => void;
   onPopout?: (id: string) => void;
   isPopout?: boolean;
+  terminalToken?: string;
 }
 
-export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMaximize, onPopout, isPopout }: TerminalPaneProps) {
+export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMaximize, onPopout, isPopout, terminalToken }: TerminalPaneProps) {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -40,6 +42,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   paneRef.current = pane;
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
+  const terminalTokenRef = useRef(terminalToken);
+  terminalTokenRef.current = terminalToken;
 
   // Stable connect function — never changes reference
   const connect = useCallback(async () => {
@@ -107,8 +111,16 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     if (currentPane.customCommand) {
       params.set('customCommand', currentPane.customCommand);
     }
+    // Terminal token is read from the outer closure at connect time
+    const currentToken = terminalTokenRef.current;
+    if (currentToken) {
+      params.set('terminalToken', currentToken);
+    }
 
-    const ws = new WebSocket(`ws://localhost:${WS_PORT}?${params}`);
+    const wsUrl = WS_PATH
+      ? `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}${WS_PATH}?${params}`
+      : `ws://localhost:${WS_PORT}?${params}`;
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -240,7 +252,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       {/* Title bar */}
       <div
         className="flex items-center gap-2 px-3 py-1.5 text-xs select-none flex-shrink-0"
-        style={{ backgroundColor: `${pane.color}15` }}
+        style={{ backgroundColor: `${pane.color}60` }}
       >
         <div ref={colorPickerRef} className="flex-shrink-0">
           <button

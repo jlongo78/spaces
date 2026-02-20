@@ -3,11 +3,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { TerminalPane } from '@/components/terminal/terminal-pane';
+import { TotpGate } from '@/components/auth/totp-gate';
 import type { PaneData } from '@/lib/db/queries';
+import { api } from '@/lib/api';
 
 const SAVE_INTERVAL = 2000;
 
 export default function PopoutPanePage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <TotpGate>
+      {(terminalToken) => <PopoutPaneInner params={params} terminalToken={terminalToken} />}
+    </TotpGate>
+  );
+}
+
+function PopoutPaneInner({ params, terminalToken }: { params: Promise<{ id: string }>; terminalToken: string }) {
   const [pane, setPane] = useState<PaneData | null>(null);
   const [loading, setLoading] = useState(true);
   const [paneId, setPaneId] = useState<string | null>(null);
@@ -24,7 +34,7 @@ export default function PopoutPanePage({ params }: { params: Promise<{ id: strin
   // Load pane data
   useEffect(() => {
     if (!paneId) return;
-    fetch(`/api/panes/${paneId}`)
+    fetch(api(`/api/panes/${paneId}`))
       .then(r => r.json())
       .then(data => { setPane(data); setLoading(false); })
       .catch(() => setLoading(false));
@@ -40,7 +50,7 @@ export default function PopoutPanePage({ params }: { params: Promise<{ id: strin
     channel.postMessage({ type: 'popout-opened', paneId });
 
     // Mark pane as popped out in DB
-    fetch(`/api/panes/${paneId}`, {
+    fetch(api(`/api/panes/${paneId}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -59,7 +69,7 @@ export default function PopoutPanePage({ params }: { params: Promise<{ id: strin
         workspaceCloseRef.current = true;
         // Save final position, keep isPopout=true so it restores next time
         navigator.sendBeacon(
-          `/api/panes/${paneId}`,
+          api(`/api/panes/${paneId}`),
           new Blob([JSON.stringify({
             isPopout: true,
             winX: window.screenX,
@@ -85,7 +95,7 @@ export default function PopoutPanePage({ params }: { params: Promise<{ id: strin
     const savePosition = () => {
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
-        fetch(`/api/panes/${paneId}`, {
+        fetch(api(`/api/panes/${paneId}`), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -131,7 +141,7 @@ export default function PopoutPanePage({ params }: { params: Promise<{ id: strin
       }
       // Manual close by user: mark isPopout=false so it doesn't auto-restore
       navigator.sendBeacon(
-        `/api/panes/${paneId}`,
+        api(`/api/panes/${paneId}`),
         new Blob([JSON.stringify({
           isPopout: false,
           winX: window.screenX,
@@ -156,7 +166,7 @@ export default function PopoutPanePage({ params }: { params: Promise<{ id: strin
 
   const handleClose = useCallback(async (id: string) => {
     // User explicitly closed via the X button in the terminal pane header
-    await fetch(`/api/panes/${id}`, {
+    await fetch(api(`/api/panes/${id}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isPopout: false }),
@@ -168,7 +178,7 @@ export default function PopoutPanePage({ params }: { params: Promise<{ id: strin
   }, []);
 
   const handleUpdate = useCallback(async (id: string, data: Partial<PaneData>) => {
-    await fetch(`/api/panes/${id}`, {
+    await fetch(api(`/api/panes/${id}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -194,6 +204,7 @@ export default function PopoutPanePage({ params }: { params: Promise<{ id: strin
         onUpdate={handleUpdate}
         isMaximized={true}
         onToggleMaximize={() => {}}
+        terminalToken={terminalToken}
       />
     </div>
   );

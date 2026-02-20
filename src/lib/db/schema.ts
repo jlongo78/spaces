@@ -1,20 +1,26 @@
 import Database from 'better-sqlite3';
-import { config, ensureSpacesDir } from '../config';
+import { getUserPaths, ensureUserSpacesDir } from '../config';
+import { getCurrentUser } from '../auth';
 
-let _db: Database.Database | null = null;
+const _dbs = new Map<string, Database.Database>();
 
 export function getDb(): Database.Database {
-  if (_db) return _db;
+  const username = getCurrentUser();
 
-  ensureSpacesDir();
+  const existing = _dbs.get(username);
+  if (existing) return existing;
 
-  _db = new Database(config.dbPath);
-  _db.pragma('journal_mode = WAL');
-  _db.pragma('synchronous = NORMAL');
-  _db.pragma('foreign_keys = ON');
+  ensureUserSpacesDir(username);
+  const { dbPath } = getUserPaths(username);
 
-  initSchema(_db);
-  return _db;
+  const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('synchronous = NORMAL');
+  db.pragma('foreign_keys = ON');
+
+  initSchema(db);
+  _dbs.set(username, db);
+  return db;
 }
 
 function initSchema(db: Database.Database) {
@@ -100,6 +106,13 @@ function initSchema(db: Database.Database) {
       shell TEXT,
       created TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS totp (
+      username TEXT PRIMARY KEY,
+      secret TEXT NOT NULL,
+      enabled INTEGER DEFAULT 0,
+      created TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // Migrate: add workspace and popout columns to existing tables
@@ -157,8 +170,8 @@ function initSchema(db: Database.Database) {
 }
 
 export function closeDb() {
-  if (_db) {
-    _db.close();
-    _db = null;
+  for (const db of _dbs.values()) {
+    db.close();
   }
+  _dbs.clear();
 }

@@ -4,17 +4,27 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Loader2, Terminal, Search, MessageSquare, FolderOpen,
   Clock, ChevronDown, Save, FolderInput, Trash2, Pencil, Check, X,
-  Layers, Copy, Home, XCircle,
+  Layers, Copy, Home, XCircle, ArrowLeftToLine,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { TerminalPane } from '@/components/terminal/terminal-pane';
 import { ColorPicker } from '@/components/common/color-picker';
 import { FolderPicker } from '@/components/common/folder-picker';
+import { TotpGate } from '@/components/auth/totp-gate';
 import { AGENT_TYPES, AGENT_LIST } from '@/lib/agents';
 import type { PaneData } from '@/lib/db/queries';
 import type { SessionWithMeta, Workspace } from '@/types/claude';
+import { api } from '@/lib/api';
 
 export default function TerminalPage() {
+  return (
+    <TotpGate>
+      {(terminalToken) => <TerminalPageInner terminalToken={terminalToken} />}
+    </TotpGate>
+  );
+}
+
+function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   const router = useRouter();
   const [panes, setPanes] = useState<PaneData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +57,7 @@ export default function TerminalPage() {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
   const [selectedSession, setSelectedSession] = useState<SessionWithMeta | null>(null);
+  const [filterByCwd, setFilterByCwd] = useState(true);
   const pickerRef = useRef<HTMLDivElement>(null);
   const wsPickerRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -54,7 +65,7 @@ export default function TerminalPage() {
   // ─── Data Loading ──────────────────────────────────────────
 
   const loadWorkspaces = useCallback(async () => {
-    const res = await fetch('/api/workspaces');
+    const res = await fetch(api('/api/workspaces'));
     const data = await res.json();
     setWorkspaces(data);
     const active = data.find((w: Workspace) => w.isActive);
@@ -62,7 +73,7 @@ export default function TerminalPage() {
   }, []);
 
   const loadPanes = useCallback(async () => {
-    const res = await fetch('/api/panes');
+    const res = await fetch(api('/api/panes'));
     const data = await res.json();
     setPanes(data);
     // Track which panes were popped out
@@ -131,13 +142,14 @@ export default function TerminalPage() {
         sortBy: 'modified', sortDir: 'DESC', limit: '200',
       });
       if (sessionSearch) sp.set('search', sessionSearch);
-      fetch(`/api/sessions?${sp}`)
+      if (filterByCwd && newCwd) sp.set('projectPath', newCwd);
+      fetch(api(`/api/sessions?${sp}`))
         .then(r => r.json())
         .then(data => { setSessions(data.sessions || []); setSessionsLoading(false); })
         .catch(() => setSessionsLoading(false));
     }, sessionSearch ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [newAgentType, newAgentMode, sessionSearch]);
+  }, [newAgentType, newAgentMode, sessionSearch, filterByCwd, newCwd]);
 
   // Close pickers on outside click
   useEffect(() => {
@@ -176,7 +188,7 @@ export default function TerminalPage() {
       || (selectedSession ? (selectedSession.customName || selectedSession.firstPrompt?.slice(0, 50) || agent?.name || 'Agent') : '')
       || (newAgentType === 'shell' ? 'Terminal' : agent?.name || 'Agent');
 
-    const res = await fetch('/api/panes', {
+    const res = await fetch(api('/api/panes'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -200,7 +212,7 @@ export default function TerminalPage() {
   }, [newTitle, newCwd, newColor, newClaudeSession, newAgentType, newAgentMode, newCustomCommand, selectedSession]);
 
   const closePane = useCallback(async (id: string) => {
-    await fetch(`/api/panes/${id}`, { method: 'DELETE' });
+    await fetch(api(`/api/panes/${id}`), { method: 'DELETE' });
     setPanes(prev => prev.filter(p => p.id !== id));
     if (maximized === id) setMaximized(null);
     setPoppedOut(prev => {
@@ -211,7 +223,7 @@ export default function TerminalPage() {
   }, [maximized]);
 
   const updatePane = useCallback(async (id: string, data: Partial<PaneData>) => {
-    await fetch(`/api/panes/${id}`, {
+    await fetch(api(`/api/panes/${id}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -232,11 +244,11 @@ export default function TerminalPage() {
     const y = pane.winY ?? Math.round(screen.height / 2 - h / 2);
     const features = `left=${x},top=${y},width=${w},height=${h},menubar=no,toolbar=no,location=no,status=no`;
 
-    window.open(`/terminal/pane/${pane.id}`, `spaces-pane-${pane.id}`, features);
+    window.open(api(`/terminal/pane/${pane.id}`), `spaces-pane-${pane.id}`, features);
     setPoppedOut(prev => new Set(prev).add(pane.id));
 
     // Mark in DB
-    fetch(`/api/panes/${pane.id}`, {
+    fetch(api(`/api/panes/${pane.id}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isPopout: true, winX: x, winY: y, winWidth: w, winHeight: h }),
@@ -247,6 +259,24 @@ export default function TerminalPage() {
     const pane = panes.find(p => p.id === id);
     if (pane) openPopoutWindow(pane);
   }, [panes, openPopoutWindow]);
+
+  // ─── Pop in (return popout to grid) ──────────────────────
+
+  const popIn = useCallback(async (id: string) => {
+    // Tell the popout window to close itself
+    channelRef.current?.postMessage({ type: 'close-popouts' });
+    // Mark as not popped out in DB
+    await fetch(api(`/api/panes/${id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isPopout: false }),
+    });
+    setPoppedOut(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
 
   // ─── Close all popout windows ─────────────────────────────
 
@@ -262,7 +292,7 @@ export default function TerminalPage() {
   const switchWorkspace = useCallback(async (wsId: number) => {
     // Close all popout windows first (saves their positions)
     closeAllPopouts();
-    await fetch('/api/workspaces', {
+    await fetch(api('/api/workspaces'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'switch', workspaceId: wsId }),
@@ -277,7 +307,7 @@ export default function TerminalPage() {
 
   const saveWorkspaceAs = useCallback(async () => {
     if (!saveAsName.trim() || !activeWorkspace) return;
-    await fetch('/api/workspaces', {
+    await fetch(api('/api/workspaces'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'duplicate', sourceId: activeWorkspace.id, name: saveAsName.trim(), color: saveAsColor }),
@@ -289,7 +319,7 @@ export default function TerminalPage() {
   }, [saveAsName, saveAsColor, activeWorkspace, loadWorkspaces]);
 
   const createNewWorkspace = useCallback(async () => {
-    const res = await fetch('/api/workspaces', {
+    const res = await fetch(api('/api/workspaces'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'New Space', color: '#6366f1' }),
@@ -300,7 +330,7 @@ export default function TerminalPage() {
 
   const deleteWorkspace = useCallback(async (wsId: number) => {
     closeAllPopouts();
-    await fetch(`/api/workspaces/${wsId}`, { method: 'DELETE' });
+    await fetch(api(`/api/workspaces/${wsId}`), { method: 'DELETE' });
     await loadWorkspaces();
     await loadPanes();
     setShowWsPicker(false);
@@ -312,7 +342,7 @@ export default function TerminalPage() {
   }, [closeAllPopouts, router]);
 
   const renameWorkspace = useCallback(async (wsId: number, name: string) => {
-    await fetch(`/api/workspaces/${wsId}`, {
+    await fetch(api(`/api/workspaces/${wsId}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -622,6 +652,19 @@ export default function TerminalPage() {
                       onFocus={() => setShowSessionPicker(true)}
                       className="flex-1 bg-transparent focus:outline-none text-white placeholder:text-zinc-500"
                     />
+                    {newCwd && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setFilterByCwd(!filterByCwd); }}
+                        className={`flex-shrink-0 px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                          filterByCwd
+                            ? 'border-indigo-500/50 bg-indigo-600/20 text-indigo-400'
+                            : 'border-zinc-600 text-zinc-500 hover:text-zinc-400'
+                        }`}
+                        title={filterByCwd ? 'Showing sessions for this directory — click to show all' : 'Showing all sessions — click to filter by directory'}
+                      >
+                        {filterByCwd ? newCwd.split('/').pop() : 'All'}
+                      </button>
+                    )}
                     <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
                   </div>
                 )}
@@ -714,17 +757,23 @@ export default function TerminalPage() {
         <div className="flex items-center gap-2 px-4 py-1.5 border-b border-zinc-800 bg-zinc-900/50">
           <span className="text-[10px] text-zinc-500">Popped out:</span>
           {panes.filter(p => poppedOut.has(p.id)).map(p => (
-            <button
-              key={p.id}
-              onClick={() => {
-                // Re-open the popout window (will reattach to existing pty)
-                openPopoutWindow(p);
-              }}
-              className="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-zinc-800 border border-zinc-700 rounded text-zinc-400 hover:text-white hover:border-zinc-600"
-            >
-              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color }} />
-              {p.title}
-            </button>
+            <div key={p.id} className="flex items-center gap-0.5">
+              <button
+                onClick={() => openPopoutWindow(p)}
+                className="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-zinc-800 border border-zinc-700 rounded-l text-zinc-400 hover:text-white hover:border-zinc-600"
+                title="Focus popout window"
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color }} />
+                {p.title}
+              </button>
+              <button
+                onClick={() => popIn(p.id)}
+                className="px-1 py-0.5 text-[10px] bg-zinc-800 border border-zinc-700 border-l-0 rounded-r text-zinc-500 hover:text-white hover:border-zinc-600"
+                title="Pop back into grid"
+              >
+                <ArrowLeftToLine className="w-2.5 h-2.5" />
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -780,6 +829,7 @@ export default function TerminalPage() {
                 isMaximized={maximized === pane.id}
                 onToggleMaximize={toggleMaximize}
                 onPopout={handlePopout}
+                terminalToken={terminalToken}
               />
             )
           ))}

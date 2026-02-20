@@ -1,20 +1,7 @@
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 
-const homeDir = os.homedir();
-
 export const config = {
-  // Claude Code data directory (READ-ONLY)
-  claudeDir: path.join(homeDir, '.claude'),
-  claudeProjectsDir: path.join(homeDir, '.claude', 'projects'),
-  statsPath: path.join(homeDir, '.claude', 'stats-cache.json'),
-
-  // Spaces data directory (READ-WRITE)
-  spacesDir: path.join(homeDir, '.spaces'),
-  dbPath: path.join(homeDir, '.spaces', 'spaces.db'),
-  configPath: path.join(homeDir, '.spaces', 'config.json'),
-
   // Server
   port: parseInt(process.env.SPACES_PORT || '3457', 10),
 
@@ -27,8 +14,21 @@ export const config = {
   } as Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>,
 };
 
-export function ensureSpacesDir() {
-  if (!fs.existsSync(config.spacesDir)) {
-    fs.mkdirSync(config.spacesDir, { recursive: true });
+export function getUserPaths(username: string) {
+  const homeDir = `/home/${username}`;
+  return {
+    claudeDir: path.join(homeDir, '.claude'),
+    claudeProjectsDir: path.join(homeDir, '.claude', 'projects'),
+    statsPath: path.join(homeDir, '.claude', 'stats-cache.json'),
+    spacesDir: path.join(homeDir, '.spaces'),
+    dbPath: path.join(homeDir, '.spaces', 'spaces.db'),
+    configPath: path.join(homeDir, '.spaces', 'config.json'),
+  };
+}
+
+export function ensureUserSpacesDir(username: string) {
+  const { spacesDir } = getUserPaths(username);
+  if (!fs.existsSync(spacesDir)) {
+    fs.mkdirSync(spacesDir, { recursive: true });
   }
 }

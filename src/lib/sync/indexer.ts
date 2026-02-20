@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { config } from '../config';
+import { getUserPaths } from '../config';
+import { getCurrentUser } from '../auth';
 import { parseSessionIndex, scanJSONLMetadata, extractAllText } from '../claude/parser';
 import { upsertProject, upsertSession, upsertFtsContent } from '../db/queries';
 import { getDb } from '../db/schema';
@@ -9,7 +10,7 @@ import { getDb } from '../db/schema';
  * Full sync: scan all projects and sessions from ~/.claude/projects/
  */
 export async function fullSync(): Promise<{ projects: number; sessions: number }> {
-  const projectsDir = config.claudeProjectsDir;
+  const { claudeProjectsDir: projectsDir } = getUserPaths(getCurrentUser());
 
   if (!fs.existsSync(projectsDir)) {
     return { projects: 0, sessions: 0 };
@@ -203,7 +204,7 @@ function decodeProjectName(dirName: string): string {
  * Check if sync is needed by comparing file mtimes
  */
 export function isSyncNeeded(): boolean {
-  const projectsDir = config.claudeProjectsDir;
+  const { claudeProjectsDir: projectsDir } = getUserPaths(getCurrentUser());
   if (!fs.existsSync(projectsDir)) return false;
 
   try {

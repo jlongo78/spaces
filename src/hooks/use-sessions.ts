@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { SessionWithMeta, Project, SearchResult, AnalyticsOverview, ParsedMessage, Tag, Workspace } from '@/types/claude';
+import { api } from '@/lib/api';
 
 // ─── Sessions ───────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ export function useSessions(params: SessionsParams = {}) {
       if (params.offset !== undefined) sp.set('offset', String(params.offset));
       if (params.limit !== undefined) sp.set('limit', String(params.limit));
 
-      const res = await fetch(`/api/sessions?${sp}`);
+      const res = await fetch(api(`/api/sessions?${sp}`));
       return res.json();
     },
   });
@@ -38,7 +39,7 @@ export function useSession(id: string | null) {
   return useQuery({
     queryKey: ['session', id],
     queryFn: async (): Promise<SessionWithMeta & { tagObjects?: Tag[]; workspaces?: Workspace[] }> => {
-      const res = await fetch(`/api/sessions/${id}`);
+      const res = await fetch(api(`/api/sessions/${id}`));
       if (!res.ok) throw new Error('Session not found');
       return res.json();
     },
@@ -50,7 +51,7 @@ export function useMessages(sessionId: string | null, offset = 0, limit = 50) {
   return useQuery({
     queryKey: ['messages', sessionId, offset, limit],
     queryFn: async (): Promise<{ messages: ParsedMessage[]; total: number; hasMore: boolean }> => {
-      const res = await fetch(`/api/sessions/${sessionId}/messages?offset=${offset}&limit=${limit}`);
+      const res = await fetch(api(`/api/sessions/${sessionId}/messages?offset=${offset}&limit=${limit}`));
       return res.json();
     },
     enabled: !!sessionId,
@@ -63,7 +64,7 @@ export function useToggleStar() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (sessionId: string) => {
-      const res = await fetch(`/api/sessions/${sessionId}`, {
+      const res = await fetch(api(`/api/sessions/${sessionId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'star' }),
@@ -81,7 +82,7 @@ export function useUpdateNotes() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ sessionId, notes }: { sessionId: string; notes: string }) => {
-      const res = await fetch(`/api/sessions/${sessionId}`, {
+      const res = await fetch(api(`/api/sessions/${sessionId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'notes', notes }),
@@ -98,7 +99,7 @@ export function useAddTag() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ sessionId, tagName }: { sessionId: string; tagName: string }) => {
-      const res = await fetch(`/api/sessions/${sessionId}`, {
+      const res = await fetch(api(`/api/sessions/${sessionId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'tag', tagName }),
@@ -117,7 +118,7 @@ export function useRemoveTag() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ sessionId, tagName }: { sessionId: string; tagName: string }) => {
-      const res = await fetch(`/api/sessions/${sessionId}`, {
+      const res = await fetch(api(`/api/sessions/${sessionId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'removeTag', tagName }),
@@ -136,7 +137,7 @@ export function useRenameSession() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ sessionId, name }: { sessionId: string; name: string }) => {
-      const res = await fetch(`/api/sessions/${sessionId}`, {
+      const res = await fetch(api(`/api/sessions/${sessionId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'rename', name }),
@@ -156,7 +157,7 @@ export function useTags() {
   return useQuery({
     queryKey: ['tags'],
     queryFn: async (): Promise<Tag[]> => {
-      const res = await fetch('/api/tags');
+      const res = await fetch(api('/api/tags'));
       return res.json();
     },
   });
@@ -166,7 +167,7 @@ export function useCreateTag() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ name, color }: { name: string; color?: string }) => {
-      const res = await fetch('/api/tags', {
+      const res = await fetch(api('/api/tags'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'create', name, color }),
@@ -183,7 +184,7 @@ export function useDeleteTag() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (tagId: number) => {
-      const res = await fetch('/api/tags', {
+      const res = await fetch(api('/api/tags'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete', tagId }),
@@ -202,7 +203,7 @@ export function useUpdateTagColor() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ tagId, color }: { tagId: number; color: string }) => {
-      const res = await fetch('/api/tags', {
+      const res = await fetch(api('/api/tags'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'updateColor', tagId, color }),
@@ -223,7 +224,7 @@ export function useWorkspaces() {
   return useQuery({
     queryKey: ['workspaces'],
     queryFn: async (): Promise<Workspace[]> => {
-      const res = await fetch('/api/workspaces');
+      const res = await fetch(api('/api/workspaces'));
       return res.json();
     },
   });
@@ -233,7 +234,7 @@ export function useCreateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: { name: string; description?: string; color?: string }) => {
-      const res = await fetch('/api/workspaces', {
+      const res = await fetch(api('/api/workspaces'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -250,7 +251,7 @@ export function useUpdateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...data }: { id: number; name?: string; description?: string; color?: string }) => {
-      const res = await fetch(`/api/workspaces/${id}`, {
+      const res = await fetch(api(`/api/workspaces/${id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -267,7 +268,7 @@ export function useDeleteWorkspace() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => {
-      const res = await fetch(`/api/workspaces/${id}`, { method: 'DELETE' });
+      const res = await fetch(api(`/api/workspaces/${id}`), { method: 'DELETE' });
       return res.json();
     },
     onSuccess: () => {
@@ -281,7 +282,7 @@ export function useWorkspaceSessions(workspaceId: number | null) {
   return useQuery({
     queryKey: ['workspace-sessions', workspaceId],
     queryFn: async (): Promise<SessionWithMeta[]> => {
-      const res = await fetch(`/api/workspaces/${workspaceId}`);
+      const res = await fetch(api(`/api/workspaces/${workspaceId}`));
       return res.json();
     },
     enabled: workspaceId !== null,
@@ -292,7 +293,7 @@ export function useAddSessionToWorkspace() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ workspaceId, sessionId }: { workspaceId: number; sessionId: string }) => {
-      const res = await fetch(`/api/workspaces/${workspaceId}/sessions`, {
+      const res = await fetch(api(`/api/workspaces/${workspaceId}/sessions`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId }),
@@ -311,7 +312,7 @@ export function useRemoveSessionFromWorkspace() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ workspaceId, sessionId }: { workspaceId: number; sessionId: string }) => {
-      const res = await fetch(`/api/workspaces/${workspaceId}/sessions`, {
+      const res = await fetch(api(`/api/workspaces/${workspaceId}/sessions`), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId }),
@@ -332,7 +333,7 @@ export function useBulkAction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: { sessionIds: string[]; action: string; tagName?: string; workspaceId?: number }) => {
-      const res = await fetch('/api/bulk', {
+      const res = await fetch(api('/api/bulk'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -353,7 +354,7 @@ export function useProjects() {
   return useQuery({
     queryKey: ['projects'],
     queryFn: async (): Promise<Project[]> => {
-      const res = await fetch('/api/projects');
+      const res = await fetch(api('/api/projects'));
       return res.json();
     },
   });
@@ -367,7 +368,7 @@ export function useSearch(query: string, projectId?: string) {
     queryFn: async (): Promise<{ results: SearchResult[]; query: string }> => {
       const sp = new URLSearchParams({ q: query });
       if (projectId) sp.set('projectId', projectId);
-      const res = await fetch(`/api/search?${sp}`);
+      const res = await fetch(api(`/api/search?${sp}`));
       return res.json();
     },
     enabled: query.length >= 2,
@@ -380,7 +381,7 @@ export function useAnalytics() {
   return useQuery({
     queryKey: ['analytics'],
     queryFn: async (): Promise<AnalyticsOverview> => {
-      const res = await fetch('/api/analytics/overview');
+      const res = await fetch(api('/api/analytics/overview'));
       return res.json();
     },
   });
@@ -392,7 +393,7 @@ export function useSync() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/sync', { method: 'POST' });
+      const res = await fetch(api('/api/sync'), { method: 'POST' });
       return res.json();
     },
     onSuccess: () => {

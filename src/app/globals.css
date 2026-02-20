@@ -1,14 +1,16 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #09090b;
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a;
-  --border: #e4e4e7;
-  --ring: #6366f1;
-  --primary: #6366f1;
-  --primary-foreground: #ffffff;
+  --background: #09090b;
+  --foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --border: #27272a;
+  --ring: #818cf8;
+  --primary: #818cf8;
+  --primary-foreground: #09090b;
 }
 
 @theme inline {
@@ -22,19 +24,6 @@
   --color-primary-foreground: var(--primary-foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #09090b;
-    --foreground: #fafafa;
-    --muted: #27272a;
-    --muted-foreground: #a1a1aa;
-    --border: #27272a;
-    --ring: #818cf8;
-    --primary: #818cf8;
-    --primary-foreground: #09090b;
-  }
 }
 
 body {
@@ -68,14 +57,8 @@ body {
 }
 
 mark {
-  background-color: #fef08a;
+  background-color: #854d0e;
+  color: #fef08a;
   padding: 0 2px;
   border-radius: 2px;
-}
-
-@media (prefers-color-scheme: dark) {
-  mark {
-    background-color: #854d0e;
-    color: #fef08a;
-  }
 }

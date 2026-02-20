@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Loader2, Square, Terminal, ChevronUp, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -60,7 +61,7 @@ export function ChatInput({ sessionId, projectPath, onMessageSent }: ChatInputPr
     abortRef.current = controller;
 
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/chat`, {
+      const res = await fetch(api(`/api/sessions/${sessionId}/chat`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: message.trim(), cwd: projectPath }),

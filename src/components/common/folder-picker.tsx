@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Folder, FolderOpen, ChevronRight, ChevronUp, Loader2, HardDrive, X } from 'lucide-react';
+import { api } from '@/lib/api';
 
 interface FolderPickerProps {
   value: string;
@@ -34,7 +35,7 @@ export function FolderPicker({ value, onChange }: FolderPickerProps) {
     if (!open) return;
     setLoading(true);
     const target = browsePath || '';
-    fetch(`/api/folders?path=${encodeURIComponent(target)}`)
+    fetch(api(`/api/folders?path=${encodeURIComponent(target)}`))
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
