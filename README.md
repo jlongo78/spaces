@@ -1,36 +1,136 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Spaces
 
-## Getting Started
+A local workspace manager for AI coding agents. Run Claude Code, Codex CLI, Gemini CLI, Aider, or any custom agent side-by-side in a browser-based terminal grid.
 
-First, run the development server:
+Spaces reads your `~/.claude/` directory to index past sessions, and provides a multiplexed terminal UI where you can launch, resume, and organize agent sessions across workspaces.
+
+## Features
+
+**Terminal multiplexer** - Split your browser into a grid of terminal panes. Each pane runs a real PTY (via node-pty) streamed over WebSocket to xterm.js. Resize, maximize, pop out to a separate window, or snap back.
+
+**Agent-agnostic** - First-class support for:
+- **Claude Code** - launch new sessions or resume existing ones (auto-detects session ID)
+- **Codex CLI** (OpenAI)
+- **Gemini CLI** (Google)
+- **Aider**
+- **Custom commands** - run any CLI tool
+- **Plain shell**
+
+**Spaces (workspaces)** - Group panes into named, color-coded spaces. Switch between them instantly. Pop-out windows remember their position and size, close when you switch, and restore when you switch back.
+
+**Session browser** - Browse, search, and filter all your Claude Code sessions. Full-text search (SQLite FTS5) across message content. View conversations with rendered markdown, syntax-highlighted code blocks, collapsible thinking blocks, and tool-use cards.
+
+**Dashboard & analytics** - Session counts, message totals, model usage breakdown, activity heatmap, cost estimates, and recent session list.
+
+**Everything local** - All data stays on your machine. `~/.claude/` is read-only (never modified). Spaces stores its own metadata (workspace layouts, tags, stars) in `~/.claudesk/claudesk.db`.
+
+## Quick Start
+
+### Prerequisites
+
+- **Node.js 20+**
+- At least one AI coding agent installed (e.g. `claude`, `codex`, `gemini`, `aider`)
+
+### Install & Run
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/arc-robindale/spaces.git
+cd spaces
+npm install
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Start both the web UI and terminal server:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# Terminal 1 - terminal server (PTY backend)
+node bin/terminal-server.js
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Terminal 2 - web UI
+npm run dev
+```
 
-## Learn More
+Open [http://localhost:3457](http://localhost:3457).
 
-To learn more about Next.js, take a look at the following resources:
+### Development
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run dev          # Next.js dev server on :3457
+node bin/terminal-server.js   # Terminal WebSocket server on :3458
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## How It Works
 
-## Deploy on Vercel
+```
+Browser (localhost:3457)
+    |
+    |  HTTP (pages + API)
+    |  WebSocket (terminal I/O)
+    |
+Next.js + Terminal Server
+    |
+    |-- Reads: ~/.claude/          (read-only, session transcripts)
+    |-- Owns:  ~/.claudesk/        (SQLite DB, config)
+    |-- Spawns: node-pty processes  (one per terminal pane)
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+When you open a pane, the terminal server spawns a PTY process and bridges it to the browser over WebSocket. For agent panes, it injects the appropriate CLI command (e.g. `claude`, `claude --resume <id>`, `codex`, etc.) into the shell.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Claude Code sessions are auto-detected: when you start a new Claude pane, Spaces watches `~/.claude/projects/` for the new session file and persists the session ID so subsequent page loads resume instead of creating a new session.
+
+## Project Structure
+
+```
+src/
+  app/                    # Next.js pages + API routes
+    terminal/             # Spaces (terminal grid) - the main UI
+    sessions/             # Session browser + viewer
+    analytics/            # Usage charts and stats
+    projects/             # Project list
+    settings/             # Configuration
+    api/                  # REST API endpoints
+  components/
+    terminal/             # Terminal pane (xterm.js)
+    sessions/             # Session list, filters
+    viewer/               # Message renderer (markdown, code, tools)
+    dashboard/            # Stats cards, charts
+    layout/               # Sidebar, providers
+    common/               # Color picker, folder picker, tags
+  lib/
+    agents.ts             # Agent type definitions
+    db/                   # SQLite schema, queries, init
+    claude/               # JSONL parser, session types
+    sync/                 # File indexer, watcher
+    config.ts             # Paths and configuration
+bin/
+  terminal-server.js      # WebSocket PTY server
+  claudesk.js             # Launcher script
+```
+
+## Tech Stack
+
+| Layer | Choice |
+|-------|--------|
+| Framework | Next.js 15 (App Router) |
+| UI | Tailwind CSS + Lucide icons |
+| Database | SQLite (better-sqlite3) with FTS5 |
+| Terminal | xterm.js + node-pty + ws |
+| Charts | Recharts |
+| Data fetching | TanStack Query |
+| File watching | chokidar |
+| Markdown | react-markdown + remark-gfm + rehype-highlight |
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAUDESK_PORT` | `3457` | Web UI port |
+| `CLAUDESK_WS_PORT` | `3458` | Terminal WebSocket port |
+
+Data directories:
+- `~/.claude/` - Claude Code sessions (read-only)
+- `~/.claudesk/claudesk.db` - Spaces database (auto-created)
+
+## License
+
+MIT

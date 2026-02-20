@@ -10,8 +10,8 @@ const WS_PORT = process.env.CLAUDESK_WS_PORT || 3458;
 const projectDir = path.join(__dirname, '..');
 
 console.log('');
-console.log('  Claudesk - Claude Code Session Manager');
-console.log('  =======================================');
+console.log('  Spaces - Agent Workspace Manager');
+console.log('  =================================');
 console.log('');
 
 // Check for ~/.claude/ directory
