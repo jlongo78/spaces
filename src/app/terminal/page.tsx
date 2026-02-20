@@ -28,9 +28,11 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   const router = useRouter();
   const [panes, setPanes] = useState<PaneData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [wsLoading, setWsLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [maximized, setMaximized] = useState<string | null>(null);
   const [poppedOut, setPoppedOut] = useState<Set<string>>(new Set());
+  const [entered, setEntered] = useState(false);
 
   // Workspace state
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -70,6 +72,7 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
     setWorkspaces(data);
     const active = data.find((w: Workspace) => w.isActive);
     setActiveWorkspace(active || null);
+    setWsLoading(false);
   }, []);
 
   const loadPanes = useCallback(async () => {
@@ -87,8 +90,14 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
 
   useEffect(() => {
     loadWorkspaces();
-    loadPanes();
-  }, [loadWorkspaces, loadPanes]);
+  }, [loadWorkspaces]);
+
+  // Only load panes after entering a workspace
+  useEffect(() => {
+    if (entered) {
+      loadPanes();
+    }
+  }, [entered, loadPanes]);
 
   // ─── BroadcastChannel for cross-window sync ────────────────
 
@@ -301,6 +310,7 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
     await loadWorkspaces();
     await loadPanes();
     setShowWsPicker(false);
+    setEntered(true);
     // Trigger popout restore for the new workspace's panes
     setRestoreGen(prev => prev + 1);
   }, [loadWorkspaces, loadPanes, closeAllPopouts]);
@@ -338,8 +348,9 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
 
   const closeWorkspace = useCallback(() => {
     closeAllPopouts();
-    router.push('/');
-  }, [closeAllPopouts, router]);
+    setPanes([]);
+    setEntered(false);
+  }, [closeAllPopouts]);
 
   const renameWorkspace = useCallback(async (wsId: number, name: string) => {
     await fetch(api(`/api/workspaces/${wsId}`), {
@@ -354,6 +365,74 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   // ─── Render ────────────────────────────────────────────────
 
   const visiblePanes = panes.filter(p => !poppedOut.has(p.id));
+
+  // ─── Workspace chooser (before entering) ─────────────────
+
+  if (!entered) {
+    return (
+      <div className="h-screen flex flex-col bg-zinc-950 text-zinc-100">
+        <div className="absolute top-4 left-4">
+          <button
+            onClick={() => router.push('/')}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
+          >
+            <Home className="w-3.5 h-3.5" />
+            Home
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="w-full max-w-2xl">
+            <div className="text-center mb-10">
+              <Layers className="w-12 h-12 mx-auto text-indigo-500 mb-4" />
+              <h1 className="text-2xl font-bold mb-2">Spaces</h1>
+              <p className="text-zinc-400 text-sm">Choose a workspace to open, or create a new one.</p>
+            </div>
+
+            {wsLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                  {workspaces.map((ws) => (
+                    <button
+                      key={ws.id}
+                      onClick={() => switchWorkspace(ws.id)}
+                      className="flex items-center gap-3 p-4 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-zinc-600 hover:bg-zinc-800/50 transition-colors text-left group"
+                    >
+                      <span
+                        className="w-3.5 h-3.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: ws.color }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-white truncate">{ws.name}</div>
+                        <div className="text-xs text-zinc-500 mt-0.5">
+                          {ws.paneCount || 0} pane{(ws.paneCount || 0) !== 1 ? 's' : ''}
+                          {ws.isActive && <span className="text-indigo-400 ml-2">last active</span>}
+                        </div>
+                      </div>
+                      <Terminal className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex justify-center">
+                  <button
+                    onClick={createNewWorkspace}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm border border-zinc-700 text-zinc-400 rounded-lg hover:text-white hover:border-zinc-500 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    New Workspace
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
