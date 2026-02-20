@@ -20,7 +20,16 @@ export function TotpGate({ children }: TotpGateProps) {
   const [verifying, setVerifying] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
 
+  // In desktop mode (Electron or local dev), bypass 2FA entirely
+  const isDesktop = process.env.NEXT_PUBLIC_EDITION !== 'server';
+
   useEffect(() => {
+    if (isDesktop) {
+      setToken('desktop-local');
+      setStatus('authorized');
+      return;
+    }
+
     // Check for existing token in sessionStorage
     const stored = sessionStorage.getItem(SESSION_KEY);
     if (stored) {

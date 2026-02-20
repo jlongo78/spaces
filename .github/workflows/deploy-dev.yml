@@ -28,7 +28,7 @@ jobs:
         run: |
           export PATH=/home/jlongo/.nvm/versions/node/v20.19.6/bin:$PATH
           cd /home/jlongo/development/spaces
-          NEXT_PUBLIC_BASE_PATH=/development/spaces NEXT_PUBLIC_WS_PATH=/development/spaces/ws npm run build
+          NEXT_PUBLIC_EDITION=server NEXT_PUBLIC_BASE_PATH=/development/spaces NEXT_PUBLIC_WS_PATH=/development/spaces/ws npm run server:build
 
       - name: Restart services
         run: |

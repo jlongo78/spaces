@@ -5,6 +5,8 @@ import { useSync } from '@/hooks/use-sessions';
 import { Settings, RefreshCw, FolderOpen, Loader2, Shield, CheckCircle2 } from 'lucide-react';
 import { api } from '@/lib/api';
 
+const isServerEdition = process.env.NEXT_PUBLIC_EDITION === 'server';
+
 export default function SettingsPage() {
   const sync = useSync();
   const [syncResult, setSyncResult] = useState<string>('');
@@ -21,6 +23,10 @@ export default function SettingsPage() {
   const codeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (!isServerEdition) {
+      setTotpLoading(false);
+      return;
+    }
     fetch(api('/api/auth/totp/status'))
       .then(r => r.json())
       .then(data => {
@@ -99,8 +105,8 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-6">
-        {/* Terminal Security / 2FA */}
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
+        {/* Terminal Security / 2FA — server edition only */}
+        {isServerEdition && <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
           <h3 className="font-semibold flex items-center gap-2 mb-3">
             <Shield className="w-4 h-4" />
             Terminal Security
@@ -201,7 +207,7 @@ export default function SettingsPage() {
               </button>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Data Source */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">

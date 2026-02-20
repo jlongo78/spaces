@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 export const config = {
   // Server
@@ -15,7 +16,7 @@ export const config = {
 };
 
 export function getUserPaths(username: string) {
-  const homeDir = `/home/${username}`;
+  const homeDir = username === os.userInfo().username ? os.homedir() : `/home/${username}`;
   return {
     claudeDir: path.join(homeDir, '.claude'),
     claudeProjectsDir: path.join(homeDir, '.claude', 'projects'),
