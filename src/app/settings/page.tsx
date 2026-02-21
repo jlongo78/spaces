@@ -8,11 +8,14 @@ import { track, setOptOut } from '@/lib/telemetry';
 
 const isServerEdition = process.env.NEXT_PUBLIC_EDITION === 'server';
 
+// Check for self-contained auth (session cookie present = new auth system)
+const hasSelfContainedAuth = typeof document !== 'undefined' && document.cookie.includes('spaces-session=');
+
 export default function SettingsPage() {
   const sync = useSync();
   const [syncResult, setSyncResult] = useState<string>('');
 
-  // TOTP state
+  // TOTP state (legacy SSO mode only)
   const [totpEnabled, setTotpEnabled] = useState(false);
   const [totpLoading, setTotpLoading] = useState(true);
   const [setupMode, setSetupMode] = useState(false);
@@ -23,6 +26,9 @@ export default function SettingsPage() {
   const [verifyLoading, setVerifyLoading] = useState(false);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
+  // Self-contained auth user info
+  const [meInfo, setMeInfo] = useState<{ totpEnabled?: boolean } | null>(null);
+
   // Telemetry state
   const [telemetryOptOut, setTelemetryOptOut] = useState(false);
   const [telemetryLoading, setTelemetryLoading] = useState(true);
@@ -32,6 +38,20 @@ export default function SettingsPage() {
       setTotpLoading(false);
       return;
     }
+
+    if (hasSelfContainedAuth) {
+      // Self-contained auth: fetch user info from /api/auth/me
+      fetch(api('/api/auth/me'))
+        .then(r => r.json())
+        .then(data => {
+          setMeInfo(data);
+          setTotpLoading(false);
+        })
+        .catch(() => setTotpLoading(false));
+      return;
+    }
+
+    // Legacy SSO mode
     fetch(api('/api/auth/totp/status'))
       .then(r => r.json())
       .then(data => {
@@ -117,10 +137,7 @@ export default function SettingsPage() {
 
   const handleDisable = async () => {
     if (!confirm('Disable 2FA? You will need to set it up again to use terminals.')) return;
-    // Delete the TOTP record by setting up a new one and not enabling it
-    // (simplest approach — the setup endpoint does INSERT OR REPLACE)
     await fetch(api('/api/auth/totp/setup'), { method: 'POST' });
-    // The new record has enabled=0, so effectively disabled
     setTotpEnabled(false);
     setSetupMode(false);
   };
@@ -144,6 +161,18 @@ export default function SettingsPage() {
             <div className="flex items-center gap-2 text-sm text-zinc-400">
               <Loader2 className="w-4 h-4 animate-spin" />
               Loading...
+            </div>
+          ) : hasSelfContainedAuth ? (
+            /* Self-contained auth: TOTP is managed at login, show read-only status */
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <span className="text-sm font-medium text-green-500">2FA Enabled</span>
+              </div>
+              <p className="text-xs text-zinc-500">
+                Two-factor authentication is required at login.
+                TOTP is managed through the login flow. Contact an admin to reset your 2FA if needed.
+              </p>
             </div>
           ) : totpEnabled && !setupMode ? (
             <div className="space-y-3">

@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   MessageSquare,
@@ -11,9 +11,14 @@ import {
   BarChart3,
   Settings,
   Search,
+  Users,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trackPageView } from '@/lib/telemetry';
+import { api } from '@/lib/api';
+
+const isServer = process.env.NEXT_PUBLIC_EDITION === 'server';
 
 const nav = [
   { href: '/terminal', label: 'Spaces', icon: Layers },
@@ -31,16 +36,32 @@ const routeNames: Record<string, string> = {
   '/projects': 'projects',
   '/analytics': 'analytics',
   '/settings': 'settings',
+  '/admin/users': 'admin_users',
 };
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     const page = routeNames[pathname]
       || (pathname.startsWith('/sessions/') ? 'session_detail' : pathname.slice(1));
     trackPageView(page);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!isServer) return;
+    fetch(api('/api/auth/me'))
+      .then(r => r.json())
+      .then(data => setUserRole(data.role))
+      .catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    await fetch(api('/api/auth/logout'), { method: 'POST' });
+    router.push('/login');
+  };
 
   return (
     <aside className="w-56 border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex flex-col h-screen fixed left-0 top-0">
@@ -78,9 +99,25 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Admin-only: Users link */}
+        {isServer && userRole === 'admin' && (
+          <Link
+            href="/admin/users"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+              pathname.startsWith('/admin/users')
+                ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-medium'
+                : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900'
+            )}
+          >
+            <Users className="w-4 h-4" />
+            Users
+          </Link>
+        )}
       </nav>
 
-      <div className="p-3 border-t border-zinc-200 dark:border-zinc-800">
+      <div className="p-3 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
         <Link
           href="/sessions?search=true"
           className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-md"
@@ -91,6 +128,16 @@ export function Sidebar() {
             Ctrl+K
           </kbd>
         </Link>
+
+        {isServer && (
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-md w-full"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Sign out</span>
+          </button>
+        )}
       </div>
     </aside>
   );

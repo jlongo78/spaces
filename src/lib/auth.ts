@@ -21,6 +21,15 @@ export function withUser<T>(username: string, fn: () => T): T {
 }
 
 /**
+ * Extract the user's role from request headers.
+ * Desktop mode defaults to 'admin'; server mode reads the middleware-set header.
+ */
+export function getAuthRole(request: NextRequest): string {
+  if (process.env.NEXT_PUBLIC_EDITION !== 'server') return 'admin';
+  return request.headers.get('x-auth-role') || 'user';
+}
+
+/**
  * Get the current user from AsyncLocalStorage context.
  * Falls back to the OS user for local dev or background tasks.
  */

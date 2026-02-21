@@ -32,7 +32,17 @@ export function TotpGate({ children }: TotpGateProps) {
       return;
     }
 
-    // Check for existing token in sessionStorage
+    // In server mode with self-contained auth, the user already
+    // authenticated with TOTP at login. The session cookie is sent
+    // automatically with WebSocket connections, so pass through.
+    const sessionCookie = document.cookie.split(';').find(c => c.trim().startsWith('spaces-session='));
+    if (sessionCookie) {
+      setToken('session-auth');
+      setStatus('authorized');
+      return;
+    }
+
+    // Check for existing terminal token in sessionStorage
     const stored = sessionStorage.getItem(SESSION_KEY);
     if (stored) {
       setToken(stored);
@@ -40,7 +50,7 @@ export function TotpGate({ children }: TotpGateProps) {
       return;
     }
 
-    // Check TOTP status
+    // Legacy SSO mode: check TOTP status
     fetch(api('/api/auth/totp/status'))
       .then(r => r.json())
       .then(data => {

@@ -63,7 +63,96 @@ function verifyTerminalToken(token) {
   }
 }
 
-// ─── SSH service key path ─────────────────────────────────
+// ─── Session token verification (for self-contained auth) ──
+
+const SESSION_SECRET_PATH = path.join(os.homedir(), '.spaces', 'session_secret');
+
+function getSessionSecret() {
+  if (fs.existsSync(SESSION_SECRET_PATH)) {
+    return Buffer.from(fs.readFileSync(SESSION_SECRET_PATH, 'utf-8').trim(), 'hex');
+  }
+  return null;
+}
+
+let _sessionSecret = null;
+function sessionSecret() {
+  if (!_sessionSecret) {
+    _sessionSecret = getSessionSecret();
+  }
+  return _sessionSecret;
+}
+
+function verifySessionToken(token) {
+  const secret = sessionSecret();
+  if (!token || !secret) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+
+  const [payloadB64, sig] = parts;
+  const expectedSig = crypto.createHmac('sha256', secret)
+    .update(payloadB64)
+    .digest('base64url');
+
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+    if (payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    return { sub: payload.sub, role: payload.role || 'user' };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Admin DB for shell user lookup ─────────────────────────
+
+const ADMIN_DB_PATH = path.join(os.homedir(), '.spaces', 'admin.db');
+let _adminDb = null;
+
+function getAdminDb() {
+  if (_adminDb) return _adminDb;
+  if (!fs.existsSync(ADMIN_DB_PATH)) return null;
+  try {
+    const Database = require('better-sqlite3');
+    _adminDb = new Database(ADMIN_DB_PATH, { readonly: true });
+    return _adminDb;
+  } catch {
+    return null;
+  }
+}
+
+function lookupShellUser(appUsername) {
+  const db = getAdminDb();
+  if (!db) return appUsername;
+  try {
+    const row = db.prepare('SELECT shell_user FROM users WHERE username = ?').get(appUsername);
+    return row ? row.shell_user : appUsername;
+  } catch {
+    return appUsername;
+  }
+}
+
+// ─── Cookie parser ──────────────────────────────────────────
+
+function parseCookies(cookieHeader) {
+  const cookies = {};
+  if (!cookieHeader) return cookies;
+  cookieHeader.split(';').forEach(part => {
+    const [key, ...rest] = part.trim().split('=');
+    if (key) cookies[key] = rest.join('=');
+  });
+  return cookies;
+}
+
+// ─── SSH service key path (legacy, kept for compatibility) ──
 
 const SERVICE_KEY = path.join(os.homedir(), '.spaces', 'service_key');
 
@@ -95,14 +184,27 @@ wss.on('connection', (ws, req) => {
   const cols = parseInt(url.searchParams.get('cols') || '120', 10);
   const rows = parseInt(url.searchParams.get('rows') || '30', 10);
 
-  // Read authenticated user from SSO header (forwarded by nginx)
-  const username = req.headers['x-auth-user'] || os.userInfo().username;
+  // Authenticate: try session cookie first (self-contained auth), then terminal token + SSO header
+  let username = null;
+  const cookies = parseCookies(req.headers.cookie);
+  const sessionToken = cookies['spaces-session'];
+  const sessionPayload = sessionToken ? verifySessionToken(sessionToken) : null;
 
-  // Verify terminal token (2FA)
-  const terminalToken = url.searchParams.get('terminalToken') || '';
-  const tokenUser = verifyTerminalToken(terminalToken);
-  if (!tokenUser || tokenUser !== username) {
-    ws.send(JSON.stringify({ type: 'error', data: '2FA verification required' }));
+  if (sessionPayload) {
+    // Self-contained auth: session cookie is valid
+    username = sessionPayload.sub;
+  } else {
+    // Legacy SSO mode: verify terminal token + x-auth-user header
+    const ssoUser = req.headers['x-auth-user'] || os.userInfo().username;
+    const terminalToken = url.searchParams.get('terminalToken') || '';
+    const tokenUser = verifyTerminalToken(terminalToken);
+    if (tokenUser && tokenUser === ssoUser) {
+      username = ssoUser;
+    }
+  }
+
+  if (!username) {
+    ws.send(JSON.stringify({ type: 'error', data: 'Authentication required' }));
     ws.close();
     return;
   }
@@ -144,12 +246,14 @@ wss.on('connection', (ws, req) => {
   // Create new pty session
   const isWindows = process.platform === 'win32';
 
-  // If the authenticated user differs from the process user, spawn via SSH with service key
+  // Resolve the OS shell user for this app user
+  const shellUser = lookupShellUser(username);
   const processUser = os.userInfo().username;
   let shell, args;
-  if (!isWindows && username !== processUser) {
-    shell = 'ssh';
-    args = ['-i', SERVICE_KEY, '-tt', '-o', 'StrictHostKeyChecking=no', `${username}@localhost`];
+  if (!isWindows && shellUser !== processUser) {
+    // Use runuser to spawn as the mapped shell user (requires root)
+    shell = '/sbin/runuser';
+    args = ['-l', shellUser, '-s', '/bin/bash'];
   } else {
     shell = isWindows ? 'cmd.exe' : (process.env.SHELL || '/bin/bash');
     args = [];
@@ -283,7 +387,9 @@ wss.on('connection', (ws, req) => {
 // ─── Claude-specific helpers ──────────────────────────────
 
 function getUserHome(username) {
-  return `/home/${username}`;
+  const shellUser = lookupShellUser(username);
+  if (shellUser === os.userInfo().username) return os.homedir();
+  return `/home/${shellUser}`;
 }
 
 const UUID_JSONL_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;

@@ -15,6 +15,7 @@
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:win": "npm run build && electron-builder --win",
+    "setup-admin": "node bin/setup-admin.js",
     "server:build": "next build",
     "server:start": "next start --port 3457",
     "lint": "eslint",

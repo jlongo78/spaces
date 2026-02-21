@@ -17,7 +17,18 @@ export const config = {
 };
 
 export function getUserPaths(username: string) {
-  const homeDir = username === os.userInfo().username ? os.homedir() : `/home/${username}`;
+  // In server mode, resolve the app username to the OS shell user
+  let resolvedUser = username;
+  if (process.env.NEXT_PUBLIC_EDITION === 'server') {
+    try {
+      const { resolveShellUser } = require('./db/admin');
+      resolvedUser = resolveShellUser(username);
+    } catch {
+      // admin DB not available yet (e.g., setup not run)
+    }
+  }
+
+  const homeDir = resolvedUser === os.userInfo().username ? os.homedir() : `/home/${resolvedUser}`;
   return {
     claudeDir: path.join(homeDir, '.claude'),
     claudeProjectsDir: path.join(homeDir, '.claude', 'projects'),
