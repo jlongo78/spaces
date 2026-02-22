@@ -1,0 +1,66 @@
+name: Deploy to Production
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Pull latest code
+        run: |
+          cd $HOME/development/spaces
+          git fetch --all --tags
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            git checkout ${{ github.ref_name }}
+          else
+            git checkout main
+            git pull
+          fi
+
+      - name: Install dependencies
+        run: |
+          export PATH=$HOME/.nvm/versions/node/v20.19.6/bin:$PATH
+          cd $HOME/development/spaces
+          npm ci
+
+      - name: Build Next.js
+        run: |
+          export PATH=$HOME/.nvm/versions/node/v20.19.6/bin:$PATH
+          cd $HOME/development/spaces
+          NEXT_PUBLIC_TIER=federation NEXT_PUBLIC_EDITION=server NEXT_PUBLIC_BASE_PATH=/spaces NEXT_PUBLIC_WS_PATH=/spaces/ws npm run server:build
+
+      - name: Restart services
+        run: |
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
+          systemctl --user restart spaces-next spaces-terminal
+          docker compose -f $HOME/development/spaces/docker-compose.yml up -d
+
+      - name: Verify deployment
+        run: |
+          sleep 5
+          STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://localhost/spaces/)
+          if [ "$STATUS" = "200" ] || [ "$STATUS" = "307" ]; then
+            echo "Deployment successful (HTTP $STATUS)"
+          else
+            echo "Deployment may have failed (HTTP $STATUS)"
+            exit 1
+          fi
+
+      - name: Update project tracker
+        if: success() && github.ref_type == 'tag'
+        run: |
+          $HOME/development/arc_projects/scripts/update-project.sh \
+            "${{ github.event.repository.name }}" \
+            "deploy" \
+            "${{ github.ref_name }}"
+
+      - name: Return to main branch
+        if: always()
+        run: |
+          cd $HOME/development/spaces
+          git checkout main

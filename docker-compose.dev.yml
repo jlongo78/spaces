@@ -1,0 +1,21 @@
+services:
+  spaces-dev:
+    image: nginx:alpine
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./nginx-dev.conf:/etc/nginx/nginx.conf:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.spaces-dev.rule=PathPrefix(`/development/spaces`)"
+      - "traefik.http.routers.spaces-dev.entrypoints=websecure"
+      - "traefik.http.routers.spaces-dev.tls=true"
+      - "traefik.http.routers.spaces-dev.middlewares=sso-auth@file"
+      - "traefik.http.services.spaces-dev.loadbalancer.server.port=80"
+    networks:
+      - traefik-public
+
+networks:
+  traefik-public:
+    external: true

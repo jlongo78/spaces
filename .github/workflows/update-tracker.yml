@@ -1,0 +1,30 @@
+name: Update Project Tracker
+
+on:
+  push:
+    branches: [main]
+    tags: ['status/*']
+
+jobs:
+  update-tracker:
+    runs-on: self-hosted
+    steps:
+      - name: Determine event type
+        id: event
+        run: |
+          REF="${{ github.ref }}"
+          if [[ "$REF" == refs/tags/status/* ]]; then
+            STATUS="${REF#refs/tags/status/}"
+            echo "type=status" >> "$GITHUB_OUTPUT"
+            echo "data=${STATUS}" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=push" >> "$GITHUB_OUTPUT"
+            echo "data=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update project tracker
+        run: |
+          $HOME/development/arc_projects/scripts/update-project.sh \
+            "${{ github.event.repository.name }}" \
+            "${{ steps.event.outputs.type }}" \
+            "${{ steps.event.outputs.data }}"

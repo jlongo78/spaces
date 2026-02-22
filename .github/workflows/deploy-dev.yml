@@ -1,0 +1,54 @@
+name: Deploy to Dev
+
+on:
+  push:
+    branches:
+      - dev
+
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Pull latest code
+        run: |
+          cd $HOME/development/spaces
+          git fetch --all
+          git checkout dev
+          git pull origin dev
+
+      - name: Install dependencies
+        run: |
+          export PATH=$HOME/.nvm/versions/node/v20.19.6/bin:$PATH
+          cd $HOME/development/spaces
+          npm ci
+
+      - name: Build Next.js (dev)
+        run: |
+          export PATH=$HOME/.nvm/versions/node/v20.19.6/bin:$PATH
+          cd $HOME/development/spaces
+          NEXT_PUBLIC_TIER=federation NEXT_PUBLIC_EDITION=server NEXT_PUBLIC_BASE_PATH=/development/spaces NEXT_PUBLIC_WS_PATH=/development/spaces/ws npm run server:build
+
+      - name: Restart services
+        run: |
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
+          systemctl --user restart spaces-next-dev spaces-terminal-dev
+          docker compose -f $HOME/development/spaces/docker-compose.dev.yml up -d
+
+      - name: Verify deployment
+        run: |
+          sleep 5
+          STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://localhost/development/spaces/)
+          if [ "$STATUS" = "200" ]; then
+            echo "Dev deployment successful (HTTP $STATUS)"
+          else
+            echo "Dev deployment may have failed (HTTP $STATUS)"
+            exit 1
+          fi
+
+      - name: Return to dev branch
+        if: always()
+        run: |
+          cd $HOME/development/spaces
+          git checkout dev
