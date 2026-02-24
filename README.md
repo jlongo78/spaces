@@ -17,7 +17,7 @@
 
 <p align="center">
   <a href="https://github.com/jlongo78/spaces/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/jlongo78/spaces/ci.yml?style=flat-square&label=CI" alt="CI" /></a>
-  <img src="https://img.shields.io/github/license/jlongo78/spaces?style=flat-square&color=blue" alt="MIT License" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D20.9-brightgreen?style=flat-square" alt="Node 20.9+" />
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20ARM64-lightgrey?style=flat-square" alt="Platforms" />
 </p>
