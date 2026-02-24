@@ -16,11 +16,15 @@ console.log('  Spaces - Agent Workspace Manager');
 console.log('  =================================');
 console.log('');
 
-// Verify build exists
-const buildDir = path.join(projectDir, '.next');
-if (!fs.existsSync(buildDir)) {
+// Detect standalone build (npm global install) vs full .next (git clone)
+const standaloneServer = path.join(projectDir, '.next', 'standalone', 'server.js');
+const fullBuildDir = path.join(projectDir, '.next', 'BUILD_ID');
+const isStandalone = fs.existsSync(standaloneServer);
+const isFullBuild = fs.existsSync(fullBuildDir);
+
+if (!isStandalone && !isFullBuild) {
   console.error('  Error: No build found.');
-  console.error('  Run "npm run build" first, or install via "npm install -g agent-spaces".');
+  console.error('  Run "npm run build" first, or install via "npm install -g @jlongo78/agent-spaces".');
   process.exit(1);
 }
 
@@ -32,17 +36,33 @@ if (!fs.existsSync(claudeDir)) {
 }
 
 // Spawn Next.js production server on an internal port
-const next = spawn('npx', ['next', 'start', '--port', String(NEXT_INTERNAL_PORT)], {
-  cwd: projectDir,
-  stdio: ['ignore', 'pipe', 'pipe'],
-  env: {
-    ...process.env,
-    PORT: String(NEXT_INTERNAL_PORT),
-    HOSTNAME: '0.0.0.0',
-    NODE_ENV: 'production',
-  },
-  shell: true,
-});
+let next;
+if (isStandalone) {
+  // npm global install — run the standalone server directly
+  next = spawn(process.execPath, [standaloneServer], {
+    cwd: path.dirname(standaloneServer),
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      PORT: String(NEXT_INTERNAL_PORT),
+      HOSTNAME: '0.0.0.0',
+      NODE_ENV: 'production',
+    },
+  });
+} else {
+  // git clone — use next start
+  next = spawn('npx', ['next', 'start', '--port', String(NEXT_INTERNAL_PORT)], {
+    cwd: projectDir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      PORT: String(NEXT_INTERNAL_PORT),
+      HOSTNAME: '0.0.0.0',
+      NODE_ENV: 'production',
+    },
+    shell: true,
+  });
+}
 
 let nextReady = false;
 
