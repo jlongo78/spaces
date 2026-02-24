@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1200px;
+    height: 630px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 40%, #2d1b4e 70%, #1a1a3e 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    color: white;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Subtle grid pattern */
+  body::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* Glow accents */
+  .glow-1 {
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%);
+    top: -50px;
+    right: 100px;
+  }
+  .glow-2 {
+    position: absolute;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(168,85,247,0.1) 0%, transparent 70%);
+    bottom: -100px;
+    left: 50px;
+  }
+
+  .content {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 0 80px;
+  }
+
+  .logo-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  /* Terminal icon made with CSS */
+  .terminal-icon {
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    color: white;
+    letter-spacing: -2px;
+  }
+
+  .brand {
+    font-size: 52px;
+    font-weight: 700;
+    letter-spacing: -1px;
+  }
+
+  .tagline {
+    font-size: 22px;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 48px;
+    font-weight: 400;
+  }
+
+  .hero-phrase {
+    font-size: 42px;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-bottom: 48px;
+  }
+
+  .hero-phrase .free { color: #34d399; }
+  .hero-phrase .open { color: #60a5fa; }
+  .hero-phrase .awesome { color: #c084fc; }
+  .hero-phrase .dot { color: rgba(255,255,255,0.3); }
+
+  .features {
+    display: flex;
+    gap: 32px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .feature {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    color: rgba(255,255,255,0.5);
+  }
+
+  .feature .dot-indicator {
+    width: 6px;
+    height: 6px;
+    background: #6366f1;
+    border-radius: 50%;
+  }
+</style>
+</head>
+<body>
+  <div class="glow-1"></div>
+  <div class="glow-2"></div>
+  <div class="content">
+    <div class="logo-row">
+      <div class="terminal-icon">&gt;_</div>
+      <div class="brand">Spaces</div>
+    </div>
+    <div class="tagline">AI Agent Workspace Manager</div>
+    <div class="hero-phrase">
+      <span class="free">Totally Free</span><span class="dot">.</span>
+      <span class="open">Totally Open</span><span class="dot">.</span>
+      <span class="awesome">Totally Awesome</span><span class="dot">.</span>
+    </div>
+    <div class="features">
+      <div class="feature"><span class="dot-indicator"></span> Claude Code</div>
+      <div class="feature"><span class="dot-indicator"></span> Codex CLI</div>
+      <div class="feature"><span class="dot-indicator"></span> Gemini CLI</div>
+      <div class="feature"><span class="dot-indicator"></span> Aider</div>
+      <div class="feature"><span class="dot-indicator"></span> Any Agent</div>
+    </div>
+  </div>
+</body>
+</html>

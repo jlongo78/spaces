@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04, ubuntu-24.04-arm, macos-latest, windows-latest]
+        node: [20, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Start server and health check
+        shell: bash
+        run: |
+          node bin/spaces.js &
+          SERVER_PID=$!
+
+          # Wait for server to be ready (up to 30 seconds)
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:3457/ | grep -q "200"; then
+              echo "Server is up after ${i}s"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Server failed to start within 30s"
+              kill $SERVER_PID 2>/dev/null
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Test API endpoints
+          echo "--- Testing /api/config ---"
+          curl -sf http://localhost:3457/api/config/ || exit 1
+
+          echo ""
+          echo "--- Testing /api/sessions ---"
+          curl -sf http://localhost:3457/api/sessions/ || exit 1
+
+          echo ""
+          echo "--- Testing /api/workspaces ---"
+          curl -sf http://localhost:3457/api/workspaces/ || exit 1
+
+          echo ""
+          echo "--- Testing /api/projects ---"
+          curl -sf http://localhost:3457/api/projects/ || exit 1
+
+          echo ""
+          echo "All health checks passed"
+
+          kill $SERVER_PID 2>/dev/null

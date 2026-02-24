@@ -1,0 +1,10 @@
+import { NextRequest } from 'next/server';
+import { getPro } from '@/lib/pro';
+
+const notAvailable = () =>
+  Response.json({ error: 'Requires @spaces/pro' }, { status: 404 });
+
+export async function POST(req: NextRequest) {
+  const pro = getPro();
+  return pro?.auth.api.totpSetup.POST(req) ?? notAvailable();
+}

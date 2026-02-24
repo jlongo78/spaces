@@ -1,0 +1,28 @@
+services:
+  spaces:
+    image: nginx:alpine
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    labels:
+      - "traefik.enable=true"
+      # WebSocket route — session cookie auth handles it
+      - "traefik.http.routers.spaces-ws.rule=PathPrefix(`/spaces/ws`)"
+      - "traefik.http.routers.spaces-ws.entrypoints=websecure"
+      - "traefik.http.routers.spaces-ws.tls=true"
+      - "traefik.http.routers.spaces-ws.priority=20"
+      - "traefik.http.routers.spaces-ws.service=spaces"
+      # Main app route — self-contained auth (middleware handles login)
+      - "traefik.http.routers.spaces.rule=PathPrefix(`/spaces`)"
+      - "traefik.http.routers.spaces.entrypoints=websecure"
+      - "traefik.http.routers.spaces.tls=true"
+      - "traefik.http.routers.spaces.priority=10"
+      - "traefik.http.services.spaces.loadbalancer.server.port=80"
+    networks:
+      - traefik-public
+
+networks:
+  traefik-public:
+    external: true

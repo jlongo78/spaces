@@ -1,0 +1,89 @@
+{
+  "name": "agent-spaces",
+  "version": "0.3.0",
+  "description": "Agent workspace manager for Claude, Codex, Gemini, and more",
+  "bin": {
+    "spaces": "./bin/spaces.js"
+  },
+  "files": [
+    "bin/",
+    ".next/standalone/"
+  ],
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jlongo78/spaces.git"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "workspace",
+    "terminal",
+    "claude",
+    "codex",
+    "gemini"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "start": "node bin/spaces.js",
+    "dev": "node bin/spaces-dev.js",
+    "build": "cross-env STANDALONE=1 next build && node -e \"const fs=require('fs');fs.cpSync('.next/static','.next/standalone/.next/static',{recursive:true});fs.cpSync('public','.next/standalone/public',{recursive:true})\"",
+    "build:server": "cross-env NEXT_PUBLIC_TIER=server STANDALONE=1 next build && node -e \"const fs=require('fs');fs.cpSync('.next/static','.next/standalone/.next/static',{recursive:true});fs.cpSync('public','.next/standalone/public',{recursive:true})\"",
+    "build:team": "cross-env NEXT_PUBLIC_TIER=team STANDALONE=1 next build && node -e \"const fs=require('fs');fs.cpSync('.next/static','.next/standalone/.next/static',{recursive:true});fs.cpSync('public','.next/standalone/public',{recursive:true})\"",
+    "build:federation": "cross-env NEXT_PUBLIC_TIER=federation STANDALONE=1 next build && node -e \"const fs=require('fs');fs.cpSync('.next/static','.next/standalone/.next/static',{recursive:true});fs.cpSync('public','.next/standalone/public',{recursive:true})\"",
+    "prepublishOnly": "npm run build",
+    "setup-admin": "node bin/setup-admin.js",
+    "server:build": "next build",
+    "server:start": "next start --port 3457",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "bonjour-service": "^1.3.0",
+    "node-pty": "^1.1.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@tanstack/react-query": "^5.90.21",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "chokidar": "^5.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cross-env": "^10.1.0",
+    "date-fns": "^4.1.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "geist": "^1.4.1",
+    "lucide-react": "^0.575.0",
+    "next": "16.1.6",
+    "otpauth": "^9.5.0",
+    "posthog-js": "^1.352.0",
+    "posthog-node": "^5.21.2",
+    "qrcode": "^1.5.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-markdown": "^10.1.0",
+    "recharts": "^3.7.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "xterm": "^5.3.0"
+  },
+  "optionalDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "otpauth": "^9.5.0",
+    "qrcode": "^1.5.4"
+  }
+}
