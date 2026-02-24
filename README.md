@@ -16,6 +16,7 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@jlongo78/agent-spaces"><img src="https://img.shields.io/npm/v/@jlongo78/agent-spaces?style=flat-square&color=cb3837" alt="npm" /></a>
   <a href="https://github.com/jlongo78/spaces/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/jlongo78/spaces/ci.yml?style=flat-square&label=CI" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D20.9-brightgreen?style=flat-square" alt="Node 20.9+" />
@@ -37,6 +38,15 @@ Open your browser and get a full terminal grid where every pane is a real PTY. S
 Everything runs locally. Your data never leaves your machine.
 
 ## Quick Start
+
+### Install from npm (recommended)
+
+```bash
+npm install -g @jlongo78/agent-spaces
+spaces
+```
+
+### Or build from source
 
 ```bash
 git clone https://github.com/jlongo78/spaces.git
