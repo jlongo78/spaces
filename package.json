@@ -1,5 +1,5 @@
 {
-  "name": "agent-spaces",
+  "name": "@jlongo78/agent-spaces",
   "version": "0.3.0",
   "description": "Agent workspace manager for Claude, Codex, Gemini, and more",
   "bin": {
