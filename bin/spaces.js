@@ -39,6 +39,14 @@ if (!fs.existsSync(claudeDir)) {
 let next;
 if (isStandalone) {
   // npm global install — run the standalone server directly
+  // Native modules (better-sqlite3, node-pty) live in the parent package's
+  // node_modules, not in the standalone bundle. Add NODE_PATH so they're found.
+  const parentNodeModules = path.join(projectDir, 'node_modules');
+  const existingNodePath = process.env.NODE_PATH || '';
+  const nodePath = existingNodePath
+    ? `${parentNodeModules}${path.delimiter}${existingNodePath}`
+    : parentNodeModules;
+
   next = spawn(process.execPath, [standaloneServer], {
     cwd: path.dirname(standaloneServer),
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -47,6 +55,7 @@ if (isStandalone) {
       PORT: String(NEXT_INTERNAL_PORT),
       HOSTNAME: '0.0.0.0',
       NODE_ENV: 'production',
+      NODE_PATH: nodePath,
     },
   });
 } else {
