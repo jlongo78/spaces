@@ -25,6 +25,7 @@
     "codex",
     "gemini"
   ],
+  "homepage": "http://www.agentspaces.co",
   "license": "MIT",
   "scripts": {
     "start": "node bin/spaces.js",
