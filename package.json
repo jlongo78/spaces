@@ -1,6 +1,6 @@
 {
   "name": "@jlongo78/agent-spaces",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Agent workspace manager for Claude, Codex, Gemini, and more",
   "bin": {
     "spaces": "./bin/spaces.js"
@@ -30,11 +30,10 @@
   "scripts": {
     "start": "node bin/spaces.js",
     "dev": "node bin/spaces-dev.js",
-    "build": "cross-env STANDALONE=1 next build && node -e \"const fs=require('fs');fs.cpSync('.next/static','.next/standalone/.next/static',{recursive:true});fs.cpSync('public','.next/standalone/public',{recursive:true})\"",
+    "build": "cross-env STANDALONE=1 next build && node -e \"const fs=require('fs');fs.cpSync('.next/static','.next/standalone/.next/static',{recursive:true});fs.cpSync('public','.next/standalone/public',{recursive:true})\" && node bin/fix-standalone-externals.js",
     "build:server": "cross-env NEXT_PUBLIC_TIER=server STANDALONE=1 next build && node -e \"const fs=require('fs');fs.cpSync('.next/static','.next/standalone/.next/static',{recursive:true});fs.cpSync('public','.next/standalone/public',{recursive:true})\"",
     "build:team": "cross-env NEXT_PUBLIC_TIER=team STANDALONE=1 next build && node -e \"const fs=require('fs');fs.cpSync('.next/static','.next/standalone/.next/static',{recursive:true});fs.cpSync('public','.next/standalone/public',{recursive:true})\"",
     "build:federation": "cross-env NEXT_PUBLIC_TIER=federation STANDALONE=1 next build && node -e \"const fs=require('fs');fs.cpSync('.next/static','.next/standalone/.next/static',{recursive:true});fs.cpSync('public','.next/standalone/public',{recursive:true})\"",
-    "postinstall": "node bin/postinstall.js",
     "prepublishOnly": "npm run build",
     "setup-admin": "node bin/setup-admin.js",
     "server:build": "next build",
