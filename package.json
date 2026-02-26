@@ -26,7 +26,7 @@
     "gemini"
   ],
   "homepage": "http://www.agentspaces.co",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "start": "node bin/spaces.js",
     "dev": "node bin/spaces-dev.js",

@@ -18,7 +18,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@jlongo78/agent-spaces"><img src="https://img.shields.io/npm/v/@jlongo78/agent-spaces?style=flat-square&color=cb3837" alt="npm" /></a>
   <a href="https://github.com/jlongo78/spaces/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/jlongo78/spaces/ci.yml?style=flat-square&label=CI" alt="CI" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="AGPL-3.0 License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D20.9-brightgreen?style=flat-square" alt="Node 20.9+" />
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20ARM64-lightgrey?style=flat-square" alt="Platforms" />
 </p>
@@ -80,7 +80,7 @@ Zero cloud dependencies. No accounts. No telemetry by default. All data lives in
 
 ## Advanced Tiers
 
-The Community edition above is fully open source (MIT) and free forever. For teams and organizations, Spaces also supports multi-user auth, admin panels, federated node networks, and remote workspaces through optional paid tiers.
+The Community edition above is fully open source (AGPL-3.0) and free forever. For teams and organizations, Spaces also supports multi-user auth, admin panels, federated node networks, and remote workspaces through optional paid tiers.
 
 | | Community | Server | Team | Federation |
 |---|:---------:|:------:|:----:|:----------:|
@@ -128,4 +128,4 @@ Contributions are welcome. Please open an issue first to discuss what you'd like
 
 ## License
 
-[MIT](LICENSE)
+[AGPL-3.0](LICENSE)
