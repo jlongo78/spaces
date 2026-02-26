@@ -38,7 +38,8 @@
     "setup-admin": "node bin/setup-admin.js",
     "server:build": "next build",
     "server:start": "next start --port 3457",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "npm rebuild better-sqlite3"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
