@@ -39,7 +39,7 @@
     "server:build": "next build",
     "server:start": "next start --port 3457",
     "lint": "eslint",
-    "postinstall": "npm rebuild better-sqlite3"
+    "postinstall": "node bin/postinstall.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",

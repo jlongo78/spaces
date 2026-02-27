@@ -51,3 +51,29 @@ for (const [alias, real] of aliases) {
   );
   console.log(`[fix-externals] Created alias: ${alias} -> ${real}`);
 }
+
+// Remove native modules from the standalone bundle.
+// Next.js standalone mode copies all traced dependencies into
+// .next/standalone/node_modules/, including pre-compiled native addons.
+// These binaries are built for the CI Node version and will fail on
+// machines running a different Node version (NODE_MODULE_VERSION mismatch).
+// Removing them forces resolution to the parent node_modules/ where
+// the postinstall `npm rebuild` compiles them for the user's Node version.
+const nativeModules = ['better-sqlite3', 'node-pty'];
+for (const mod of nativeModules) {
+  const modDir = path.join(standaloneModules, mod);
+  if (fs.existsSync(modDir)) {
+    fs.rmSync(modDir, { recursive: true, force: true });
+    console.log(`[fix-externals] Removed native module from standalone: ${mod}`);
+  }
+}
+
+// Also remove transitive native dependencies that Next.js may have copied
+const nativeTransitive = ['bindings', 'file-uri-to-path', 'detect-libc'];
+for (const mod of nativeTransitive) {
+  const modDir = path.join(standaloneModules, mod);
+  if (fs.existsSync(modDir)) {
+    fs.rmSync(modDir, { recursive: true, force: true });
+    console.log(`[fix-externals] Removed transitive native dep from standalone: ${mod}`);
+  }
+}
