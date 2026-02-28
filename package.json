@@ -1,6 +1,6 @@
 {
   "name": "@jlongo78/agent-spaces",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "description": "Agent workspace manager for Claude, Codex, Gemini, and more",
   "bin": {
     "spaces": "./bin/spaces.js"
