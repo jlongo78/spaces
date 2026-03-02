@@ -2,6 +2,7 @@
 
 const { WebSocketServer } = require('ws');
 const pty = require('node-pty');
+const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -351,8 +352,8 @@ function isAllowedOrigin(origin) {
     if (allowed) {
       return allowed.split(',').some(h => url.hostname === h.trim());
     }
-    // In server/federation mode, require explicit allowed origins
-    if (SPACES_TIER === 'server' || SPACES_TIER === 'federation') return false;
+    // In non-community modes, require explicit allowed origins
+    if (SPACES_TIER !== 'community') return false;
     // Desktop/community: allow any origin
     return true;
   } catch {
@@ -531,6 +532,25 @@ function handleConnection(wss, ws, req) {
     console.log(`[Spawn] cwd "${cwd}" does not exist, falling back to "${safeCwd}"`);
   }
 
+  // Inject Spaces bus environment for agent communication
+  env.SPACES_PANE_ID = paneId;
+  env.SPACES_API_URL = `http://localhost:${PORT}`;
+
+  // Look up workspace collaboration config from @spaces/teams
+  let isCollaborating = false;
+  try {
+    const teams = require('@spaces/teams');
+    const config = teams.terminal.getCollabConfig(paneId, username);
+    if (config) {
+      env.SPACES_WORKSPACE_ID = config.workspaceId;
+      env.SPACES_PANE_NAME = config.paneName;
+      isCollaborating = true;
+      env.SPACES_COLLABORATING = '1';
+    }
+  } catch {
+    // @spaces/teams not installed — collaboration not available
+  }
+
   console.log(`[Spawn] user=${username} shell=${shell} args=${JSON.stringify(args)} cwd=${safeCwd} agentType=${agentType}`);
 
   let term;
@@ -549,7 +569,16 @@ function handleConnection(wss, ws, req) {
     return;
   }
 
-  const session = { pty: term, ws, buffer: [], exited: false, username };
+  const session = {
+    pty: term, ws, buffer: [], exited: false, username,
+    agentType,
+    paneName: env.SPACES_PANE_NAME || paneId,
+    lastOutputTime: Date.now(),
+    lastNudgeTime: 0,
+    startedAt: Date.now(),
+    workspaceId: env.SPACES_WORKSPACE_ID || null,
+    isCollaborating,
+  };
   sessions.set(paneId, session);
   analyticsRecordSessionStart(paneId, username, agentType);
 
@@ -565,6 +594,14 @@ function handleConnection(wss, ws, req) {
         term.write(`cd '${escapedCwd}'\r`);
       }
     }, 300);
+  }
+
+  // Write collaboration config for agent panes via @spaces/teams
+  if (isCollaborating && agentType !== 'shell') {
+    try {
+      const teams = require('@spaces/teams');
+      teams.terminal.writeAgentConfig(agentType, safeCwd, env);
+    } catch { /* @spaces/teams not installed */ }
   }
 
   if (agentType !== 'shell') {
@@ -613,6 +650,7 @@ function handleConnection(wss, ws, req) {
 
   // pty -> ws (and buffer)
   term.onData((data) => {
+    session.lastOutputTime = Date.now();
     session.buffer.push(data);
     if (session.buffer.length > MAX_BUFFER_LINES) {
       session.buffer.shift();
@@ -626,6 +664,11 @@ function handleConnection(wss, ws, req) {
   term.onExit(({ exitCode }) => {
     session.exited = true;
     analyticsRecordSessionEnd(paneId);
+    // Clean up hook state file
+    try {
+      const hookStateFile = path.join(os.homedir(), '.spaces', 'hook-state', `${paneId}.json`);
+      if (fs.existsSync(hookStateFile)) fs.unlinkSync(hookStateFile);
+    } catch { /* ignore */ }
     if (session.ws && session.ws.readyState === 1) {
       session.ws.send(JSON.stringify({ type: 'exit', exitCode }));
     }
@@ -945,6 +988,15 @@ function startMdnsIfNeeded() {
   }
 }
 
+// ─── Poll-based idle nudge for agent collaboration ───────
+
+function startMessageWatcher(apiPort) {
+  try {
+    const teams = require('@spaces/teams');
+    teams.terminal.startMessageWatcher(apiPort, sessions);
+  } catch { /* @spaces/teams not installed — no message watcher */ }
+}
+
 // ─── Attached mode: mount on an existing HTTP server ─────
 
 function createTerminalServer(httpServer) {
@@ -953,7 +1005,7 @@ function createTerminalServer(httpServer) {
 
   httpServer.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url, 'http://localhost');
-    if (url.pathname === '/ws') {
+    if (url.pathname === '/ws' || url.pathname.endsWith('/ws')) {
       // Verify origin for browser clients
       const origin = req.headers.origin;
       if (origin && !isAllowedOrigin(origin)) {
@@ -968,6 +1020,14 @@ function createTerminalServer(httpServer) {
   });
 
   startMdnsIfNeeded();
+  // Start message watcher once the server is listening
+  if (httpServer.listening) {
+    startMessageWatcher(httpServer.address().port);
+  } else {
+    httpServer.on('listening', () => {
+      startMessageWatcher(httpServer.address().port);
+    });
+  }
   return wss;
 }
 
@@ -984,6 +1044,7 @@ if (require.main === module) {
   });
   setupWss(wss);
   startMdnsIfNeeded();
+  startMessageWatcher(PORT);
   console.log(`Terminal WebSocket server running on ws://localhost:${PORT}`);
 }
 

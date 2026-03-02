@@ -4,9 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Shield, Loader2, Settings } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { IS_DESKTOP } from '@/lib/tier';
-
-const iconSrc = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/spaces_icon.png`;
+import { useTier } from '@/hooks/use-tier';
 
 const SESSION_KEY = 'spaces-terminal-token';
 
@@ -16,6 +14,7 @@ interface TotpGateProps {
 
 export function TotpGate({ children }: TotpGateProps) {
   const router = useRouter();
+  const { isDesktop, basePath } = useTier();
   const [status, setStatus] = useState<'loading' | 'not-setup' | 'prompt' | 'authorized'>('loading');
   const [token, setToken] = useState<string>('');
   const [code, setCode] = useState('');
@@ -23,9 +22,13 @@ export function TotpGate({ children }: TotpGateProps) {
   const [verifying, setVerifying] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
 
-  // In desktop mode (Electron or local dev), bypass 2FA entirely
+  const iconSrc = `${basePath}/spaces_icon.png`;
+
+  // In desktop mode (community tier), bypass 2FA entirely.
+  // isDesktop defaults to true so this runs immediately on first render
+  // without waiting for any async fetch.
   useEffect(() => {
-    if (IS_DESKTOP) {
+    if (isDesktop) {
       setToken('desktop-local');
       setStatus('authorized');
       return;
@@ -69,7 +72,7 @@ export function TotpGate({ children }: TotpGateProps) {
         })
         .catch(() => setStatus('not-setup'));
     }
-  }, []);
+  }, [isDesktop]);
 
   const verify = useCallback(async (verifyCode: string) => {
     if (verifyCode.length !== 6) return;

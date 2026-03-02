@@ -313,11 +313,12 @@ export function deleteWorkspace(workspaceId: number) {
   db.prepare('DELETE FROM workspaces WHERE id = ?').run(workspaceId);
 }
 
-export function updateWorkspace(workspaceId: number, data: { name?: string; description?: string; color?: string }) {
+export function updateWorkspace(workspaceId: number, data: { name?: string; description?: string; color?: string; collaboration?: boolean }) {
   const db = getDb();
   if (data.name !== undefined) db.prepare('UPDATE workspaces SET name = ? WHERE id = ?').run(data.name, workspaceId);
   if (data.description !== undefined) db.prepare('UPDATE workspaces SET description = ? WHERE id = ?').run(data.description, workspaceId);
   if (data.color !== undefined) db.prepare('UPDATE workspaces SET color = ? WHERE id = ?').run(data.color, workspaceId);
+  if (data.collaboration !== undefined) db.prepare('UPDATE workspaces SET collaboration = ? WHERE id = ?').run(data.collaboration ? 1 : 0, workspaceId);
 }
 
 export function getWorkspacesForSession(sessionId: string): { id: number; name: string; color: string }[] {
@@ -365,7 +366,7 @@ export function getWorkspaceSessions(workspaceId: number): SessionWithMeta[] {
 export function getSessionWorkspaces(sessionId: string): Workspace[] {
   const db = getDb();
   return db.prepare(`
-    SELECT w.id, w.name, w.description, w.color, w.created
+    SELECT w.id, w.name, w.description, w.color, w.created, w.collaboration
     FROM workspaces w
     JOIN workspace_sessions ws ON ws.workspace_id = w.id
     WHERE ws.session_id = ?
@@ -490,6 +491,7 @@ export interface PaneData {
   winWidth: number | null;
   winHeight: number | null;
   nodeId: string | null;
+  isCollaborating: boolean;
 }
 
 const PANE_SELECT = `
@@ -499,11 +501,12 @@ const PANE_SELECT = `
   shell, created, workspace_id as workspaceId,
   is_popout as isPopout, win_x as winX, win_y as winY,
   win_width as winWidth, win_height as winHeight,
-  node_id as nodeId
+  node_id as nodeId,
+  is_collaborating as isCollaborating
 `;
 
 function mapPane(row: any): PaneData {
-  return { ...row, isPopout: !!row.isPopout };
+  return { ...row, isPopout: !!row.isPopout, isCollaborating: !!row.isCollaborating };
 }
 
 export function getPanesByWorkspace(workspaceId: number): PaneData[] {
@@ -536,6 +539,7 @@ export function createPane(pane: {
   sortOrder?: number;
   workspaceId?: number;
   nodeId?: string;
+  isCollaborating?: boolean;
 }): PaneData {
   const db = getDb();
   const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM panes').get() as { m: number | null };
@@ -549,9 +553,9 @@ export function createPane(pane: {
   }
 
   db.prepare(`
-    INSERT INTO panes (id, title, color, cwd, claude_session_id, agent_type, custom_command, sort_order, workspace_id, node_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(pane.id, pane.title, pane.color, pane.cwd, pane.claudeSessionId || null, pane.agentType || 'shell', pane.customCommand || null, order, wsId || null, pane.nodeId || null);
+    INSERT INTO panes (id, title, color, cwd, claude_session_id, agent_type, custom_command, sort_order, workspace_id, node_id, is_collaborating)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(pane.id, pane.title, pane.color, pane.cwd, pane.claudeSessionId || null, pane.agentType || 'shell', pane.customCommand || null, order, wsId || null, pane.nodeId || null, pane.isCollaborating ? 1 : 0);
 
   return getPaneById(pane.id)!;
 }
@@ -578,6 +582,7 @@ export function updatePane(id: string, data: {
   winY?: number | null;
   winWidth?: number | null;
   winHeight?: number | null;
+  isCollaborating?: boolean;
 }) {
   const db = getDb();
   const sets: string[] = [];
@@ -599,6 +604,7 @@ export function updatePane(id: string, data: {
   if (data.winWidth !== undefined) { sets.push('win_width = ?'); vals.push(data.winWidth); }
   if (data.winHeight !== undefined) { sets.push('win_height = ?'); vals.push(data.winHeight); }
   if ((data as any).nodeId !== undefined) { sets.push('node_id = ?'); vals.push((data as any).nodeId); }
+  if (data.isCollaborating !== undefined) { sets.push('is_collaborating = ?'); vals.push(data.isCollaborating ? 1 : 0); }
 
   if (sets.length === 0) return;
   vals.push(id);
@@ -619,7 +625,7 @@ export function deletePanesByNodeId(nodeId: string) {
 
 export function getActiveWorkspace(): Workspace | null {
   const db = getDb();
-  return db.prepare('SELECT id, name, description, color, created, is_active as isActive FROM workspaces WHERE is_active = 1').get() as Workspace | null;
+  return db.prepare('SELECT id, name, description, color, created, is_active as isActive, collaboration FROM workspaces WHERE is_active = 1').get() as Workspace | null;
 }
 
 export function switchWorkspace(workspaceId: number) {
@@ -695,3 +701,4 @@ export function getAnalyticsOverview() {
     totalProjects: projectCount.count,
   };
 }
+

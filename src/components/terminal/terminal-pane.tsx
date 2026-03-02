@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe } from 'lucide-react';
+import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AGENT_TYPES } from '@/lib/agents';
 import type { PaneData } from '@/lib/db/queries';
@@ -19,9 +19,10 @@ interface TerminalPaneProps {
   onPopout?: (id: string) => void;
   isPopout?: boolean;
   terminalToken?: string;
+  workspaceCollaboration?: boolean;
 }
 
-export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMaximize, onPopout, isPopout, terminalToken }: TerminalPaneProps) {
+export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMaximize, onPopout, isPopout, terminalToken, workspaceCollaboration }: TerminalPaneProps) {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -103,13 +104,20 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     await new Promise<void>((resolve) => requestAnimationFrame(() => {
       if (termRef.current) {
         term.open(termRef.current);
-        try { fitAddon.fit(); } catch { /* container may not have dimensions yet */ }
+        try { fitAddon.fit(); } catch { /* dimensions may be wrong — corrected below */ }
       }
       resolve();
     }));
 
     xtermRef.current = term;
     fitRef.current = fitAddon;
+
+    // The initial fit() above kicks xterm's canvas renderer into life but the
+    // CSS grid may not have settled yet, giving wrong cols/rows.  A double-rAF
+    // waits for a full layout+paint cycle; the 300ms fallback catches slow grids.
+    const stableFit = () => { try { fitAddon.fit(); } catch {} };
+    requestAnimationFrame(() => requestAnimationFrame(stableFit));
+    setTimeout(stableFit, 300);
 
     // Build WebSocket URL from current pane state
     const buildWsUrl = () => {
@@ -126,7 +134,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       if (p.nodeId) params.set('nodeId', p.nodeId);
       const token = terminalTokenRef.current;
       if (token) params.set('terminalToken', token);
-      const wsPath = WS_PATH || '/ws';
+      const basePath = process.env.SPACES_BASE_PATH || '';
+      const wsPath = WS_PATH || `${basePath}/ws`;
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       return `${proto}//${location.host}${wsPath}?${params}`;
     };
@@ -224,17 +233,23 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     };
   }, [connect]);
 
-  // Resize on container changes
+  // Resize on container changes.  The ResizeObserver fires immediately on
+  // observe(), but fitRef may not be set yet (connect() is async).  Using rAF
+  // coalesces rapid resize events and gives connect() time to finish.
   useEffect(() => {
+    let rafId: number;
     const observer = new ResizeObserver(() => {
-      if (fitRef.current) {
-        try { fitRef.current.fit(); } catch { /* ignore */ }
-      }
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        if (fitRef.current) {
+          try { fitRef.current.fit(); } catch { /* ignore */ }
+        }
+      });
     });
     if (termRef.current) {
       observer.observe(termRef.current);
     }
-    return () => observer.disconnect();
+    return () => { cancelAnimationFrame(rafId); observer.disconnect(); };
   }, []);
 
   // Resize when maximized changes
@@ -397,6 +412,20 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             <Globe className="w-2.5 h-2.5" />
             remote
           </span>
+        )}
+
+        {workspaceCollaboration && pane.agentType !== 'shell' && (
+          <button
+            onClick={() => onUpdate(pane.id, { isCollaborating: !pane.isCollaborating } as Partial<PaneData>)}
+            className={`transition-colors ${
+              pane.isCollaborating
+                ? 'text-indigo-400 hover:text-indigo-300'
+                : 'text-zinc-600 hover:text-zinc-400'
+            }`}
+            title={pane.isCollaborating ? 'Collaborating — click to opt out' : 'Not collaborating — click to opt in'}
+          >
+            <Users className="w-3 h-3" />
+          </button>
         )}
 
         {!connected && !exited && (

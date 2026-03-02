@@ -173,6 +173,7 @@ export interface Workspace {
   created: string;
   sessionCount?: number;
   isActive?: boolean;
+  collaboration?: boolean;
   paneCount?: number;
   nodeId?: string;
   nodeName?: string;

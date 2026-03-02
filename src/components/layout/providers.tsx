@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, useEffect, type ReactNode } from 'react';
 import { initTelemetry } from '@/lib/telemetry';
+import { TierProvider } from '@/components/layout/tier-provider';
 import { api } from '@/lib/api';
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -29,7 +30,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <TierProvider>
+        {children}
+      </TierProvider>
     </QueryClientProvider>
   );
 }

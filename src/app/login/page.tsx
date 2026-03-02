@@ -5,9 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { Loader2, Shield, Eye, EyeOff } from 'lucide-react';
 import { api } from '@/lib/api';
 
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
-const iconSrc = `${basePath}/spaces_icon.png`;
-
 type Stage = 'credentials' | 'totp-setup' | 'totp-verify';
 
 export default function LoginPage() {
@@ -25,6 +22,7 @@ export default function LoginPage() {
 function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirectTo') || '/';
+  const [basePath, setBasePath] = useState('');
 
   const [stage, setStage] = useState<Stage>('credentials');
   const [username, setUsername] = useState('');
@@ -45,6 +43,10 @@ function LoginForm() {
 
   useEffect(() => {
     usernameRef.current?.focus();
+    fetch(api('/api/tier'))
+      .then(r => r.json())
+      .then(data => setBasePath(data.basePath || ''))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -140,7 +142,7 @@ function LoginForm() {
         <div className="w-full max-w-sm space-y-6">
           <div className="text-center space-y-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={iconSrc} alt="Spaces" className="w-14 h-14 mx-auto opacity-60" />
+            <img src={`${basePath}/spaces_icon.png`} alt="Spaces" className="w-14 h-14 mx-auto opacity-60" />
             <h1 className="text-xl font-semibold text-white">Sign in to Spaces</h1>
           </div>
 
@@ -270,7 +272,7 @@ function LoginForm() {
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={iconSrc} alt="Spaces" className="w-12 h-12 mx-auto" />
+          <img src={`${basePath}/spaces_icon.png`} alt="Spaces" className="w-12 h-12 mx-auto" />
           <h2 className="text-lg font-semibold text-white">Two-factor authentication</h2>
           <p className="text-sm text-zinc-400">
             Enter the 6-digit code from your authenticator app

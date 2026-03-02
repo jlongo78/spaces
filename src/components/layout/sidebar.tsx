@@ -19,7 +19,7 @@ import {
 import { cn } from '@/lib/utils';
 import { trackPageView } from '@/lib/telemetry';
 import { api } from '@/lib/api';
-import { HAS_AUTH, HAS_ADMIN, HAS_NETWORK } from '@/lib/tier';
+import { useTier } from '@/hooks/use-tier';
 
 const nav = [
   { href: '/terminal', label: 'Spaces', icon: Layers },
@@ -46,6 +46,7 @@ const routeNames: Record<string, string> = {
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { hasAuth, hasAdmin, hasNetwork, basePath } = useTier();
   const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
@@ -55,12 +56,12 @@ export function Sidebar() {
   }, [pathname]);
 
   useEffect(() => {
-    if (!HAS_AUTH) return;
+    if (!hasAuth) return;
     fetch(api('/api/auth/me'))
       .then(r => r.json())
       .then(data => setUserRole(data.role))
       .catch(() => {});
-  }, []);
+  }, [hasAuth]);
 
   const handleLogout = async () => {
     await fetch(api('/api/auth/logout'), { method: 'POST' });
@@ -73,7 +74,7 @@ export function Sidebar() {
         <Link href="/">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/spaces_logo.png`}
+            src={`${basePath}/spaces_logo.png`}
             alt="Spaces"
             width={180}
             height={60}
@@ -83,7 +84,7 @@ export function Sidebar() {
 
       <nav className="flex-1 p-2 space-y-1">
         {nav.filter(({ href }) => {
-          if (href === '/network') return HAS_NETWORK ;
+          if (href === '/network') return hasNetwork;
           return true;
         }).map(({ href, label, icon: Icon }) => {
           const isActive = href === '/'
@@ -108,7 +109,7 @@ export function Sidebar() {
         })}
 
         {/* Admin-only: Users + Activity links */}
-        {HAS_ADMIN  && userRole === 'admin' && (
+        {hasAdmin && userRole === 'admin' && (
           <>
             <Link
               href="/admin/users"
@@ -150,7 +151,7 @@ export function Sidebar() {
           </kbd>
         </Link>
 
-        {HAS_AUTH  && (
+        {hasAuth && (
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-md w-full"
