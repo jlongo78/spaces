@@ -113,11 +113,7 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   }, []);
 
   useEffect(() => {
-    loadWorkspaces().then(active => {
-      // Auto-enter active workspace on mount so page refreshes
-      // don't drop the user back to the workspace chooser
-      if (active) setEntered(true);
-    });
+    loadWorkspaces();
   }, [loadWorkspaces]);
 
   // Only load panes after entering a workspace
@@ -143,8 +139,13 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
           next.delete(msg.paneId);
           return next;
         });
-        // Refresh panes to get updated state
-        loadPanes();
+        // Optimistically mark pane as not popped out in local state.
+        // Don't call loadPanes() here — the sendBeacon that sets isPopout=false
+        // in the DB is still in-flight, and loadPanes() would re-read the stale
+        // isPopout=true value and put the pane right back into poppedOut.
+        setPanes(prev => prev.map(p =>
+          p.id === msg.paneId ? { ...p, isPopout: false } : p
+        ));
       } else if (msg.type === 'pane-updated') {
         setPanes(prev => prev.map(p =>
           p.id === msg.paneId ? { ...p, ...msg.data } : p
