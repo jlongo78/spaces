@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, withUser } from '@/lib/auth';
 import { ensureInitialized } from '@/lib/db/init';
-import { getAnalyticsOverview, getSessions } from '@/lib/db/queries';
+import { getAnalyticsOverview, getSessions, getDailyActivity } from '@/lib/db/queries';
 import { readStatsCache } from '@/lib/claude/parser';
 import { calculateCost } from '@/lib/cost-calculator';
 import { getUserPaths } from '@/lib/config';
@@ -13,8 +13,9 @@ export async function GET(request: NextRequest) {
 
     const overview = getAnalyticsOverview();
     const { sessions: recentSessions } = getSessions({ limit: 5, sortBy: 'modified', sortDir: 'DESC' });
+    const dailyActivity = getDailyActivity(30);
 
-    // Read stats cache for activity data
+    // Read stats cache for cost/token data
     const { statsPath } = getUserPaths(user);
     const stats = readStatsCache(statsPath);
     const estimatedCost = stats?.modelUsage ? calculateCost(stats.modelUsage) : 0;
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
       ...overview,
       estimatedCost,
       recentSessions,
-      dailyActivity: stats?.dailyActivity || [],
+      dailyActivity,
       dailyModelTokens: stats?.dailyModelTokens || [],
       modelUsage: stats?.modelUsage || {},
     });

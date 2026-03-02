@@ -702,3 +702,17 @@ export function getAnalyticsOverview() {
   };
 }
 
+export function getDailyActivity(days = 30): { date: string; sessionCount: number; messageCount: number; toolCallCount: number }[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT date(created) as date,
+           COUNT(*) as sessionCount,
+           COALESCE(SUM(message_count), 0) as messageCount,
+           0 as toolCallCount
+    FROM sessions
+    WHERE created >= date('now', ?)
+    GROUP BY date(created)
+    ORDER BY date(created)
+  `).all(`-${days} days`) as any[];
+}
+
