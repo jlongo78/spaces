@@ -10,6 +10,7 @@ import type { PaneData } from '@/lib/db/queries';
 import type { Workspace } from '@/types/claude';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useTier } from '@/hooks/use-tier';
 
 export default function MobileTerminalPage() {
   return (
@@ -20,6 +21,7 @@ export default function MobileTerminalPage() {
 }
 
 function MobileTerminalInner({ terminalToken }: { terminalToken: string }) {
+  const { basePath } = useTier();
   const [panes, setPanes] = useState<PaneData[]>([]);
   const [loading, setLoading] = useState(true);
   const [wsLoading, setWsLoading] = useState(true);
@@ -43,6 +45,7 @@ function MobileTerminalInner({ terminalToken }: { terminalToken: string }) {
     const active = data.find((w: Workspace) => w.isActive);
     setActiveWorkspace(active || null);
     setWsLoading(false);
+    return active || null;
   }, []);
 
   const loadPanes = useCallback(async () => {
@@ -55,7 +58,11 @@ function MobileTerminalInner({ terminalToken }: { terminalToken: string }) {
     setLoading(false);
   }, [activePaneId]);
 
-  useEffect(() => { loadWorkspaces(); }, [loadWorkspaces]);
+  useEffect(() => {
+    loadWorkspaces().then(active => {
+      if (active) setEntered(true);
+    });
+  }, [loadWorkspaces]);
 
   useEffect(() => {
     if (entered) loadPanes();
@@ -103,7 +110,6 @@ function MobileTerminalInner({ terminalToken }: { terminalToken: string }) {
   }, []);
 
   const addPane = useCallback(async (agentType: string) => {
-    const id = crypto.randomUUID();
     const agent = AGENT_TYPES[agentType];
     const title = agentType === 'shell' ? 'Terminal' : agent?.name || 'Agent';
     const cwd = defaultCwd;
@@ -112,7 +118,7 @@ function MobileTerminalInner({ terminalToken }: { terminalToken: string }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id, title, color: agent?.color || '#6366f1', cwd,
+        title, color: agent?.color || '#6366f1', cwd,
         claudeSessionId: agentType !== 'shell' ? 'new' : undefined,
         agentType,
       }),
@@ -201,7 +207,7 @@ function MobileTerminalInner({ terminalToken }: { terminalToken: string }) {
     return (
       <div className="flex flex-col items-center justify-center h-[80dvh] px-6">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/spaces_icon.png`} alt="Spaces" className="w-14 h-14 mb-4 opacity-60" />
+        <img src={`${basePath}/spaces_icon.png`} alt="Spaces" className="w-14 h-14 mb-4 opacity-60" />
         <h1 className="text-lg font-bold mb-1">Spaces</h1>
         <p className="text-zinc-500 text-sm mb-6">Choose a workspace</p>
 
@@ -391,7 +397,7 @@ function MobileTerminalInner({ terminalToken }: { terminalToken: string }) {
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/spaces_icon.png`} alt="" className="w-12 h-12 opacity-20" />
+          <img src={`${basePath}/spaces_icon.png`} alt="" className="w-12 h-12 opacity-20" />
           <p className="text-zinc-500 text-sm">No panes.</p>
           <button
             onClick={() => addPane('shell')}

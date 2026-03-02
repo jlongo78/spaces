@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
 import { HAS_MULTIUSER } from '@/lib/tier';
+import { getPro } from '@/lib/pro';
 
 export const config = {
   // Server
@@ -22,8 +23,8 @@ export function getUserPaths(username: string) {
   let resolvedUser = username;
   if (HAS_MULTIUSER) {
     try {
-      const pro = require('@spaces/pro');
-      resolvedUser = pro.admin.resolveShellUser(username);
+      const pro = getPro();
+      if (pro) resolvedUser = pro.admin.resolveShellUser(username);
     } catch {
       // @spaces/pro not available or admin DB not ready
     }

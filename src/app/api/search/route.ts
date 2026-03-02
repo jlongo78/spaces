@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, withUser } from '@/lib/auth';
 import { ensureInitialized } from '@/lib/db/init';
 import { searchSessions } from '@/lib/db/queries';
+import { getPro } from '@/lib/pro';
 
 export async function GET(request: NextRequest) {
   const user = getAuthUser(request);
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
     // If nodes=all, aggregate from remote nodes
     if (searchParams.get('nodes') === 'all') {
       try {
-        const pro = require('@spaces/pro');
+        const pro = getPro();
         const { aggregateSearch } = pro.network;
         const remoteParams: Record<string, string> = {};
         if (projectId) remoteParams.projectId = projectId;

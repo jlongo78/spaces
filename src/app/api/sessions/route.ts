@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, withUser } from '@/lib/auth';
 import { ensureInitialized } from '@/lib/db/init';
 import { getSessions, getWorkspacesForSession } from '@/lib/db/queries';
+import { getPro } from '@/lib/pro';
 
 export async function GET(request: NextRequest) {
   const user = getAuthUser(request);
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
     const nodesParam = (searchParams.get('nodes') || '').replace(/\/+$/, '');
     if (nodesParam === 'all') {
       try {
-        const pro = require('@spaces/pro');
+        const pro = getPro();
         const { aggregateSessions } = pro.network;
         const remoteParams: Record<string, string> = {};
         if (params.search) remoteParams.search = params.search;

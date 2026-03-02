@@ -143,6 +143,10 @@ function initSchema(db: Database.Database) {
   // Copy claude_path → agent_path for existing rows that don't have it yet
   try { db.exec("UPDATE projects SET agent_path = claude_path WHERE agent_path IS NULL AND claude_path IS NOT NULL"); } catch { /* */ }
 
+  // Collaboration toggles
+  addCol('workspaces', 'collaboration', 'INTEGER DEFAULT 0');
+  addCol('panes', 'is_collaborating', 'INTEGER DEFAULT 0');
+
   // Index for filtering by agent type
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_agent_type ON sessions(agent_type)'); } catch { /* */ }
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_projects_agent_type ON projects(agent_type)'); } catch { /* */ }
@@ -180,6 +184,13 @@ function initSchema(db: Database.Database) {
   } catch {
     // FTS5 may already exist
   }
+
+  // Run @spaces/teams migrations if installed
+  try {
+    const { getTeams } = require('@/lib/teams');
+    const teams = getTeams();
+    if (teams) teams.db.runMigrations(db);
+  } catch { /* @spaces/teams not installed */ }
 }
 
 export function closeDb() {

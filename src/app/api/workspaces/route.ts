@@ -3,6 +3,7 @@ import { getAuthUser, withUser } from '@/lib/auth';
 import { ensureInitialized } from '@/lib/db/init';
 import { getDb } from '@/lib/db/schema';
 import { createWorkspace, getActiveWorkspace, switchWorkspace, duplicateWorkspace } from '@/lib/db/queries';
+import { getPro } from '@/lib/pro';
 
 export async function GET(request: NextRequest) {
   const user = getAuthUser(request);
@@ -11,6 +12,7 @@ export async function GET(request: NextRequest) {
     const db = getDb();
     const rows = db.prepare(`
       SELECT w.id, w.name, w.description, w.color, w.created, w.is_active as isActive,
+        w.collaboration,
         COUNT(p.id) as paneCount
       FROM workspaces w
       LEFT JOIN panes p ON p.workspace_id = w.id
@@ -25,13 +27,14 @@ export async function GET(request: NextRequest) {
       color: w.color as string,
       created: w.created as string,
       isActive: !!(w.isActive as number),
+      collaboration: !!(w.collaboration as number),
       paneCount: w.paneCount as number,
     }));
 
     const nodesParam = (request.nextUrl.searchParams.get('nodes') || '').replace(/\/+$/, '');
     if (nodesParam === 'all') {
       try {
-        const pro = require('@spaces/pro');
+        const pro = getPro();
         const { aggregateWorkspaces } = pro.network;
         const aggregated = await aggregateWorkspaces();
         return NextResponse.json({

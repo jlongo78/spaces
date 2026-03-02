@@ -42,6 +42,7 @@ export async function middleware(request: NextRequest) {
   // Skip auth for login page, specific auth APIs, static assets, and Next.js internals
   if (
     pathname === '/login' || pathname === '/login/' ||
+    pathname.startsWith('/api/tier') ||
     pathname.startsWith('/api/auth/login') ||
     pathname.startsWith('/api/auth/logout') ||
     pathname.startsWith('/api/auth/totp/') ||

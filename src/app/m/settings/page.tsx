@@ -7,9 +7,10 @@ import { MobileHeader } from '@/components/mobile/mobile-header';
 import { RefreshCw, FolderOpen, Loader2, Shield, CheckCircle2, BarChart3, Settings, LogOut, Plus, X, FolderCode } from 'lucide-react';
 import { api } from '@/lib/api';
 import { setOptOut } from '@/lib/telemetry';
-import { HAS_AUTH } from '@/lib/tier';
+import { useTier } from '@/hooks/use-tier';
 
 export default function MobileSettingsPage() {
+  const { hasAuth } = useTier();
   const router = useRouter();
   const sync = useSync();
   const [syncResult, setSyncResult] = useState('');
@@ -78,7 +79,7 @@ export default function MobileSettingsPage() {
 
       <div className="px-4 py-4 space-y-4">
         {/* Terminal Security (server edition) */}
-        {HAS_AUTH && (
+        {hasAuth && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
             <h3 className="text-sm font-semibold flex items-center gap-2 mb-2">
               <Shield className="w-4 h-4" />
@@ -213,7 +214,7 @@ export default function MobileSettingsPage() {
         </div>
 
         {/* Sign out (server edition) */}
-        {HAS_AUTH && (
+        {hasAuth && (
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 w-full px-4 py-3 text-sm text-red-400 bg-zinc-900 border border-zinc-800 rounded-lg"

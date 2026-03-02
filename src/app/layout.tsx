@@ -7,6 +7,7 @@ import { Providers } from "@/components/layout/providers";
 export const metadata: Metadata = {
   title: "Spaces",
   description: "Agent workspace manager for Claude, Codex, Gemini, and more",
+  icons: { icon: '/icon.png' },
 };
 
 export const viewport: Viewport = {

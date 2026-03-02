@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       sortOrder: body.sortOrder,
       workspaceId: body.workspaceId,
       nodeId: body.nodeId,
+      isCollaborating: body.isCollaborating,
     });
     return NextResponse.json(pane);
   });

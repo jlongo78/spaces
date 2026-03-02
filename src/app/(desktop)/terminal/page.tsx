@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Loader2, Terminal, Search, MessageSquare, FolderOpen,
   Clock, ChevronDown, ChevronRight, Save, FolderInput, Trash2, Pencil, Check, X,
-  Layers, Copy, Home, XCircle, ArrowLeftToLine, Globe, AlertCircle,
+  Layers, Copy, Home, XCircle, ArrowLeftToLine, Globe, AlertCircle, Users,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { TerminalPane } from '@/components/terminal/terminal-pane';
@@ -16,8 +16,11 @@ import { AGENT_TYPES, AGENT_LIST } from '@/lib/agents';
 import type { PaneData } from '@/lib/db/queries';
 import type { SessionWithMeta, Workspace } from '@/types/claude';
 import { useRemoteWorkspaces } from '@/hooks/use-sessions';
+import { ActivityPanel } from '@/components/bus/activity-panel';
+import { useSSEBusEvents } from '@/hooks/use-sse';
 import { api } from '@/lib/api';
 import { track } from '@/lib/telemetry';
+import { useTier } from '@/hooks/use-tier';
 
 export default function TerminalPage() {
   return (
@@ -29,6 +32,7 @@ export default function TerminalPage() {
 
 function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   const router = useRouter();
+  const { basePath, hasNetwork, hasCollaboration } = useTier();
   const [panes, setPanes] = useState<PaneData[]>([]);
   const [loading, setLoading] = useState(true);
   const [wsLoading, setWsLoading] = useState(true);
@@ -36,6 +40,10 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   const [maximized, setMaximized] = useState<string | null>(null);
   const [poppedOut, setPoppedOut] = useState<Set<string>>(new Set());
   const [entered, setEntered] = useState(false);
+  const [busPanelCollapsed, setBusPanelCollapsed] = useState(true);
+
+  // SSE bus events for real-time updates
+  useSSEBusEvents();
 
   // Workspace state
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -88,6 +96,7 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
     const active = data.find((w: Workspace) => w.isActive);
     setActiveWorkspace(active || null);
     setWsLoading(false);
+    return active || null;
   }, []);
 
   const loadPanes = useCallback(async () => {
@@ -104,7 +113,11 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   }, []);
 
   useEffect(() => {
-    loadWorkspaces();
+    loadWorkspaces().then(active => {
+      // Auto-enter active workspace on mount so page refreshes
+      // don't drop the user back to the workspace chooser
+      if (active) setEntered(true);
+    });
   }, [loadWorkspaces]);
 
   // Only load panes after entering a workspace
@@ -193,7 +206,6 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   // ─── Pane Operations ──────────────────────────────────────
 
   const addPane = useCallback(async () => {
-    const id = crypto.randomUUID();
     const agent = AGENT_TYPES[newAgentType];
     const cwd = newCwd
       || (selectedSession?.projectPath)
@@ -213,14 +225,18 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
       || (selectedSession ? (selectedSession.customName || selectedSession.firstPrompt?.slice(0, 50) || agent?.name || 'Agent') : '')
       || (newAgentType === 'shell' ? 'Terminal' : agent?.name || 'Agent');
 
+    // Auto-opt-in to collaboration for agent panes when workspace has collaboration enabled
+    const autoCollab = activeWorkspace?.collaboration && newAgentType !== 'shell';
+
     const res = await fetch(api('/api/panes'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id, title, color: newColor, cwd, claudeSessionId,
+        title, color: newColor, cwd, claudeSessionId,
         agentType: newAgentType,
         customCommand: newAgentType === 'custom' ? newCustomCommand : undefined,
         nodeId: newNodeId || undefined,
+        isCollaborating: autoCollab || undefined,
       }),
     });
     const pane = await res.json();
@@ -412,7 +428,7 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
           <div className="w-full max-w-2xl">
             <div className="text-center mb-10">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/spaces_icon.png`} alt="Spaces" className="w-16 h-16 mx-auto mb-4" />
+              <img src={`${basePath}/spaces_icon.png`} alt="Spaces" className="w-16 h-16 mx-auto mb-4" />
               <h1 className="text-2xl font-bold mb-2">Spaces</h1>
               <p className="text-zinc-400 text-sm">Choose a workspace to open, or create a new one.</p>
             </div>
@@ -457,14 +473,14 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
                 </div>
 
                 {/* Remote workspaces from network nodes */}
-                {remoteWorkspacesQuery.isLoading && (
+                {hasNetwork && remoteWorkspacesQuery.isLoading && (
                   <div className="flex items-center justify-center gap-2 py-4 mt-6 border-t border-zinc-800">
                     <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />
                     <span className="text-xs text-zinc-500">Loading network spaces...</span>
                   </div>
                 )}
 
-                {remoteWorkspacesQuery.data?.remote && remoteWorkspacesQuery.data.remote.length > 0 && (
+                {hasNetwork && remoteWorkspacesQuery.data?.remote && remoteWorkspacesQuery.data.remote.length > 0 && (
                   <div className="mt-6 border-t border-zinc-800 pt-6">
                     <div className="flex items-center gap-2 mb-4">
                       <Globe className="w-4 h-4 text-zinc-500" />
@@ -663,6 +679,29 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
         </div>
 
         <div className="flex items-center gap-2">
+          {hasCollaboration && activeWorkspace && (
+            <button
+              onClick={async () => {
+                const newVal = !activeWorkspace.collaboration;
+                await fetch(api(`/api/workspaces/${activeWorkspace.id}`), {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ collaboration: newVal }),
+                });
+                setActiveWorkspace(prev => prev ? { ...prev, collaboration: newVal } : prev);
+                setWorkspaces(prev => prev.map(w => w.id === activeWorkspace.id ? { ...w, collaboration: newVal } : w));
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border transition-colors ${
+                activeWorkspace.collaboration
+                  ? 'border-indigo-500/50 bg-indigo-600/20 text-indigo-400'
+                  : 'border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
+              }`}
+              title={activeWorkspace.collaboration ? 'Collaboration enabled — click to disable' : 'Enable collaboration for this workspace'}
+            >
+              <Users className="w-3.5 h-3.5" />
+              Collab
+            </button>
+          )}
           <button
             onClick={closeWorkspace}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-zinc-700 text-zinc-400 rounded-md hover:text-white hover:border-zinc-600 transition-colors"
@@ -976,64 +1015,75 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
         </div>
       )}
 
-      {/* Terminal grid */}
-      {visiblePanes.length === 0 && poppedOut.size === 0 ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/spaces_icon.png`} alt="Spaces" className="w-16 h-16 mx-auto opacity-30" />
-            <p className="text-zinc-500">No panes yet.</p>
-            <p className="text-zinc-600 text-xs">Add a pane to start a shell, Claude, Codex, Gemini, or any agent.</p>
-            <button
-              onClick={() => setShowAdd(true)}
-              className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-500 inline-flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Add your first pane
-            </button>
+      {/* Terminal grid + Activity Panel */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {visiblePanes.length === 0 && poppedOut.size === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`${basePath}/spaces_icon.png`} alt="Spaces" className="w-16 h-16 mx-auto opacity-30" />
+              <p className="text-zinc-500">No panes yet.</p>
+              <p className="text-zinc-600 text-xs">Add a pane to start a shell, Claude, Codex, Gemini, or any agent.</p>
+              <button
+                onClick={() => setShowAdd(true)}
+                className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-500 inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add your first pane
+              </button>
+            </div>
           </div>
-        </div>
-      ) : visiblePanes.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-2">
-            <p className="text-zinc-500 text-sm">All panes are popped out to separate windows.</p>
-            <button
-              onClick={() => setShowAdd(true)}
-              className="px-3 py-1.5 text-xs text-zinc-400 hover:text-white border border-zinc-700 rounded-md hover:border-zinc-600 inline-flex items-center gap-1.5"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add another pane
-            </button>
+        ) : visiblePanes.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-2">
+              <p className="text-zinc-500 text-sm">All panes are popped out to separate windows.</p>
+              <button
+                onClick={() => setShowAdd(true)}
+                className="px-3 py-1.5 text-xs text-zinc-400 hover:text-white border border-zinc-700 rounded-md hover:border-zinc-600 inline-flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add another pane
+              </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div
-          className="flex-1 p-2 gap-2 overflow-auto"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: visiblePanes.length === 1 ? '1fr'
-              : visiblePanes.length <= 2 ? 'repeat(2, 1fr)'
-              : visiblePanes.length <= 4 ? 'repeat(2, 1fr)'
-              : 'repeat(3, 1fr)',
-            gridAutoRows: visiblePanes.length <= 2 ? '1fr' : 'minmax(300px, 1fr)',
-          }}
-        >
-          {visiblePanes.map((pane) => (
-            maximized && maximized !== pane.id ? null : (
-              <TerminalPane
-                key={pane.id}
-                pane={pane}
-                onClose={closePane}
-                onUpdate={updatePane}
-                isMaximized={maximized === pane.id}
-                onToggleMaximize={toggleMaximize}
-                onPopout={handlePopout}
-                terminalToken={terminalToken}
-              />
-            )
-          ))}
-        </div>
-      )}
+        ) : (
+          <div
+            className="flex-1 p-2 gap-2 overflow-auto h-full"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: visiblePanes.length === 1 ? '1fr'
+                : visiblePanes.length <= 2 ? 'repeat(2, 1fr)'
+                : visiblePanes.length <= 4 ? 'repeat(2, 1fr)'
+                : 'repeat(3, 1fr)',
+              gridAutoRows: visiblePanes.length <= 2 ? '1fr' : 'minmax(300px, 1fr)',
+            }}
+          >
+            {visiblePanes.map((pane) => (
+              maximized && maximized !== pane.id ? null : (
+                <TerminalPane
+                  key={pane.id}
+                  pane={pane}
+                  onClose={closePane}
+                  onUpdate={updatePane}
+                  isMaximized={maximized === pane.id}
+                  onToggleMaximize={toggleMaximize}
+                  onPopout={handlePopout}
+                  terminalToken={terminalToken}
+                  workspaceCollaboration={activeWorkspace?.collaboration}
+                />
+              )
+            ))}
+          </div>
+        )}
+        {activeWorkspace?.collaboration && (
+          <ActivityPanel
+            workspaceId={activeWorkspace?.id ?? null}
+            panes={visiblePanes.map(p => ({ id: p.id, title: p.title, agentType: p.agentType, color: p.color }))}
+            collapsed={busPanelCollapsed}
+            onToggle={() => setBusPanelCollapsed(!busPanelCollapsed)}
+          />
+        )}
+      </div>
     </div>
   );
 }

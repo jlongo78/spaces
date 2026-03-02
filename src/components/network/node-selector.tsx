@@ -2,7 +2,7 @@
 
 import { useNodes } from '@/hooks/use-network';
 import { Globe } from 'lucide-react';
-import { HAS_NETWORK } from '@/lib/tier';
+import { useTier } from '@/hooks/use-tier';
 
 interface NodeSelectorProps {
   value: string;
@@ -17,7 +17,8 @@ const statusDot: Record<string, string> = {
 };
 
 export function NodeSelector({ value, onChange }: NodeSelectorProps) {
-  const { data: nodes } = useNodes(HAS_NETWORK);
+  const { hasNetwork } = useTier();
+  const { data: nodes } = useNodes(hasNetwork);
 
   if (!Array.isArray(nodes) || nodes.length === 0) return null;
 

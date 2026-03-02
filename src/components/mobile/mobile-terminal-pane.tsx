@@ -93,10 +93,17 @@ export function MobileTerminalPane({ pane, terminalToken, isVisible, onIdleChang
     term.loadAddon(webLinksAddon);
 
     term.open(termRef.current);
-    fitAddon.fit();
+    try { fitAddon.fit(); } catch { /* dimensions may be wrong — corrected below */ }
 
     xtermRef.current = term;
     fitRef.current = fitAddon;
+
+    // The initial fit() above kicks xterm's canvas renderer into life but the
+    // layout may not have settled yet.  A double-rAF waits for a full
+    // layout+paint cycle; the 300ms fallback catches slow layouts.
+    const stableFit = () => { try { fitAddon.fit(); } catch {} };
+    requestAnimationFrame(() => requestAnimationFrame(stableFit));
+    setTimeout(stableFit, 300);
 
     // Build WebSocket URL from current pane state
     const buildWsUrl = () => {
@@ -112,7 +119,8 @@ export function MobileTerminalPane({ pane, terminalToken, isVisible, onIdleChang
       if (p.customCommand) params.set('customCommand', p.customCommand);
       const token = tokenRef.current;
       if (token) params.set('terminalToken', token);
-      const wsPath = WS_PATH || '/ws';
+      const basePath = process.env.SPACES_BASE_PATH || '';
+      const wsPath = WS_PATH || `${basePath}/ws`;
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       return `${proto}//${location.host}${wsPath}?${params}`;
     };
@@ -205,17 +213,23 @@ export function MobileTerminalPane({ pane, terminalToken, isVisible, onIdleChang
     };
   }, [connect]);
 
-  // Resize on container changes
+  // Resize on container changes.  ResizeObserver fires immediately on
+  // observe(), but fitRef may not be set yet (connect() is async).  Using rAF
+  // coalesces rapid resize events and gives connect() time to finish.
   useEffect(() => {
+    let rafId: number;
     const observer = new ResizeObserver(() => {
-      if (fitRef.current) {
-        try { fitRef.current.fit(); } catch { /* ignore */ }
-      }
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        if (fitRef.current) {
+          try { fitRef.current.fit(); } catch { /* ignore */ }
+        }
+      });
     });
     if (termRef.current) {
       observer.observe(termRef.current);
     }
-    return () => observer.disconnect();
+    return () => { cancelAnimationFrame(rafId); observer.disconnect(); };
   }, []);
 
   // Refit xterm when becoming visible

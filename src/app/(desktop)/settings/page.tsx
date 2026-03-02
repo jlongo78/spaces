@@ -5,12 +5,11 @@ import { useSync } from '@/hooks/use-sessions';
 import { Settings, RefreshCw, FolderOpen, Loader2, Shield, CheckCircle2, BarChart3, Plus, X, FolderCode } from 'lucide-react';
 import { api } from '@/lib/api';
 import { track, setOptOut } from '@/lib/telemetry';
-import { HAS_AUTH } from '@/lib/tier';
-
-// Check for self-contained auth (session cookie present = new auth system)
-const hasSelfContainedAuth = typeof document !== 'undefined' && document.cookie.includes('spaces-session=');
+import { useTier } from '@/hooks/use-tier';
 
 export default function SettingsPage() {
+  const { hasAuth } = useTier();
+  const hasSelfContainedAuth = typeof document !== 'undefined' && document.cookie.includes('spaces-session=');
   const sync = useSync();
   const [syncResult, setSyncResult] = useState<string>('');
 
@@ -37,7 +36,7 @@ export default function SettingsPage() {
   const [telemetryLoading, setTelemetryLoading] = useState(true);
 
   useEffect(() => {
-    if (!HAS_AUTH) {
+    if (!hasAuth) {
       setTotpLoading(false);
       return;
     }
@@ -62,7 +61,7 @@ export default function SettingsPage() {
         setTotpLoading(false);
       })
       .catch(() => setTotpLoading(false));
-  }, []);
+  }, [hasAuth, hasSelfContainedAuth]);
 
   useEffect(() => {
     fetch(api('/api/config'))
@@ -178,7 +177,7 @@ export default function SettingsPage() {
 
       <div className="space-y-6">
         {/* Terminal Security / 2FA — server edition only */}
-        {HAS_AUTH && <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
+        {hasAuth && <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
           <h3 className="font-semibold flex items-center gap-2 mb-3">
             <Shield className="w-4 h-4" />
             Terminal Security
