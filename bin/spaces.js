@@ -29,14 +29,29 @@ if (cliFlags.help) {
   Spaces - Agent Workspace Manager
 
   Usage:
-    spaces              Start the server (auto-detects tier)
-    spaces --setup      Interactive first-time setup wizard
-    spaces --port 3457  Override port
-    spaces --tier team  Override tier (community|server|team|federation)
-    spaces --base-path /spaces  Set base path for reverse proxy
-    spaces --help       Show this help
+    spaces                       Start the server (auto-detects tier)
+    spaces install <teams|pro>   Install a tier package
+    spaces verify                Verify installed packages
+    spaces upgrade [teams|pro]   Upgrade installed packages
+    spaces --setup               Interactive first-time setup wizard
+    spaces --port 3457           Override port
+    spaces --tier team           Override tier (community|server|team|federation)
+    spaces --base-path /spaces   Set base path for reverse proxy
+    spaces --help                Show this help
 `);
   process.exit(0);
+}
+
+// ─── Route install/verify/upgrade to spaces-install.js ────
+const subcommand = args[0];
+if (subcommand === 'install' || subcommand === 'verify' || subcommand === 'upgrade') {
+  // Re-exec with spaces-install.js, passing through all args
+  const installScript = path.join(__dirname, 'spaces-install.js');
+  const { status } = require('child_process').spawnSync(
+    process.execPath, [installScript, ...args],
+    { stdio: 'inherit', env: process.env }
+  );
+  process.exit(status || 0);
 }
 
 // ─── Setup wizard ─────────────────────────────────────────
@@ -63,6 +78,10 @@ function startServer() {
   const basePath = cliFlags.basePath
     || process.env.SPACES_BASE_PATH
     || savedConfig.basePath
+    || '';
+
+  const allowedOrigins = process.env.SPACES_ALLOWED_ORIGINS
+    || savedConfig.allowedOrigins
     || '';
 
   // ─── Resolve optional packages once ─────────────────────────
@@ -95,13 +114,13 @@ function startServer() {
     // server/federation tiers require @spaces/pro
     if ((tier === 'server' || tier === 'federation') && !proPath) {
       console.error('  Error: @spaces/pro is required for server/federation tiers.');
-      console.error('  Install it: npm install -g @spaces/pro');
+      console.error('  Install it: spaces install pro');
       process.exit(1);
     }
     // team/federation tiers require @spaces/teams
     if ((tier === 'team' || tier === 'federation') && !teamsPath) {
       console.error('  Error: @spaces/teams is required for team/federation tiers.');
-      console.error('  Install it: npm install -g @spaces/teams');
+      console.error('  Install it: spaces install teams');
       process.exit(1);
     }
 
@@ -120,6 +139,7 @@ function startServer() {
     }
 
     childEnv.SPACES_SESSION_SECRET = sessionSecret;
+    process.env.SPACES_SESSION_SECRET = sessionSecret;
     console.log(`  Admin DB: ${adminDbPath}`);
   }
 
@@ -130,17 +150,60 @@ function startServer() {
     childEnv.SPACES_BASE_PATH = basePath;
     console.log(`  Base path: ${basePath}`);
   }
+  if (allowedOrigins) {
+    childEnv.SPACES_ALLOWED_ORIGINS = allowedOrigins;
+    process.env.SPACES_ALLOWED_ORIGINS = allowedOrigins;
+    console.log(`  Allowed origins: ${allowedOrigins}`);
+  }
 
   // ─── Resolve NODE_PATH for @spaces/pro and @spaces/teams ──
+  // Update both childEnv (for the Next.js child process) and process.env
+  // (for terminal-server.js which runs in this same parent process).
+  // Include:
+  //   - Managed packages node_modules (~/.spaces/packages/node_modules)
+  //   - Each managed package's own node_modules (for its bundled deps)
+  //   - The host app's own node_modules (fallback for peer deps)
+  const appNodeModules = path.join(projectDir, 'node_modules');
+  const nodePaths = [MANAGED_NODE_MODULES, appNodeModules];
+  // Add each resolved package's own node_modules so its bundled deps are found
   for (const pkgPath of [proPath, teamsPath]) {
     if (pkgPath) {
-      const nodeModulesDir = path.dirname(path.dirname(pkgPath));
-      const existing = childEnv.NODE_PATH || '';
-      if (!existing.includes(nodeModulesDir)) {
-        childEnv.NODE_PATH = existing
-          ? `${nodeModulesDir}${path.delimiter}${existing}`
-          : nodeModulesDir;
+      // pkgPath is the package root (symlink target or direct path)
+      const realPath = fs.realpathSync(pkgPath);
+      const pkgNodeModules = path.join(realPath, 'node_modules');
+      if (fs.existsSync(pkgNodeModules) && !nodePaths.includes(pkgNodeModules)) {
+        nodePaths.push(pkgNodeModules);
       }
+      // Also add the parent scope for @spaces/* resolution
+      const parentModules = path.dirname(path.dirname(pkgPath));
+      if (!nodePaths.includes(parentModules)) {
+        nodePaths.push(parentModules);
+      }
+    }
+  }
+  for (const dir of nodePaths) {
+    for (const target of [childEnv, process.env]) {
+      const existing = target.NODE_PATH || '';
+      if (!existing.includes(dir)) {
+        target.NODE_PATH = existing
+          ? `${dir}${path.delimiter}${existing}`
+          : dir;
+      }
+    }
+  }
+  // Re-init module paths so require() in this process picks up the new NODE_PATH
+  require('module').Module._initPaths();
+
+  // Verify collaboration pipeline works end-to-end at startup
+  if (tier === 'team' || tier === 'federation') {
+    try {
+      const teams = require('@spaces/teams');
+      console.log('  Collaboration: @spaces/teams loaded OK');
+      // Smoke-test that peer deps resolve from this process
+      require('better-sqlite3');
+    } catch (e) {
+      console.error(`  Warning: Collaboration may not work — ${e.message}`);
+      console.error('  Check that NODE_PATH includes the host app node_modules.');
     }
   }
 
@@ -238,6 +301,16 @@ function startServer() {
 
   // ─── HTTP proxy server ────────────────────────────────────
   const server = http.createServer((req, res) => {
+    // WebSocket paths are handled by the 'upgrade' event, but a plain
+    // HTTP request to /ws (e.g. health check) should not be proxied to
+    // Next.js which would 308-redirect it due to trailingSlash.
+    const urlPath = (req.url || '').split('?')[0];
+    if (urlPath === '/ws' || urlPath.endsWith('/ws') || urlPath.endsWith('/ws/')) {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('WebSocket endpoint');
+      return;
+    }
+
     const proxyReq = http.request(
       {
         hostname: '127.0.0.1',
@@ -278,19 +351,26 @@ function startServer() {
   process.on('SIGTERM', cleanup);
 }
 
+// ─── Managed packages directory ──────────────────────────────
+const MANAGED_PACKAGES = path.join(SPACES_DIR, 'packages');
+const MANAGED_NODE_MODULES = path.join(MANAGED_PACKAGES, 'node_modules');
+
 // ─── @spaces/pro resolution ──────────────────────────────────
 function resolveSpacesPro() {
-  // 1. Local node_modules
+  // 1. Managed install (~/.spaces/packages/)
+  const managed = path.join(MANAGED_NODE_MODULES, '@spaces', 'pro');
+  if (fs.existsSync(path.join(managed, 'dist', 'index.js'))) return managed;
+
+  // 2. Local node_modules (npm link / optionalDep)
   try {
     return require.resolve('@spaces/pro');
   } catch {}
 
-  // 2. Global npm prefix
+  // 3. Global npm prefix (legacy)
   try {
     const globalPrefix = execFileSync('npm', ['prefix', '-g'], { encoding: 'utf-8' }).trim();
     const globalProPath = path.join(globalPrefix, 'lib', 'node_modules', '@spaces', 'pro');
     if (fs.existsSync(globalProPath)) return globalProPath;
-    // Some platforms put it directly under node_modules (e.g. Windows)
     const altPath = path.join(globalPrefix, 'node_modules', '@spaces', 'pro');
     if (fs.existsSync(altPath)) return altPath;
   } catch {}
@@ -300,12 +380,16 @@ function resolveSpacesPro() {
 
 // ─── @spaces/teams resolution ────────────────────────────────
 function resolveSpacesTeams() {
-  // 1. Local node_modules
+  // 1. Managed install (~/.spaces/packages/)
+  const managed = path.join(MANAGED_NODE_MODULES, '@spaces', 'teams');
+  if (fs.existsSync(path.join(managed, 'index.js'))) return managed;
+
+  // 2. Local node_modules (npm link / optionalDep)
   try {
     return require.resolve('@spaces/teams');
   } catch {}
 
-  // 2. Global npm prefix
+  // 3. Global npm prefix (legacy)
   try {
     const globalPrefix = execFileSync('npm', ['prefix', '-g'], { encoding: 'utf-8' }).trim();
     const globalTeamsPath = path.join(globalPrefix, 'lib', 'node_modules', '@spaces', 'teams');

@@ -24,11 +24,31 @@ if (basePath) {
   process.env.SPACES_BASE_PATH = basePath;
 }
 
-// ─── Auto-detect tier ─────────────────────────────────────
-let hasSpacesPro = false;
-let hasSpacesTeams = false;
-try { require.resolve('@spaces/pro'); hasSpacesPro = true; } catch {}
-try { require.resolve('@spaces/teams'); hasSpacesTeams = true; } catch {}
+const allowedOrigins = process.env.SPACES_ALLOWED_ORIGINS || savedConfig.allowedOrigins || '';
+if (allowedOrigins) {
+  process.env.SPACES_ALLOWED_ORIGINS = allowedOrigins;
+}
+
+// ─── Managed packages directory ──────────────────────────────
+const MANAGED_PACKAGES = path.join(SPACES_DIR, 'packages');
+const MANAGED_NODE_MODULES = path.join(MANAGED_PACKAGES, 'node_modules');
+
+// ─── Auto-detect tier (check managed packages first) ─────────
+function hasManagedPro() {
+  return fs.existsSync(path.join(MANAGED_NODE_MODULES, '@spaces', 'pro', 'dist', 'index.js'));
+}
+function hasManagedTeams() {
+  return fs.existsSync(path.join(MANAGED_NODE_MODULES, '@spaces', 'teams', 'index.js'));
+}
+function hasRequirePro() {
+  try { require.resolve('@spaces/pro'); return true; } catch { return false; }
+}
+function hasRequireTeams() {
+  try { require.resolve('@spaces/teams'); return true; } catch { return false; }
+}
+
+const hasSpacesPro = hasManagedPro() || hasRequirePro();
+const hasSpacesTeams = hasManagedTeams() || hasRequireTeams();
 
 let tier = process.env.SPACES_TIER || savedConfig.tier || '';
 if (!tier) {
@@ -37,6 +57,21 @@ if (!tier) {
   else tier = 'community';
 }
 process.env.SPACES_TIER = tier;
+
+// ─── Resolve NODE_PATH for managed packages ──────────────────
+const nodePaths = [MANAGED_NODE_MODULES];
+// Add each managed package's own node_modules for bundled deps
+for (const pkgName of ['pro', 'teams']) {
+  const pkgDir = path.join(MANAGED_PACKAGES, pkgName, 'node_modules');
+  if (fs.existsSync(pkgDir)) nodePaths.push(pkgDir);
+}
+for (const dir of nodePaths) {
+  const existing = process.env.NODE_PATH || '';
+  if (!existing.includes(dir)) {
+    process.env.NODE_PATH = existing ? `${dir}${path.delimiter}${existing}` : dir;
+  }
+}
+require('module').Module._initPaths();
 
 // Require terminal-server AFTER tier is set so it reads the correct SPACES_TIER
 const { createTerminalServer } = require('./terminal-server');
@@ -60,7 +95,7 @@ if (tier !== 'community') {
 
 // Spawn Next.js dev server on an internal port
 const childEnv = { ...process.env, PORT: String(NEXT_INTERNAL_PORT) };
-const next = spawn('npx', ['next', 'dev', '--port', String(NEXT_INTERNAL_PORT)], {
+const next = spawn('npx', ['next', 'dev', '--hostname', '0.0.0.0', '--port', String(NEXT_INTERNAL_PORT)], {
   cwd: path.join(__dirname, '..'),
   stdio: ['ignore', 'pipe', 'pipe'],
   env: childEnv,
