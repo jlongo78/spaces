@@ -416,7 +416,13 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
 
         {workspaceCollaboration && pane.agentType !== 'shell' && (
           <button
-            onClick={() => onUpdate(pane.id, { isCollaborating: !pane.isCollaborating } as Partial<PaneData>)}
+            onClick={() => {
+              const newVal = !pane.isCollaborating;
+              onUpdate(pane.id, { isCollaborating: newVal } as Partial<PaneData>);
+              if (wsRef.current?.readyState === WebSocket.OPEN) {
+                wsRef.current.send(JSON.stringify({ type: 'collab-toggle', isCollaborating: newVal }));
+              }
+            }}
             className={`transition-colors ${
               pane.isCollaborating
                 ? 'text-indigo-400 hover:text-indigo-300'

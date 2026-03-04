@@ -1,9 +1,9 @@
-import { getPro } from '@/lib/pro';
+import { getTeams } from '@/lib/teams';
 
 const notAvailable = () =>
-  Response.json({ error: 'Requires @spaces/pro' }, { status: 404 });
+  Response.json({ error: 'Requires @spaces/teams' }, { status: 404 });
 
 export async function POST() {
-  const pro = getPro();
-  return pro?.auth.api.logout.POST() ?? notAvailable();
+  const teams = getTeams();
+  return teams?.auth.api.logout.POST() ?? notAvailable();
 }

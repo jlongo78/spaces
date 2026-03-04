@@ -1,4 +1,4 @@
-export type Tier = 'community' | 'server' | 'team' | 'federation';
+export type Tier = 'community' | 'team' | 'federation';
 
 // Tier resolution: SPACES_TIER (set by bin/spaces.js launcher) is primary,
 // with NEXT_PUBLIC_TIER and NEXT_PUBLIC_EDITION as backward-compat fallbacks.
@@ -9,20 +9,22 @@ export const TIER: Tier = (process.env.SPACES_TIER as Tier)
   || (process.env.NEXT_PUBLIC_TIER as Tier)
   || (process.env.NEXT_PUBLIC_EDITION === 'server' ? 'federation' : 'community');
 
-export const IS_SERVER = TIER !== 'community';
 export const IS_TEAM = TIER === 'team' || TIER === 'federation';
 export const IS_FEDERATION = TIER === 'federation';
-export const HAS_AUTH = IS_SERVER;
+export const HAS_AUTH = IS_TEAM;
 export const HAS_MULTIUSER = IS_TEAM;
 export const HAS_ADMIN = IS_TEAM;
 export const HAS_COLLABORATION = IS_TEAM;
 export const HAS_NETWORK = IS_FEDERATION;
-export const IS_DESKTOP = TIER === 'community';
+export const IS_DESKTOP = !IS_TEAM;
 
 /** Tier flags object for the /api/tier endpoint */
 export function getTierFlags() {
+  let version = '0.0.0';
+  try { version = require('../../package.json').version; } catch {}
   return {
     tier: TIER,
+    version,
     hasAuth: HAS_AUTH,
     hasAdmin: HAS_ADMIN,
     hasCollaboration: HAS_COLLABORATION,

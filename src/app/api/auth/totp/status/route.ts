@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
-import { getPro } from '@/lib/pro';
+import { getTeams } from '@/lib/teams';
 
 const notAvailable = () =>
-  Response.json({ error: 'Requires @spaces/pro' }, { status: 404 });
+  Response.json({ error: 'Requires @spaces/teams' }, { status: 404 });
 
 export async function GET(req: NextRequest) {
-  const pro = getPro();
-  return pro?.auth.api.totpStatus.GET(req) ?? notAvailable();
+  const teams = getTeams();
+  return teams?.auth.api.totpStatus.GET(req) ?? notAvailable();
 }

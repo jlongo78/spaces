@@ -10,6 +10,9 @@ const crypto = require('crypto');
 
 const PORT = parseInt(process.env.SPACES_WS_PORT || '3458', 10);
 const SPACES_TIER = process.env.SPACES_TIER || 'community';
+// API_PORT is the port where Next.js API routes are reachable.
+// In attached mode, createTerminalServer() updates this to the parent server's port.
+let API_PORT = parseInt(process.env.SPACES_PORT || '3457', 10);
 
 // ─── Terminal token verification ──────────────────────────
 
@@ -361,6 +364,53 @@ function isAllowedOrigin(origin) {
   }
 }
 
+// ─── Live collab toggle handler ─────────────────────────
+function handleCollabToggle(paneId, session) {
+  try {
+    const teams = require('@spaces/teams');
+    const config = teams.terminal.getCollabConfig(paneId, session.username);
+
+    if (config) {
+      // Enabling collaboration
+      session.isCollaborating = true;
+      session.workspaceId = config.workspaceId;
+      session.paneName = config.paneName;
+
+      const env = {
+        SPACES_PANE_ID: paneId,
+        SPACES_WORKSPACE_ID: config.workspaceId,
+        SPACES_PANE_NAME: config.paneName,
+        SPACES_API_URL: `http://localhost:${API_PORT}`,
+        SPACES_COLLABORATING: '1',
+      };
+      teams.terminal.writeAgentConfig(session.agentType, session.cwd, env);
+
+      // Nudge the agent so it knows collaboration is available
+      if (session.pty && !session.exited) {
+        const nudge = 'Workspace collaboration has been enabled. Hooks are active — you will receive messages on the next prompt. MCP tools (post_message, read_messages) require reconnecting the MCP server (use /mcp).';
+        session.pty.write(nudge);
+        setTimeout(() => { if (!session.exited) session.pty.write('\r'); }, 100);
+      }
+
+      console.log(`[CollabToggle] Enabled for pane ${paneId.slice(0, 8)} (workspace ${config.workspaceId.slice(0, 8)})`);
+    } else {
+      // Disabling collaboration
+      teams.terminal.removeAgentConfig(session.agentType, session.cwd);
+      session.isCollaborating = false;
+      session.workspaceId = null;
+
+      console.log(`[CollabToggle] Disabled for pane ${paneId.slice(0, 8)}`);
+    }
+
+    // Confirm to browser
+    if (session.ws && session.ws.readyState === 1) {
+      session.ws.send(JSON.stringify({ type: 'collab-updated', isCollaborating: !!config }));
+    }
+  } catch (e) {
+    console.error(`[CollabToggle] Error for pane ${paneId.slice(0, 8)}:`, e.message);
+  }
+}
+
 // ─── Shared connection handler ──────────────────────────
 function handleConnection(wss, ws, req) {
   ws.isAlive = true;
@@ -474,6 +524,8 @@ function handleConnection(wss, ws, req) {
           existing.pty.write(msg.data);
         } else if (msg.type === 'resize') {
           try { existing.pty.resize(msg.cols, msg.rows); } catch { /* ignore */ }
+        } else if (msg.type === 'collab-toggle') {
+          handleCollabToggle(paneId, existing);
         }
       } catch {
         existing.pty.write(raw.toString());
@@ -534,7 +586,7 @@ function handleConnection(wss, ws, req) {
 
   // Inject Spaces bus environment for agent communication
   env.SPACES_PANE_ID = paneId;
-  env.SPACES_API_URL = `http://localhost:${PORT}`;
+  env.SPACES_API_URL = `http://localhost:${API_PORT}`;
 
   // Look up workspace collaboration config from @spaces/teams
   let isCollaborating = false;
@@ -546,9 +598,10 @@ function handleConnection(wss, ws, req) {
       env.SPACES_PANE_NAME = config.paneName;
       isCollaborating = true;
       env.SPACES_COLLABORATING = '1';
+      console.log(`[Collab] Enabled for pane ${paneId.slice(0, 8)} — workspace ${config.workspaceId}, name "${config.paneName}"`);
     }
-  } catch {
-    // @spaces/teams not installed — collaboration not available
+  } catch (e) {
+    console.error(`[Collab] Failed to check collaboration config for pane ${paneId.slice(0, 8)}:`, e.message);
   }
 
   console.log(`[Spawn] user=${username} shell=${shell} args=${JSON.stringify(args)} cwd=${safeCwd} agentType=${agentType}`);
@@ -572,6 +625,7 @@ function handleConnection(wss, ws, req) {
   const session = {
     pty: term, ws, buffer: [], exited: false, username,
     agentType,
+    cwd: safeCwd,
     paneName: env.SPACES_PANE_NAME || paneId,
     lastOutputTime: Date.now(),
     lastNudgeTime: 0,
@@ -601,7 +655,10 @@ function handleConnection(wss, ws, req) {
     try {
       const teams = require('@spaces/teams');
       teams.terminal.writeAgentConfig(agentType, safeCwd, env);
-    } catch { /* @spaces/teams not installed */ }
+      console.log(`[Collab] Wrote agent config for pane ${paneId.slice(0, 8)} (${agentType}) in ${safeCwd}`);
+    } catch (e) {
+      console.error(`[Collab] Failed to write agent config for pane ${paneId.slice(0, 8)}:`, e.message);
+    }
   }
 
   if (agentType !== 'shell') {
@@ -687,6 +744,8 @@ function handleConnection(wss, ws, req) {
         term.write(msg.data);
       } else if (msg.type === 'resize') {
         try { term.resize(msg.cols, msg.rows); } catch { /* ignore */ }
+      } else if (msg.type === 'collab-toggle') {
+        handleCollabToggle(paneId, session);
       }
     } catch {
       term.write(raw.toString());
@@ -1000,6 +1059,13 @@ function startMessageWatcher(apiPort) {
 // ─── Attached mode: mount on an existing HTTP server ─────
 
 function createTerminalServer(httpServer) {
+  // In attached mode, the API is served by the parent HTTP server, not on PORT (3458).
+  if (httpServer.listening) {
+    API_PORT = httpServer.address().port;
+  } else {
+    httpServer.on('listening', () => { API_PORT = httpServer.address().port; });
+  }
+
   const wss = new WebSocketServer({ noServer: true });
   setupWss(wss);
 

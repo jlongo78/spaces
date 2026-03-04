@@ -12,6 +12,8 @@ const CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
 const SESSION_SECRET_PATH = path.join(SPACES_DIR, 'session_secret');
 const NEXT_INTERNAL_PORT = 3400;
 const projectDir = path.join(__dirname, '..');
+const MANAGED_PACKAGES = path.join(SPACES_DIR, 'packages');
+const MANAGED_NODE_MODULES = path.join(MANAGED_PACKAGES, 'node_modules');
 
 // ─── CLI arg parsing ──────────────────────────────────────
 const args = process.argv.slice(2);
@@ -30,21 +32,29 @@ if (cliFlags.help) {
 
   Usage:
     spaces                       Start the server (auto-detects tier)
+    spaces stop                  Stop running server
     spaces install <teams|pro>   Install a tier package
+    spaces uninstall [teams|pro] Uninstall packages (all if none specified)
     spaces verify                Verify installed packages
     spaces upgrade [teams|pro]   Upgrade installed packages
     spaces --setup               Interactive first-time setup wizard
     spaces --port 3457           Override port
-    spaces --tier team           Override tier (community|server|team|federation)
+    spaces --tier team           Override tier (community|team|federation)
     spaces --base-path /spaces   Set base path for reverse proxy
     spaces --help                Show this help
 `);
   process.exit(0);
 }
 
-// ─── Route install/verify/upgrade to spaces-install.js ────
+// ─── Stop command ─────────────────────────────────────────
 const subcommand = args[0];
-if (subcommand === 'install' || subcommand === 'verify' || subcommand === 'upgrade') {
+if (subcommand === 'stop') {
+  stopServer();
+  process.exit(0);
+}
+
+// ─── Route install/verify/upgrade to spaces-install.js ────
+if (subcommand === 'install' || subcommand === 'uninstall' || subcommand === 'verify' || subcommand === 'upgrade') {
   // Re-exec with spaces-install.js, passing through all args
   const installScript = path.join(__dirname, 'spaces-install.js');
   const { status } = require('child_process').spawnSync(
@@ -84,6 +94,9 @@ function startServer() {
     || savedConfig.allowedOrigins
     || '';
 
+  // ─── Kill any existing server on this port ───────────────────
+  stopServer();
+
   // ─── Resolve optional packages once ─────────────────────────
   const proPath = resolveSpacesPro();
   const teamsPath = resolveSpacesTeams();
@@ -111,16 +124,16 @@ function startServer() {
   const childEnv = { ...process.env };
 
   if (tier !== 'community') {
-    // server/federation tiers require @spaces/pro
-    if ((tier === 'server' || tier === 'federation') && !proPath) {
-      console.error('  Error: @spaces/pro is required for server/federation tiers.');
-      console.error('  Install it: spaces install pro');
-      process.exit(1);
-    }
-    // team/federation tiers require @spaces/teams
+    // team/federation tiers require @spaces/teams (auth + collaboration)
     if ((tier === 'team' || tier === 'federation') && !teamsPath) {
       console.error('  Error: @spaces/teams is required for team/federation tiers.');
       console.error('  Install it: spaces install teams');
+      process.exit(1);
+    }
+    // federation tier requires @spaces/pro (network)
+    if (tier === 'federation' && !proPath) {
+      console.error('  Error: @spaces/pro is required for the federation tier.');
+      console.error('  Install it: spaces install pro');
       process.exit(1);
     }
 
@@ -351,9 +364,60 @@ function startServer() {
   process.on('SIGTERM', cleanup);
 }
 
-// ─── Managed packages directory ──────────────────────────────
-const MANAGED_PACKAGES = path.join(SPACES_DIR, 'packages');
-const MANAGED_NODE_MODULES = path.join(MANAGED_PACKAGES, 'node_modules');
+// ─── Stop running server ─────────────────────────────────────
+function findPidsOnPort(port) {
+  const pids = new Set();
+  // Try lsof first
+  try {
+    const output = execFileSync('lsof', ['-ti', `tcp:${port}`], { encoding: 'utf-8' }).trim();
+    for (const p of output.split('\n')) { if (p.trim()) pids.add(parseInt(p.trim(), 10)); }
+  } catch {}
+  // Fallback to fuser (catches processes lsof misses)
+  try {
+    const output = execFileSync('fuser', [`${port}/tcp`], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    for (const p of output.split(/\s+/)) { if (p.trim()) pids.add(parseInt(p.trim(), 10)); }
+  } catch {}
+  return [...pids].filter(p => !isNaN(p) && p > 0);
+}
+
+function stopServer() {
+  let savedConfig = {};
+  if (fs.existsSync(CONFIG_PATH)) {
+    try { savedConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8')); } catch {}
+  }
+  const port = parseInt(process.env.SPACES_PORT || '', 10) || savedConfig.port || 3457;
+  const ports = [port, NEXT_INTERNAL_PORT];
+  let killed = 0;
+
+  for (const p of ports) {
+    for (const pid of findPidsOnPort(p)) {
+      try {
+        process.kill(pid, 'SIGTERM');
+        killed++;
+      } catch {}
+    }
+  }
+
+  if (killed > 0) {
+    console.log(`  Stopped ${killed} process(es) on port ${port}`);
+    // Wait for ports to be released, escalate to SIGKILL if needed
+    const deadline = Date.now() + 2000;
+    let escalated = false;
+    while (Date.now() < deadline) {
+      const remaining = ports.flatMap(p => findPidsOnPort(p));
+      if (remaining.length === 0) break;
+      if (!escalated && Date.now() > deadline - 1000) {
+        for (const pid of remaining) {
+          try { process.kill(pid, 'SIGKILL'); } catch {}
+        }
+        escalated = true;
+      }
+      require('child_process').spawnSync('sleep', ['0.2']);
+    }
+  } else {
+    console.log(`  No running server found on port ${port}`);
+  }
+}
 
 // ─── @spaces/pro resolution ──────────────────────────────────
 function resolveSpacesPro() {
@@ -382,7 +446,7 @@ function resolveSpacesPro() {
 function resolveSpacesTeams() {
   // 1. Managed install (~/.spaces/packages/)
   const managed = path.join(MANAGED_NODE_MODULES, '@spaces', 'teams');
-  if (fs.existsSync(path.join(managed, 'index.js'))) return managed;
+  if (fs.existsSync(path.join(managed, 'dist', 'index.js'))) return managed;
 
   // 2. Local node_modules (npm link / optionalDep)
   try {

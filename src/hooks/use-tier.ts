@@ -4,6 +4,7 @@ import { createContext, useContext } from 'react';
 
 export interface TierFlags {
   tier: string;
+  version: string;
   hasAuth: boolean;
   hasAdmin: boolean;
   hasCollaboration: boolean;
@@ -16,6 +17,7 @@ export interface TierFlags {
 
 const defaults: TierFlags = {
   tier: 'community',
+  version: '',
   hasAuth: false,
   hasAdmin: false,
   hasCollaboration: false,

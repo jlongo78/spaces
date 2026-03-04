@@ -48,12 +48,12 @@ export function upsertSession(session: {
     INSERT INTO sessions (id, session_id, project_id, first_prompt, summary, message_count, created, modified, git_branch, project_path, full_path, agent_type)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
-      first_prompt=excluded.first_prompt,
-      summary=excluded.summary,
-      message_count=excluded.message_count,
-      modified=excluded.modified,
-      git_branch=excluded.git_branch,
-      full_path=excluded.full_path,
+      first_prompt = CASE WHEN excluded.first_prompt != '' THEN excluded.first_prompt ELSE sessions.first_prompt END,
+      summary = CASE WHEN excluded.summary != '' THEN excluded.summary ELSE sessions.summary END,
+      message_count = CASE WHEN excluded.message_count > sessions.message_count THEN excluded.message_count ELSE sessions.message_count END,
+      modified = CASE WHEN excluded.modified != '' THEN excluded.modified ELSE sessions.modified END,
+      git_branch = CASE WHEN excluded.git_branch != '' THEN excluded.git_branch ELSE sessions.git_branch END,
+      full_path = CASE WHEN excluded.full_path != '' THEN excluded.full_path ELSE sessions.full_path END,
       agent_type=excluded.agent_type
   `).run(
     session.id, session.sessionId, session.projectId,

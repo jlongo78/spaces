@@ -8,7 +8,7 @@ import { track, setOptOut } from '@/lib/telemetry';
 import { useTier } from '@/hooks/use-tier';
 
 export default function SettingsPage() {
-  const { hasAuth } = useTier();
+  const { hasAuth, tier, version } = useTier();
   const hasSelfContainedAuth = typeof document !== 'undefined' && document.cookie.includes('spaces-session=');
   const sync = useSync();
   const [syncResult, setSyncResult] = useState<string>('');
@@ -425,7 +425,8 @@ export default function SettingsPage() {
             About
           </h3>
           <div className="text-sm space-y-1">
-            <p><span className="text-muted-foreground">Version:</span> 0.1.0</p>
+            <p><span className="text-muted-foreground">Version:</span> {version || '...'}</p>
+            <p><span className="text-muted-foreground">Tier:</span> <span className="capitalize">{tier}</span></p>
             <p><span className="text-muted-foreground">Data access:</span> Read-only (never modifies agent data directories)</p>
             <p className="text-muted-foreground text-xs mt-2">
               Spaces is an open-source agent workspace manager.

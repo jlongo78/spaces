@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 export function TierProvider({ children }: { children: ReactNode }) {
   const [flags, setFlags] = useState<TierFlags>({
     tier: 'community',
+    version: '',
     hasAuth: false,
     hasAdmin: false,
     hasCollaboration: false,
@@ -23,6 +24,7 @@ export function TierProvider({ children }: { children: ReactNode }) {
       .then(data => {
         setFlags({
           tier: data.tier,
+          version: data.version || '',
           hasAuth: data.hasAuth,
           hasAdmin: data.hasAdmin,
           hasCollaboration: data.hasCollaboration ?? false,

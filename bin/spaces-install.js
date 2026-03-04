@@ -17,8 +17,8 @@ const PACKAGES = {
     dir: path.join(PACKAGES_DIR, 'teams'),
     repo: 'jlongo78/spaces-teams',
     private: false,
-    verify: (dir) => fs.existsSync(path.join(dir, 'index.js')),
-    verifyLabel: 'index.js',
+    verify: (dir) => fs.existsSync(path.join(dir, 'dist', 'index.js')),
+    verifyLabel: 'dist/index.js',
   },
   pro: {
     name: '@spaces/pro',
@@ -146,23 +146,15 @@ function installPackage(pkgKey) {
   }
 
   // 2. Install dependencies
-  if (pkgKey === 'pro') {
-    // Full install needed for TypeScript build
-    log('Installing dependencies...');
-    run('npm', ['install'], { cwd: pkg.dir });
+  // Both teams and pro need TypeScript build
+  log('Installing dependencies...');
+  run('npm', ['install'], { cwd: pkg.dir });
 
-    // 3. Build TypeScript
-    log('Building TypeScript...');
-    run('npm', ['run', 'build'], { cwd: pkg.dir });
+  log('Building TypeScript...');
+  run('npm', ['run', 'build'], { cwd: pkg.dir });
 
-    // 4. Prune dev dependencies
-    log('Pruning dev dependencies...');
-    run('npm', ['prune', '--omit=dev'], { cwd: pkg.dir });
-  } else {
-    // Teams: production deps only
-    log('Installing dependencies...');
-    run('npm', ['install', '--omit=dev'], { cwd: pkg.dir });
-  }
+  log('Pruning dev dependencies...');
+  run('npm', ['prune', '--omit=dev'], { cwd: pkg.dir });
 
   // 5. Create symlink
   createSymlink(pkgKey);
@@ -318,14 +310,10 @@ function doUpgrade(pkgKey, pkg) {
   // Pull latest
   gitPull(pkg.dir);
 
-  if (pkgKey === 'pro') {
-    run('npm', ['install'], { cwd: pkg.dir });
-    log('Building TypeScript...');
-    run('npm', ['run', 'build'], { cwd: pkg.dir });
-    run('npm', ['prune', '--omit=dev'], { cwd: pkg.dir });
-  } else {
-    run('npm', ['install', '--omit=dev'], { cwd: pkg.dir });
-  }
+  run('npm', ['install'], { cwd: pkg.dir });
+  log('Building TypeScript...');
+  run('npm', ['run', 'build'], { cwd: pkg.dir });
+  run('npm', ['prune', '--omit=dev'], { cwd: pkg.dir });
 
   // Re-create symlink
   createSymlink(pkgKey);
@@ -335,6 +323,74 @@ function doUpgrade(pkgKey, pkg) {
   } else {
     logErr(`${pkg.name} upgrade failed — ${pkg.verifyLabel} not found`);
   }
+}
+
+// ─── Uninstall command ────────────────────────────────────────
+function uninstallOne(pkgKey) {
+  const pkg = PACKAGES[pkgKey];
+
+  // Remove symlink
+  const linkPath = path.join(NODE_MODULES_DIR, pkgKey);
+  try {
+    const stat = fs.lstatSync(linkPath);
+    if (stat.isSymbolicLink() || stat.isFile()) {
+      fs.unlinkSync(linkPath);
+    } else if (stat.isDirectory()) {
+      fs.rmSync(linkPath, { recursive: true });
+    }
+    logOk(`Removed symlink @spaces/${pkgKey}`);
+  } catch {
+    logWarn(`Symlink @spaces/${pkgKey} not found`);
+  }
+
+  // Remove package directory
+  if (fs.existsSync(pkg.dir)) {
+    fs.rmSync(pkg.dir, { recursive: true });
+    logOk(`Removed ${pkg.dir}`);
+  } else {
+    logWarn(`${pkg.dir} not found`);
+  }
+}
+
+function uninstallPackage(pkgKey) {
+  if (pkgKey) {
+    const pkg = PACKAGES[pkgKey];
+    if (!pkg) {
+      logErr(`Unknown package: ${pkgKey}`);
+      log(`Available: ${Object.keys(PACKAGES).join(', ')}`);
+      process.exit(1);
+    }
+    console.log(`\n  Uninstalling ${pkg.name}...\n`);
+    uninstallOne(pkgKey);
+    logOk(`${pkg.name} uninstalled`);
+  } else {
+    console.log('\n  Uninstalling everything...\n');
+
+    // Remove tier packages
+    for (const [key, pkg] of Object.entries(PACKAGES)) {
+      if (fs.existsSync(pkg.dir) || fs.existsSync(path.join(NODE_MODULES_DIR, key))) {
+        log(`─── ${pkg.name} ───`);
+        uninstallOne(key);
+      }
+    }
+    // Clean up packages dir
+    try { fs.rmdirSync(NODE_MODULES_DIR); } catch {}
+    try { fs.rmdirSync(path.join(PACKAGES_DIR, 'node_modules')); } catch {}
+    try { fs.rmdirSync(PACKAGES_DIR); } catch {}
+
+    // Remove the global spaces CLI
+    log('─── @jlongo78/agent-spaces ───');
+    try {
+      run('npm', ['uninstall', '-g', '@jlongo78/agent-spaces'], { quiet: true });
+      logOk('Removed global spaces CLI');
+    } catch {
+      logWarn('Global spaces CLI not found or already removed');
+    }
+
+    logOk('Spaces fully uninstalled');
+    log('User data remains at ~/.spaces/ — remove manually if desired');
+  }
+  console.log('');
 }
 
 // ─── CLI ──────────────────────────────────────────────────────
@@ -350,6 +406,10 @@ switch (command) {
     installPackage(target);
     break;
 
+  case 'uninstall':
+    uninstallPackage(target || null);
+    break;
+
   case 'verify':
     verifyAll();
     break;
@@ -360,6 +420,6 @@ switch (command) {
 
   default:
     logErr(`Unknown command: ${command}`);
-    log('Usage: spaces <install|verify|upgrade> [package]');
+    log('Usage: spaces <install|uninstall|verify|upgrade> [package]');
     process.exit(1);
 }

@@ -10,7 +10,7 @@ import { setOptOut } from '@/lib/telemetry';
 import { useTier } from '@/hooks/use-tier';
 
 export default function MobileSettingsPage() {
-  const { hasAuth } = useTier();
+  const { hasAuth, tier, version } = useTier();
   const router = useRouter();
   const sync = useSync();
   const [syncResult, setSyncResult] = useState('');
@@ -208,7 +208,8 @@ export default function MobileSettingsPage() {
             About
           </h3>
           <div className="text-xs space-y-1 text-zinc-400">
-            <p>Version: 0.1.0</p>
+            <p>Version: {version || '...'}</p>
+            <p>Tier: <span className="capitalize">{tier}</span></p>
             <p>Data access: Read-only</p>
           </div>
         </div>

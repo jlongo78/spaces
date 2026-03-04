@@ -51,7 +51,9 @@ function syncClaude(projectsDir: string): { projects: number; sessions: number }
         });
         projectCount++;
 
+        const indexedSessionIds = new Set<string>();
         for (const entry of index.entries) {
+          indexedSessionIds.add(entry.sessionId);
           upsertSession({
             id: entry.sessionId,
             sessionId: entry.sessionId,
@@ -64,6 +66,29 @@ function syncClaude(projectsDir: string): { projects: number; sessions: number }
             gitBranch: entry.gitBranch || '',
             projectPath: entry.projectPath || '',
             fullPath: entry.fullPath || '',
+            agentType: 'claude',
+          });
+          sessionCount++;
+        }
+
+        // Pick up JSONL files not listed in the (possibly stale) index
+        const extraFiles = fs.readdirSync(projectDir)
+          .filter(f => f.endsWith('.jsonl') && !f.startsWith('.') && !indexedSessionIds.has(f.replace('.jsonl', '')));
+        for (const file of extraFiles) {
+          const filePath = path.join(projectDir, file);
+          const sessionId = file.replace('.jsonl', '');
+          upsertSession({
+            id: sessionId,
+            sessionId,
+            projectId,
+            firstPrompt: '',
+            summary: '',
+            messageCount: 0,
+            created: '',
+            modified: '',
+            gitBranch: '',
+            projectPath: '',
+            fullPath: filePath,
             agentType: 'claude',
           });
           sessionCount++;
@@ -302,7 +327,8 @@ export async function enrichMissingSessions(): Promise<number> {
   const db = getDb();
   const missing = db.prepare(`
     SELECT id, full_path FROM sessions
-    WHERE (first_prompt = '' OR first_prompt IS NULL) AND full_path != ''
+    WHERE ((first_prompt = '' OR first_prompt IS NULL) OR (message_count = 0 OR message_count IS NULL))
+      AND full_path != ''
   `).all() as { id: string; full_path: string }[];
 
   let enriched = 0;
