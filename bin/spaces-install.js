@@ -40,6 +40,7 @@ function run(cmd, args, opts = {}) {
   return execFileSync(cmd, args, {
     encoding: 'utf-8',
     stdio: opts.quiet ? ['pipe', 'pipe', 'pipe'] : 'inherit',
+    shell: process.platform === 'win32',
     ...opts,
   });
 }
@@ -102,7 +103,7 @@ function createSymlink(pkgKey) {
     }
   } catch {}
 
-  fs.symlinkSync(targetPath, linkPath, 'dir');
+  fs.symlinkSync(targetPath, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
   logOk(`Symlink: @spaces/${pkgKey} -> packages/${pkgKey}`);
 }
 
