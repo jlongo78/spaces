@@ -166,6 +166,10 @@ function installPackage(pkgKey) {
   log('Installing dependencies...');
   run('npm', ['install'], { cwd: pkg.dir });
 
+  // Rebuild native modules for the current platform/ABI
+  log('Rebuilding native modules...');
+  run('npm', ['rebuild'], { cwd: pkg.dir });
+
   log('Building TypeScript...');
   run('npm', ['run', 'build'], { cwd: pkg.dir });
 
@@ -183,7 +187,20 @@ function installPackage(pkgKey) {
     process.exit(1);
   }
 
-  // 7. Update tier in server.json
+  // 7. Verify native modules
+  if (!checkNativeModule('better-sqlite3', pkg.dir)) {
+    logWarn('better-sqlite3 native module not loading — attempting rebuild...');
+    run('npm', ['rebuild', 'better-sqlite3'], { cwd: pkg.dir });
+    if (checkNativeModule('better-sqlite3', pkg.dir)) {
+      logOk('better-sqlite3 rebuilt successfully');
+    } else {
+      logErr('better-sqlite3 still failing — you may need to install build tools');
+    }
+  } else {
+    logOk('Native modules OK');
+  }
+
+  // 8. Update tier in server.json
   const configPath = path.join(os.homedir(), '.spaces', 'server.json');
   try {
     const config = fs.existsSync(configPath)
@@ -344,6 +361,7 @@ function doUpgrade(pkgKey, pkg) {
   gitPull(pkg.dir);
 
   run('npm', ['install'], { cwd: pkg.dir });
+  run('npm', ['rebuild'], { cwd: pkg.dir });
   log('Building TypeScript...');
   run('npm', ['run', 'build'], { cwd: pkg.dir });
   run('npm', ['prune', '--omit=dev'], { cwd: pkg.dir });
