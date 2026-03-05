@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getPro } from '@/lib/pro';
-import { getDb } from '@/lib/db/init';
+import { getDb } from '@/lib/db/schema';
 
 const notAvailable = () =>
   Response.json({ error: 'Requires @spaces/pro' }, { status: 404 });
