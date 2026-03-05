@@ -761,6 +761,9 @@ function handleConnection(wss, ws, req) {
 
   ws.send(JSON.stringify({ type: 'ready', paneId }));
 
+  // Confirm actual collaboration state so browser syncs with backend
+  ws.send(JSON.stringify({ type: 'collab-updated', isCollaborating }));
+
   // ─── Session ID detection for new Claude sessions ────────
   if (agentType === 'claude' && (!agentSession || agentSession === 'new')) {
     detectNewClaudeSession(paneId, cwd, ws, session, username);

@@ -182,6 +182,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             term.write(`\r\n\x1b[31m${msg.data}\x1b[0m\r\n`);
           } else if (msg.type === 'session-detected') {
             onUpdateRef.current(paneRef.current.id, { claudeSessionId: msg.sessionId });
+          } else if (msg.type === 'collab-updated') {
+            onUpdateRef.current(paneRef.current.id, { isCollaborating: msg.isCollaborating });
           }
         } catch {
           // Raw data
