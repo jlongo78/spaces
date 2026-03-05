@@ -168,7 +168,24 @@ function installPackage(pkgKey) {
     process.exit(1);
   }
 
-  // 7. Verify require() works
+  // 7. Update tier in server.json
+  const configPath = path.join(os.homedir(), '.spaces', 'server.json');
+  try {
+    const config = fs.existsSync(configPath)
+      ? JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      : { port: 3457, basePath: '' };
+    // teams → team tier, pro → federation tier (upgrade only, don't downgrade)
+    const tierMap = { teams: 'team', pro: 'federation' };
+    const tierRank = { community: 0, team: 1, federation: 2 };
+    const newTier = tierMap[pkgKey] || config.tier || 'community';
+    if ((tierRank[newTier] || 0) >= (tierRank[config.tier] || 0)) {
+      config.tier = newTier;
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      logOk(`Tier set to ${newTier}`);
+    }
+  } catch {}
+
+  // 8. Verify require() works
   try {
     const result = run(process.execPath, [
       '-e',
