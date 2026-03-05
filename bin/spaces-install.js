@@ -363,6 +363,18 @@ function uninstallPackage(pkgKey) {
     }
     console.log(`\n  Uninstalling ${pkg.name}...\n`);
     uninstallOne(pkgKey);
+    // Reset tier to community if removing a tier package
+    const configPath = path.join(os.homedir(), '.spaces', 'server.json');
+    try {
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (config.tier && config.tier !== 'community') {
+          config.tier = 'community';
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+          logOk('Reset tier to community');
+        }
+      }
+    } catch {}
     logOk(`${pkg.name} uninstalled`);
   } else {
     console.log('\n  Uninstalling everything...\n');
@@ -387,6 +399,19 @@ function uninstallPackage(pkgKey) {
     } catch {
       logWarn('Global spaces CLI not found or already removed');
     }
+
+    // Reset tier to community in server.json
+    const configPath = path.join(os.homedir(), '.spaces', 'server.json');
+    try {
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (config.tier && config.tier !== 'community') {
+          config.tier = 'community';
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+          logOk('Reset tier to community');
+        }
+      }
+    } catch {}
 
     logOk('Spaces fully uninstalled');
     log('User data remains at ~/.spaces/ — remove manually if desired');
