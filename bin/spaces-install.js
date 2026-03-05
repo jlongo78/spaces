@@ -117,11 +117,13 @@ function createSymlink(pkgKey) {
 function checkNativeModule(moduleName, searchDir) {
   try {
     const nodePath = path.join(searchDir, 'node_modules');
-    const result = run(process.execPath, [
+    // Use execFileSync directly (no shell) so quotes aren't mangled on Windows
+    const result = execFileSync(process.execPath, [
       '-e',
       `try { require('${moduleName}'); console.log('ok'); } catch(e) { console.log(e.message); }`,
     ], {
-      quiet: true,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
       cwd: searchDir,
       env: { ...process.env, NODE_PATH: nodePath },
     });
@@ -217,13 +219,14 @@ function installPackage(pkgKey) {
     }
   } catch {}
 
-  // 8. Verify require() works
+  // 9. Verify require() works
   try {
-    const result = run(process.execPath, [
+    const result = execFileSync(process.execPath, [
       '-e',
       `const p = require.resolve('${pkg.name}'); console.log('resolved: ' + p);`,
     ], {
-      quiet: true,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, NODE_PATH: path.join(PACKAGES_DIR, 'node_modules') },
     });
     logOk(`require('${pkg.name}') -> ${result.trim().replace('resolved: ', '')}`);
@@ -302,11 +305,12 @@ function verifyAll() {
 
     // Check require() resolution
     try {
-      run(process.execPath, [
+      execFileSync(process.execPath, [
         '-e',
         `require.resolve('${pkg.name}')`,
       ], {
-        quiet: true,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, NODE_PATH: path.join(PACKAGES_DIR, 'node_modules') },
       });
       logOk(`require('${pkg.name}') resolves OK`);
