@@ -37,10 +37,14 @@ function logErr(msg) { console.error(`  ✗ ${msg}`); }
 function logWarn(msg) { console.log(`  ! ${msg}`); }
 
 function run(cmd, args, opts = {}) {
-  return execFileSync(cmd, args, {
+  const isWin = process.platform === 'win32';
+  const safeArgs = isWin
+    ? args.map(a => (a.includes(' ') ? '"' + a + '"' : a))
+    : args;
+  return execFileSync(cmd, safeArgs, {
     encoding: 'utf-8',
     stdio: opts.quiet ? ['pipe', 'pipe', 'pipe'] : 'inherit',
-    shell: process.platform === 'win32',
+    shell: isWin,
     ...opts,
   });
 }
@@ -137,6 +141,17 @@ function installPackage(pkgKey) {
   }
 
   console.log(`\n  Installing ${pkg.name}...\n`);
+
+  // Pro requires teams as a prerequisite
+  if (pkgKey === "pro") {
+    const teamsDir = PACKAGES.teams.dir;
+    if (!fs.existsSync(path.join(teamsDir, "dist", "index.js"))) {
+      log("@spaces/pro requires @spaces/teams -- installing teams first...");
+      console.log("");
+      installPackage("teams");
+      console.log("");
+    }
+  }
 
   // 1. Clone or pull
   if (fs.existsSync(path.join(pkg.dir, '.git'))) {

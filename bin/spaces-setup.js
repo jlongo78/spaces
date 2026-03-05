@@ -72,9 +72,14 @@ async function main() {
     fs.mkdirSync(SPACES_DIR, { recursive: true });
   }
 
-  // Detect @spaces/pro
+  // Detect @spaces/pro (check managed install path first)
   let hasSpacesPro = false;
-  try { require.resolve('@spaces/pro'); hasSpacesPro = true; } catch {}
+  const managedPro = path.join(SPACES_DIR, "packages", "node_modules", "@spaces", "pro", "dist", "index.js");
+  if (fs.existsSync(managedPro)) {
+    hasSpacesPro = true;
+  } else {
+    try { require.resolve("@spaces/pro"); hasSpacesPro = true; } catch {}
+  }
 
   if (hasSpacesPro) {
     console.log('  Detected @spaces/pro — full features available.');
