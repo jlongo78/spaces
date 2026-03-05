@@ -344,12 +344,15 @@ function findGitBash() {
 }
 
 // ─── Origin validation ───────────────────────────────────
-function isAllowedOrigin(origin) {
+function isAllowedOrigin(origin, req) {
   if (!origin) return false;
   try {
     const url = new URL(origin);
     // Allow localhost/127.0.0.1 (any port)
     if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return true;
+    // Allow if origin matches the server's own Host header (same-origin requests)
+    const host = req && req.headers && req.headers.host;
+    if (host && url.host === host) return true;
     // Allow configured hostname from env (e.g., spaces.example.com)
     const allowed = process.env.SPACES_ALLOWED_ORIGINS;
     if (allowed) {
@@ -1074,7 +1077,7 @@ function createTerminalServer(httpServer) {
     if (url.pathname === '/ws' || url.pathname.endsWith('/ws')) {
       // Verify origin for browser clients
       const origin = req.headers.origin;
-      if (origin && !isAllowedOrigin(origin)) {
+      if (origin && !isAllowedOrigin(origin, req)) {
         socket.destroy();
         return;
       }
@@ -1105,7 +1108,7 @@ if (require.main === module) {
     verifyClient: ({ req }) => {
       const origin = req.headers.origin;
       if (!origin) return true;
-      return isAllowedOrigin(origin);
+      return isAllowedOrigin(origin, req);
     },
   });
   setupWss(wss);

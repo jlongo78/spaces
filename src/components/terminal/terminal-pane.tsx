@@ -416,9 +416,9 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
 
         {workspaceCollaboration && pane.agentType !== 'shell' && (
           <button
-            onClick={() => {
+            onClick={async () => {
               const newVal = !pane.isCollaborating;
-              onUpdate(pane.id, { isCollaborating: newVal } as Partial<PaneData>);
+              await onUpdate(pane.id, { isCollaborating: newVal } as Partial<PaneData>);
               if (wsRef.current?.readyState === WebSocket.OPEN) {
                 wsRef.current.send(JSON.stringify({ type: 'collab-toggle', isCollaborating: newVal }));
               }

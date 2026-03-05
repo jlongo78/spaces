@@ -41,7 +41,7 @@ export async function ensureInitialized() {
 
       // Build FTS index (background, non-blocking)
       buildFtsIndex((done, total) => {
-        if (done % 10 === 0) {
+        if (done > 0 && done % 10 === 0) {
           console.log(`[spaces:${username}] FTS indexing: ${done}/${total}`);
         }
       }).then(indexed => {
