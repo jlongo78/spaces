@@ -463,12 +463,116 @@ async function darwinLogs() {
 }
 
 // ─── Windows (Task Scheduler) ────────────────────────────────
-async function win32Install() { logErr('Windows service: not yet implemented'); process.exit(1); }
-async function win32Uninstall() { logErr('Windows service: not yet implemented'); process.exit(1); }
-async function win32Start() { logErr('Windows service: not yet implemented'); process.exit(1); }
-async function win32Stop() { logErr('Windows service: not yet implemented'); process.exit(1); }
-async function win32Status() { logErr('Windows service: not yet implemented'); process.exit(1); }
-async function win32Logs() { logErr('Windows service: not yet implemented'); process.exit(1); }
+function win32WrapperScript() {
+  ensureLogsDir();
+  const config = resolveConfig();
+  const nodePath = resolveNodePath();
+  const spacesPath = resolveSpacesPath();
+  const outLog = path.join(LOGS_DIR, 'spaces.out.log');
+  const wrapperPath = path.join(SPACES_DIR, 'spaces-service.cmd');
+
+  const lines = [
+    '@echo off',
+    `set SPACES_PORT=${config.port}`,
+    `set SPACES_TIER=${config.tier}`,
+  ];
+  if (config.basePath) {
+    lines.push(`set SPACES_BASE_PATH=${config.basePath}`);
+  }
+  if (config.allowedOrigins) {
+    lines.push(`set SPACES_ALLOWED_ORIGINS=${config.allowedOrigins}`);
+  }
+  lines.push(`"${nodePath}" "${spacesPath}" >> "${outLog}" 2>&1`);
+  lines.push('');
+
+  fs.writeFileSync(wrapperPath, lines.join('\r\n'));
+  return wrapperPath;
+}
+
+async function win32Install() {
+  const level = await promptLevel();
+  const wrapperPath = win32WrapperScript();
+
+  log(`Wrapper script written to ${wrapperPath}`);
+
+  // Delete existing task (ignore errors)
+  try {
+    execFileSync('schtasks', ['/Delete', '/TN', TASK_NAME, '/F'], { stdio: 'pipe' });
+  } catch {}
+
+  if (level === 'system') {
+    execFileSync('schtasks', ['/Create', '/TN', TASK_NAME, '/TR', `"${wrapperPath}"`, '/SC', 'ONSTART', '/RU', 'SYSTEM', '/F'], { stdio: 'inherit' });
+  } else {
+    execFileSync('schtasks', ['/Create', '/TN', TASK_NAME, '/TR', `"${wrapperPath}"`, '/SC', 'ONLOGON', '/RL', 'HIGHEST', '/F'], { stdio: 'inherit' });
+  }
+  logOk('Scheduled task created');
+
+  saveLevel(level);
+
+  execFileSync('schtasks', ['/Run', '/TN', TASK_NAME], { stdio: 'inherit' });
+  logOk('Task started');
+
+  logOk(`Spaces installed as ${level} service`);
+}
+
+async function win32Uninstall() {
+  try {
+    execFileSync('schtasks', ['/End', '/TN', TASK_NAME], { stdio: 'pipe' });
+    logOk('Task ended');
+  } catch {
+    log('Task was not running');
+  }
+
+  try {
+    execFileSync('schtasks', ['/Delete', '/TN', TASK_NAME, '/F'], { stdio: 'pipe' });
+    logOk('Scheduled task removed');
+  } catch {
+    log('Scheduled task was already removed');
+  }
+
+  try {
+    const wrapperPath = path.join(SPACES_DIR, 'spaces-service.cmd');
+    fs.unlinkSync(wrapperPath);
+    logOk('Wrapper script removed');
+  } catch {
+    log('Wrapper script was already removed');
+  }
+
+  try {
+    fs.unlinkSync(LEVEL_PATH);
+  } catch {}
+
+  logOk('Spaces service uninstalled');
+}
+
+async function win32Start() {
+  execFileSync('schtasks', ['/Run', '/TN', TASK_NAME], { stdio: 'inherit' });
+  logOk('Task started');
+}
+
+async function win32Stop() {
+  execFileSync('schtasks', ['/End', '/TN', TASK_NAME], { stdio: 'inherit' });
+  logOk('Task stopped');
+}
+
+async function win32Status() {
+  try {
+    execFileSync('schtasks', ['/Query', '/TN', TASK_NAME, '/V', '/FO', 'LIST'], { stdio: 'inherit' });
+  } catch {
+    log('Spaces service is not installed');
+  }
+}
+
+async function win32Logs() {
+  ensureLogsDir();
+  const outLogPath = path.join(LOGS_DIR, 'spaces.out.log');
+  if (!fs.existsSync(outLogPath)) {
+    logErr(`Log file not found: ${outLogPath}`);
+    log('Service may not have started yet');
+    process.exit(1);
+  }
+  spawnSync('powershell', ['-Command', `Get-Content "${outLogPath}" -Wait -Tail 50`], { stdio: 'inherit' });
+}
 
 // ─── Dispatch table ──────────────────────────────────────────
 const platforms = {
