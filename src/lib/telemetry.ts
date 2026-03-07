@@ -1,6 +1,6 @@
 import posthog from 'posthog-js';
 
-const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY || '';
+const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY || 'phx_OzJfiDl1pVcli6bZ8uN3yv6jLXzFVL33Wd3m11ZFfRqvzIe';
 const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
 
 let initialized = false;
