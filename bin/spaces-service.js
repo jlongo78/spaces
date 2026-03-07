@@ -271,12 +271,196 @@ async function linuxLogs() {
 }
 
 // ─── macOS (launchd) ─────────────────────────────────────────
-async function darwinInstall() { logErr('macOS service: not yet implemented'); process.exit(1); }
-async function darwinUninstall() { logErr('macOS service: not yet implemented'); process.exit(1); }
-async function darwinStart() { logErr('macOS service: not yet implemented'); process.exit(1); }
-async function darwinStop() { logErr('macOS service: not yet implemented'); process.exit(1); }
-async function darwinStatus() { logErr('macOS service: not yet implemented'); process.exit(1); }
-async function darwinLogs() { logErr('macOS service: not yet implemented'); process.exit(1); }
+function darwinPlistPath(level) {
+  if (level === 'system') {
+    return `/Library/LaunchDaemons/${LABEL}.plist`;
+  }
+  return path.join(os.homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
+}
+
+function darwinPlistContent(level) {
+  ensureLogsDir();
+  const config = resolveConfig();
+  const nodePath = resolveNodePath();
+  const spacesPath = resolveSpacesPath();
+  const projectDir = resolveProjectDir();
+  const outLog = path.join(LOGS_DIR, 'spaces.out.log');
+  const errLog = path.join(LOGS_DIR, 'spaces.err.log');
+
+  let envEntries = [
+    `      <key>SPACES_PORT</key>`,
+    `      <string>${config.port}</string>`,
+    `      <key>SPACES_TIER</key>`,
+    `      <string>${config.tier}</string>`,
+  ];
+  if (config.basePath) {
+    envEntries.push(`      <key>SPACES_BASE_PATH</key>`);
+    envEntries.push(`      <string>${config.basePath}</string>`);
+  }
+  if (config.allowedOrigins) {
+    envEntries.push(`      <key>SPACES_ALLOWED_ORIGINS</key>`);
+    envEntries.push(`      <string>${config.allowedOrigins}</string>`);
+  }
+
+  let extraKeys = '';
+  if (level === 'system') {
+    extraKeys = `    <key>UserName</key>\n    <string>${os.userInfo().username}</string>\n`;
+  }
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    '<plist version="1.0">',
+    '<dict>',
+    `    <key>Label</key>`,
+    `    <string>${LABEL}</string>`,
+    `    <key>ProgramArguments</key>`,
+    `    <array>`,
+    `      <string>${nodePath}</string>`,
+    `      <string>${spacesPath}</string>`,
+    `    </array>`,
+    `    <key>WorkingDirectory</key>`,
+    `    <string>${projectDir}</string>`,
+    `    <key>EnvironmentVariables</key>`,
+    `    <dict>`,
+    ...envEntries,
+    `    </dict>`,
+    `    <key>RunAtLoad</key>`,
+    `    <true/>`,
+    `    <key>KeepAlive</key>`,
+    `    <true/>`,
+    `    <key>StandardOutPath</key>`,
+    `    <string>${outLog}</string>`,
+    `    <key>StandardErrorPath</key>`,
+    `    <string>${errLog}</string>`,
+    extraKeys ? extraKeys.trimEnd() : null,
+    '</dict>',
+    '</plist>',
+    '',
+  ].filter((line) => line !== null).join('\n');
+}
+
+async function darwinInstall() {
+  const level = await promptLevel();
+  const plistPath = darwinPlistPath(level);
+  const plistContent = darwinPlistContent(level);
+
+  // Unload existing (ignore errors)
+  try {
+    execFileSync('launchctl', ['unload', '-w', plistPath], { stdio: 'pipe' });
+  } catch {}
+
+  log(`Writing plist to ${plistPath}`);
+  if (level === 'system') {
+    const result = spawnSync('sudo', ['tee', plistPath], {
+      input: plistContent,
+      stdio: ['pipe', 'pipe', 'inherit'],
+    });
+    if (result.status !== 0) {
+      logErr('Failed to write plist file');
+      process.exit(1);
+    }
+    execFileSync('sudo', ['chown', 'root:wheel', plistPath], { stdio: 'inherit' });
+    execFileSync('sudo', ['chmod', '644', plistPath], { stdio: 'inherit' });
+  } else {
+    const agentsDir = path.join(os.homedir(), 'Library', 'LaunchAgents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.writeFileSync(plistPath, plistContent);
+  }
+  logOk('Plist file written');
+
+  saveLevel(level);
+
+  if (level === 'system') {
+    execFileSync('sudo', ['launchctl', 'load', '-w', plistPath], { stdio: 'inherit' });
+  } else {
+    execFileSync('launchctl', ['load', '-w', plistPath], { stdio: 'inherit' });
+  }
+  logOk('Service loaded');
+
+  logOk(`Spaces installed as ${level} service`);
+}
+
+async function darwinUninstall() {
+  const level = loadLevel() || 'user';
+  const plistPath = darwinPlistPath(level);
+
+  try {
+    if (level === 'system') {
+      execFileSync('sudo', ['launchctl', 'unload', '-w', plistPath], { stdio: 'inherit' });
+    } else {
+      execFileSync('launchctl', ['unload', '-w', plistPath], { stdio: 'inherit' });
+    }
+    logOk('Service unloaded');
+  } catch {
+    log('Service was not loaded');
+  }
+
+  try {
+    if (level === 'system') {
+      execFileSync('sudo', ['rm', '-f', plistPath], { stdio: 'inherit' });
+    } else {
+      fs.unlinkSync(plistPath);
+    }
+    logOk('Plist file removed');
+  } catch {
+    log('Plist file was already removed');
+  }
+
+  try {
+    fs.unlinkSync(LEVEL_PATH);
+  } catch {}
+
+  logOk('Spaces service uninstalled');
+}
+
+async function darwinStart() {
+  const level = loadLevel() || 'user';
+  const plistPath = darwinPlistPath(level);
+  if (level === 'system') {
+    execFileSync('sudo', ['launchctl', 'load', '-w', plistPath], { stdio: 'inherit' });
+  } else {
+    execFileSync('launchctl', ['load', '-w', plistPath], { stdio: 'inherit' });
+  }
+  logOk('Service started');
+}
+
+async function darwinStop() {
+  const level = loadLevel() || 'user';
+  const plistPath = darwinPlistPath(level);
+  if (level === 'system') {
+    execFileSync('sudo', ['launchctl', 'unload', '-w', plistPath], { stdio: 'inherit' });
+  } else {
+    execFileSync('launchctl', ['unload', '-w', plistPath], { stdio: 'inherit' });
+  }
+  logOk('Service stopped');
+}
+
+async function darwinStatus() {
+  try {
+    const result = execFileSync('launchctl', ['list'], { encoding: 'utf-8' });
+    const lines = result.split('\n').filter((line) => line.includes(LABEL));
+    if (lines.length > 0) {
+      log('Spaces service status:');
+      lines.forEach((line) => log(line));
+    } else {
+      log('Spaces service is not loaded');
+    }
+  } catch {
+    log('Spaces service is not loaded');
+  }
+}
+
+async function darwinLogs() {
+  ensureLogsDir();
+  const outLogPath = path.join(LOGS_DIR, 'spaces.out.log');
+  if (!fs.existsSync(outLogPath)) {
+    logErr(`Log file not found: ${outLogPath}`);
+    log('Service may not have started yet');
+    process.exit(1);
+  }
+  spawnSync('tail', ['-f', outLogPath], { stdio: 'inherit' });
+}
 
 // ─── Windows (Task Scheduler) ────────────────────────────────
 async function win32Install() { logErr('Windows service: not yet implemented'); process.exit(1); }
