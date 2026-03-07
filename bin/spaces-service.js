@@ -150,7 +150,12 @@ function linuxSystemctl(level, ...args) {
   if (level === 'system') {
     execFileSync('sudo', ['systemctl', ...args], { stdio: 'inherit' });
   } else {
-    execFileSync('systemctl', ['--user', ...args], { stdio: 'inherit' });
+    // User-level systemctl needs XDG_RUNTIME_DIR to connect to the user bus
+    const env = { ...process.env };
+    if (!env.XDG_RUNTIME_DIR) {
+      env.XDG_RUNTIME_DIR = `/run/user/${process.getuid()}`;
+    }
+    execFileSync('systemctl', ['--user', ...args], { stdio: 'inherit', env });
   }
 }
 
@@ -187,7 +192,9 @@ async function linuxInstall() {
 
   if (level === 'user') {
     try {
-      execFileSync('loginctl', ['enable-linger', os.userInfo().username], { stdio: 'inherit' });
+      const env = { ...process.env };
+      if (!env.XDG_RUNTIME_DIR) env.XDG_RUNTIME_DIR = `/run/user/${process.getuid()}`;
+      execFileSync('loginctl', ['enable-linger', os.userInfo().username], { stdio: 'inherit', env });
       logOk('Enabled login lingering for user service');
     } catch {
       log('Warning: could not enable-linger (user service may not start on boot)');
@@ -264,7 +271,9 @@ async function linuxStatus() {
 async function linuxLogs() {
   const level = loadLevel() || 'user';
   if (level === 'user') {
-    spawnSync('journalctl', ['--user', '-u', SERVICE_NAME, '-f', '--no-pager'], { stdio: 'inherit' });
+    const env = { ...process.env };
+    if (!env.XDG_RUNTIME_DIR) env.XDG_RUNTIME_DIR = `/run/user/${process.getuid()}`;
+    spawnSync('journalctl', ['--user', '-u', SERVICE_NAME, '-f', '--no-pager'], { stdio: 'inherit', env });
   } else {
     spawnSync('sudo', ['journalctl', '-u', SERVICE_NAME, '-f', '--no-pager'], { stdio: 'inherit' });
   }
