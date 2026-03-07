@@ -41,6 +41,12 @@ if (cliFlags.help) {
     spaces --port 3457           Override port
     spaces --tier team           Override tier (community|team|federation)
     spaces --base-path /spaces   Set base path for reverse proxy
+    spaces service install       Install as OS service (systemd/launchd/Task Scheduler)
+    spaces service uninstall     Remove OS service
+    spaces service start         Start the service
+    spaces service stop          Stop the service
+    spaces service status        Show service status
+    spaces service logs          Tail service logs
     spaces --help                Show this help
 `);
   process.exit(0);
@@ -59,6 +65,16 @@ if (subcommand === 'install' || subcommand === 'uninstall' || subcommand === 've
   const installScript = path.join(__dirname, 'spaces-install.js');
   const { status } = require('child_process').spawnSync(
     process.execPath, [installScript, ...args],
+    { stdio: 'inherit', env: process.env }
+  );
+  process.exit(status || 0);
+}
+
+// ─── Route service commands to spaces-service.js ─────
+if (subcommand === 'service') {
+  const serviceScript = path.join(__dirname, 'spaces-service.js');
+  const { status } = require('child_process').spawnSync(
+    process.execPath, [serviceScript, ...args.slice(1)],
     { stdio: 'inherit', env: process.env }
   );
   process.exit(status || 0);
