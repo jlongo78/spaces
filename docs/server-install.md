@@ -292,6 +292,7 @@ spaces --port 3457            Override port
 spaces --tier team            Override tier (community|team|federation)
 spaces --base-path /spaces    Set base path for reverse proxy
 spaces --help                 Show help
+spaces service <action>           Manage OS service (install|uninstall|start|stop|status|logs)
 ```
 
 ## Environment Variables
@@ -303,6 +304,44 @@ spaces --help                 Show help
 | `SPACES_BASE_PATH` | Base path for subpath deployments | (none) |
 | `SPACES_SESSION_SECRET` | Session signing secret | from `~/.spaces/session_secret` |
 | `SPACES_ALLOWED_ORIGINS` | Comma-separated hostnames for WebSocket origin check | localhost only |
+
+---
+
+## Running as a Service
+
+Install Spaces as a persistent OS service that starts automatically:
+
+```bash
+spaces service install
+```
+
+You'll be prompted to choose system-level (starts on boot) or user-level (starts on login).
+
+The installer captures your current config from `~/.spaces/server.json` and bakes it into the service definition. If you change config later, re-run `spaces service install` to update.
+
+### Service commands
+
+| Command | Description |
+|---------|-------------|
+| `spaces service install` | Install and start the service |
+| `spaces service uninstall` | Stop and remove the service |
+| `spaces service start` | Start the service |
+| `spaces service stop` | Stop the service |
+| `spaces service status` | Show service status |
+| `spaces service logs` | Tail service logs |
+
+### Platform details
+
+| Platform | User-level location | System-level location |
+|----------|--------------------|-----------------------|
+| Linux | `~/.config/systemd/user/spaces.service` | `/etc/systemd/system/spaces.service` (sudo) |
+| macOS | `~/Library/LaunchAgents/com.agentspaces.spaces.plist` | `/Library/LaunchDaemons/com.agentspaces.spaces.plist` (sudo) |
+| Windows | Scheduled Task (ONLOGON) | Scheduled Task (ONSTART, SYSTEM) |
+
+### Logs
+
+- **Linux:** Uses journalctl (integrated with systemd)
+- **macOS / Windows:** Log files at `~/.spaces/logs/spaces.out.log`
 
 ---
 
