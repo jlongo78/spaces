@@ -294,8 +294,11 @@ function linuxUnitFile(level) {
   let envLines = [
     `Environment=SPACES_SERVICE=1`,
     `Environment=SPACES_PORT=${config.port}`,
-    `Environment=SPACES_TIER=${config.tier}`,
   ];
+  // Don't hardcode SPACES_TIER — let spaces.js auto-detect from installed packages
+  if (config.tier && config.tier !== 'community') {
+    envLines.push(`Environment=SPACES_TIER=${config.tier}`);
+  }
   if (config.basePath) {
     envLines.push(`Environment=SPACES_BASE_PATH=${config.basePath}`);
   }
@@ -489,9 +492,12 @@ function darwinPlistContent(level) {
     `      <string>1</string>`,
     `      <key>SPACES_PORT</key>`,
     `      <string>${config.port}</string>`,
-    `      <key>SPACES_TIER</key>`,
-    `      <string>${config.tier}</string>`,
   ];
+  // Don't hardcode SPACES_TIER — let spaces.js auto-detect from installed packages
+  if (config.tier && config.tier !== 'community') {
+    envEntries.push(`      <key>SPACES_TIER</key>`);
+    envEntries.push(`      <string>${config.tier}</string>`);
+  }
   if (config.basePath) {
     envEntries.push(`      <key>SPACES_BASE_PATH</key>`);
     envEntries.push(`      <string>${config.basePath}</string>`);
@@ -685,7 +691,10 @@ function win32WrapperScript(level) {
   }
   lines.push('set SPACES_SERVICE=1');
   lines.push(`set SPACES_PORT=${config.port}`);
-  lines.push(`set SPACES_TIER=${config.tier}`);
+  // Don't hardcode SPACES_TIER — let spaces.js auto-detect from installed packages
+  if (config.tier && config.tier !== 'community') {
+    lines.push(`set SPACES_TIER=${config.tier}`);
+  }
   if (config.basePath) {
     lines.push(`set SPACES_BASE_PATH=${config.basePath}`);
   }
