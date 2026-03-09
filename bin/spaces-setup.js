@@ -177,7 +177,10 @@ async function main() {
 
       let shellUser = os.userInfo().username;
       if (process.platform === 'win32' && shellUser.toUpperCase() === 'SYSTEM' && process.env.USERPROFILE) {
-        shellUser = path.basename(process.env.USERPROFILE);
+        const candidate = path.basename(process.env.USERPROFILE);
+        if (/^[a-zA-Z0-9][a-zA-Z0-9 ._-]{0,63}$/.test(candidate)) {
+          shellUser = candidate;
+        }
       }
       const id = crypto.randomUUID();
       const passwordHash = hashPassword(password);

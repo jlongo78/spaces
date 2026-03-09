@@ -337,15 +337,15 @@ function ensureServiceKeyAtRuntime() {
     const adminAuthKeys = path.join(process.env.ProgramData || 'C:\\ProgramData', 'ssh', 'administrators_authorized_keys');
     const authDir = path.dirname(adminAuthKeys);
     if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
-    spawnSync('icacls', [adminAuthKeys, '/grant', 'SYSTEM:(F)'], { stdio: 'pipe', timeout: 5000 });
+    // Set restrictive ACL first (SYSTEM write + Administrators read), then append
+    spawnSync('icacls', [adminAuthKeys, '/inheritance:r',
+      '/grant:r', 'SYSTEM:(F)', '/grant', 'Administrators:(R)'], { stdio: 'pipe', timeout: 5000 });
     let existing = '';
     try { existing = fs.readFileSync(adminAuthKeys, 'utf-8'); } catch {}
     if (!existing.includes(pubKey)) {
       fs.appendFileSync(adminAuthKeys, pubKey + String.fromCharCode(10));
       console.log('[SSH] Authorized service key in administrators_authorized_keys');
     }
-    spawnSync('icacls', [adminAuthKeys, '/inheritance:r',
-      '/grant:r', 'SYSTEM:(F)', '/grant', 'Administrators:(R)'], { stdio: 'pipe', timeout: 5000 });
   } catch (e) {
     console.error('[SSH] Could not authorize admin key (non-fatal):', e.message);
   }

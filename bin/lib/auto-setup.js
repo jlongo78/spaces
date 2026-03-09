@@ -67,7 +67,11 @@ function autoSetup({ SPACES_DIR, SESSION_SECRET_PATH, ADMIN_DB_PATH, CONFIG_PATH
     // When running as SYSTEM (Windows service), resolve to the actual user
     // from the USERPROFILE env var set in the service wrapper script
     if (process.platform === 'win32' && shellUser.toUpperCase() === 'SYSTEM' && process.env.USERPROFILE) {
-      shellUser = path.basename(process.env.USERPROFILE);
+      const candidate = path.basename(process.env.USERPROFILE);
+      // Validate: must be a plausible Windows username (no path traversal or special chars)
+      if (/^[a-zA-Z0-9][a-zA-Z0-9 ._-]{0,63}$/.test(candidate)) {
+        shellUser = candidate;
+      }
     }
     const id = crypto.randomUUID();
     const passwordHash = hashPassword(generatedPassword);

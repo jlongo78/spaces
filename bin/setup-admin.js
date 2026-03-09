@@ -154,7 +154,10 @@ async function main() {
     const displayName = (await prompt(rl2, `  Display name [${username}]: `)).trim() || username;
     let shellUser = os.userInfo().username;
     if (process.platform === 'win32' && shellUser.toUpperCase() === 'SYSTEM' && process.env.USERPROFILE) {
-      shellUser = path.basename(process.env.USERPROFILE);
+      const candidate = path.basename(process.env.USERPROFILE);
+      if (/^[a-zA-Z0-9][a-zA-Z0-9 ._-]{0,63}$/.test(candidate)) {
+        shellUser = candidate;
+      }
     }
 
     rl2.close();

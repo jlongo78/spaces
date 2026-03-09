@@ -213,11 +213,16 @@ function authorizeServiceKey(keyPath, targetUser) {
     const adminAuthKeys = path.join(process.env.ProgramData || 'C:\\ProgramData', 'ssh', 'administrators_authorized_keys');
     const userAuthKeys = path.join(path.dirname(os.homedir()), targetUser, '.ssh', 'authorized_keys');
 
-    // Check if user is an administrator
+    // Check if user is an administrator (exact match, not substring)
     let isAdmin = false;
     try {
       const result = spawnSync('net', ['localgroup', 'Administrators'], { encoding: 'utf-8', timeout: 5000 });
-      isAdmin = (result.stdout || '').includes(targetUser);
+      const lines = (result.stdout || '').split(/\r?\n/);
+      const sep = lines.findIndex(l => l.trim().startsWith('---'));
+      if (sep >= 0) {
+        const members = lines.slice(sep + 1).map(l => l.trim()).filter(Boolean);
+        isAdmin = members.some(m => m.toLowerCase() === targetUser.toLowerCase());
+      }
     } catch {}
 
     const authKeysPath = isAdmin ? adminAuthKeys : userAuthKeys;
@@ -239,7 +244,15 @@ function authorizeServiceKey(keyPath, targetUser) {
     }
   } else {
     // Linux/macOS: use ~/.ssh/authorized_keys
-    const userHome = '/home/' + targetUser;
+    let userHome;
+    try {
+      // Use getent to resolve the actual home directory (works with LDAP, NIS, etc.)
+      const result = spawnSync('getent', ['passwd', targetUser], { encoding: 'utf-8', timeout: 5000 });
+      const fields = (result.stdout || '').split(':');
+      userHome = fields[5] || (process.platform === 'darwin' ? `/Users/${targetUser}` : `/home/${targetUser}`);
+    } catch {
+      userHome = process.platform === 'darwin' ? `/Users/${targetUser}` : `/home/${targetUser}`;
+    }
     const sshDir = path.join(userHome, '.ssh');
     const authKeysPath = path.join(sshDir, 'authorized_keys');
     if (!fs.existsSync(sshDir)) fs.mkdirSync(sshDir, { recursive: true, mode: 0o700 });
@@ -791,7 +804,7 @@ async function win32Stop() {
     execFileSync('schtasks', ['/End', '/TN', TASK_NAME], { stdio: 'pipe' });
   } catch {}
 
-  // Kill the actual node processes on our ports
+  // Kill the actual node processes on our ports (verify it's node before killing)
   const config = resolveConfig();
   const ports = [config.port || 3457, 3400];
   let killed = 0;
@@ -803,7 +816,12 @@ async function win32Stop() {
           const parts = line.trim().split(/\s+/);
           const pid = parseInt(parts[parts.length - 1], 10);
           if (pid > 0) {
-            try { process.kill(pid, 'SIGTERM'); killed++; } catch {}
+            // Verify the process is node.exe before killing to avoid terminating unrelated processes
+            try {
+              const taskInfo = execFileSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf-8' });
+              if (!taskInfo.toLowerCase().includes('node.exe')) continue;
+              process.kill(pid, 'SIGTERM'); killed++;
+            } catch {}
           }
         }
       }
