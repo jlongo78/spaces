@@ -663,13 +663,12 @@ async function win32Install() {
   saveLevel(level);
 
   // Set up SSH for multi-user support (system service only)
+  // Only ensure OpenSSH is available — key generation is handled at runtime
+  // by ensureServiceKeyAtRuntime() in terminal-server.js, which runs as SYSTEM
+  // so the key is owned by SYSTEM and OpenSSH accepts it.
   if (level === 'system') {
     ensureOpenSSHServer();
-    const keyPath = ensureServiceKey();
-    if (keyPath) {
-      const currentUser = os.userInfo().username;
-      authorizeServiceKey(keyPath, currentUser);
-    }
+    log('SSH service key will be generated on first run (as SYSTEM)');
   }
 
   execFileSync('schtasks', ['/Run', '/TN', TASK_NAME], { stdio: 'inherit' });

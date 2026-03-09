@@ -175,7 +175,10 @@ async function main() {
       const displayName = await prompt(rl2, 'Display name', username);
       rl2.close();
 
-      const shellUser = os.userInfo().username;
+      let shellUser = os.userInfo().username;
+      if (process.platform === 'win32' && shellUser.toUpperCase() === 'SYSTEM' && process.env.USERPROFILE) {
+        shellUser = path.basename(process.env.USERPROFILE);
+      }
       const id = crypto.randomUUID();
       const passwordHash = hashPassword(password);
 
