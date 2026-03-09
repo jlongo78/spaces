@@ -65,6 +65,136 @@ function ensureLogsDir() {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
 
+
+// --- SSH key provisioning (for multi-user system service) ---
+function checkOpenSSHServer() {
+  if (process.platform !== 'win32') return true;
+  try {
+    const result = spawnSync('powershell', ['-NoProfile', '-Command',
+      'Get-Service sshd -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Status'
+    ], { encoding: 'utf-8', timeout: 10000 });
+    const status = (result.stdout || '').trim();
+    return status === 'Running' || status === 'Stopped';
+  } catch { return false; }
+}
+
+function ensureOpenSSHServer() {
+  if (process.platform !== 'win32') return;
+  if (checkOpenSSHServer()) {
+    try {
+      spawnSync('powershell', ['-NoProfile', '-Command',
+        'Start-Service sshd; Set-Service -Name sshd -StartupType Automatic'
+      ], { stdio: 'pipe', timeout: 15000 });
+      logOk('OpenSSH Server started and set to automatic');
+    } catch {
+      log('Warning: could not start OpenSSH Server');
+    }
+    return;
+  }
+  log('Installing OpenSSH Server (required for multi-user terminals)...');
+  try {
+    const result = spawnSync('powershell', ['-NoProfile', '-Command',
+      'Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0'
+    ], { encoding: 'utf-8', stdio: 'pipe', timeout: 120000 });
+    if (result.status === 0) {
+      logOk('OpenSSH Server installed');
+      spawnSync('powershell', ['-NoProfile', '-Command',
+        'Start-Service sshd; Set-Service -Name sshd -StartupType Automatic'
+      ], { stdio: 'pipe', timeout: 15000 });
+      logOk('OpenSSH Server started');
+    } else {
+      logErr('Failed to install OpenSSH Server: ' + (result.stderr || '').trim());
+      log('Multi-user terminals will not work. Install manually:');
+      log('  Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0');
+    }
+  } catch (e) {
+    logErr('Failed to install OpenSSH Server: ' + e.message);
+  }
+}
+
+function ensureServiceKey() {
+  const keyPath = path.join(SPACES_DIR, 'service_key');
+  if (fs.existsSync(keyPath)) return keyPath;
+  log('Generating SSH service key...');
+  fs.mkdirSync(SPACES_DIR, { recursive: true });
+  const result = spawnSync('ssh-keygen', [
+    '-t', 'ed25519',
+    '-f', keyPath,
+    '-N', '',
+    '-C', 'spaces-service-key',
+  ], { stdio: 'pipe', timeout: 10000 });
+  if (result.status !== 0) {
+    logErr('Failed to generate SSH key');
+    return null;
+  }
+
+  // On Windows, restrict private key permissions so OpenSSH accepts it.
+  // OpenSSH requires: no inherited ACLs, only the file owner + SYSTEM may have access.
+  if (process.platform === 'win32') {
+    try {
+      const currentUser = os.userInfo().username;
+      // Remove inheritance and all default ACLs, then grant only owner + SYSTEM
+      spawnSync('icacls', [keyPath, '/inheritance:r',
+        '/remove', 'BUILTIN\\Administrators',
+        '/remove', 'BUILTIN\\Users',
+        '/remove', 'Everyone',
+        '/grant:r', currentUser + ':(F)',
+        '/grant', 'NT AUTHORITY\\SYSTEM:(F)'], { stdio: 'pipe', timeout: 5000 });
+    } catch {}
+  }
+
+  logOk('SSH service key generated');
+  return keyPath;
+}
+
+function authorizeServiceKey(keyPath, targetUser) {
+  const pubKey = fs.readFileSync(keyPath + '.pub', 'utf-8').trim();
+
+  if (process.platform === 'win32') {
+    // Windows OpenSSH ignores ~/.ssh/authorized_keys for admin users.
+    // Must use C:\ProgramData\ssh\administrators_authorized_keys instead.
+    const adminAuthKeys = path.join(process.env.ProgramData || 'C:\\ProgramData', 'ssh', 'administrators_authorized_keys');
+    const userAuthKeys = path.join(path.dirname(os.homedir()), targetUser, '.ssh', 'authorized_keys');
+
+    // Check if user is an administrator
+    let isAdmin = false;
+    try {
+      const result = spawnSync('net', ['localgroup', 'Administrators'], { encoding: 'utf-8', timeout: 5000 });
+      isAdmin = (result.stdout || '').includes(targetUser);
+    } catch {}
+
+    const authKeysPath = isAdmin ? adminAuthKeys : userAuthKeys;
+    const authDir = path.dirname(authKeysPath);
+    if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+
+    // Check if key already authorized
+    if (fs.existsSync(authKeysPath)) {
+      const existing = fs.readFileSync(authKeysPath, 'utf-8');
+      if (existing.includes(pubKey)) return;
+    }
+    fs.appendFileSync(authKeysPath, pubKey + String.fromCharCode(10));
+
+    // Fix permissions for administrators_authorized_keys
+    if (isAdmin) {
+      try {
+        spawnSync('icacls', [authKeysPath, '/inheritance:r', '/grant', 'SYSTEM:(R)', '/grant', 'Administrators:(R)'], { stdio: 'pipe', timeout: 5000 });
+      } catch {}
+    }
+  } else {
+    // Linux/macOS: use ~/.ssh/authorized_keys
+    const userHome = '/home/' + targetUser;
+    const sshDir = path.join(userHome, '.ssh');
+    const authKeysPath = path.join(sshDir, 'authorized_keys');
+    if (!fs.existsSync(sshDir)) fs.mkdirSync(sshDir, { recursive: true, mode: 0o700 });
+    if (fs.existsSync(authKeysPath)) {
+      const existing = fs.readFileSync(authKeysPath, 'utf-8');
+      if (existing.includes(pubKey)) return;
+    }
+    fs.appendFileSync(authKeysPath, pubKey + String.fromCharCode(10));
+  }
+  logOk('SSH key authorized for ' + targetUser);
+}
+
 const LEVEL_PATH = path.join(SPACES_DIR, 'service-level');
 
 function saveLevel(level) {
@@ -105,6 +235,7 @@ function linuxUnitFile(level) {
   const projectDir = resolveProjectDir();
 
   let envLines = [
+    `Environment=SPACES_SERVICE=1`,
     `Environment=SPACES_PORT=${config.port}`,
     `Environment=SPACES_TIER=${config.tier}`,
   ];
@@ -297,6 +428,8 @@ function darwinPlistContent(level) {
   const errLog = path.join(LOGS_DIR, 'spaces.err.log');
 
   let envEntries = [
+    `      <key>SPACES_SERVICE</key>`,
+    `      <string>1</string>`,
     `      <key>SPACES_PORT</key>`,
     `      <string>${config.port}</string>`,
     `      <key>SPACES_TIER</key>`,
@@ -472,7 +605,7 @@ async function darwinLogs() {
 }
 
 // ─── Windows (Task Scheduler) ────────────────────────────────
-function win32WrapperScript() {
+function win32WrapperScript(level) {
   ensureLogsDir();
   const config = resolveConfig();
   const nodePath = resolveNodePath();
@@ -482,9 +615,20 @@ function win32WrapperScript() {
 
   const lines = [
     '@echo off',
-    `set SPACES_PORT=${config.port}`,
-    `set SPACES_TIER=${config.tier}`,
   ];
+  // When running as SYSTEM, override USERPROFILE so os.homedir() resolves
+  // to the installing user's home directory (where .spaces/ config lives).
+  if (level === 'system') {
+    const homedir = os.homedir();
+    const drive = path.parse(homedir).root.slice(0, -1);
+    const rest = homedir.slice(drive.length);
+    lines.push(`set USERPROFILE=${homedir}`);
+    lines.push(`set HOMEDRIVE=${drive}`);
+    lines.push(`set HOMEPATH=${rest}`);
+  }
+  lines.push('set SPACES_SERVICE=1');
+  lines.push(`set SPACES_PORT=${config.port}`);
+  lines.push(`set SPACES_TIER=${config.tier}`);
   if (config.basePath) {
     lines.push(`set SPACES_BASE_PATH=${config.basePath}`);
   }
@@ -500,7 +644,7 @@ function win32WrapperScript() {
 
 async function win32Install() {
   const level = await promptLevel();
-  const wrapperPath = win32WrapperScript();
+  const wrapperPath = win32WrapperScript(level);
 
   log(`Wrapper script written to ${wrapperPath}`);
 
@@ -517,6 +661,16 @@ async function win32Install() {
   logOk('Scheduled task created');
 
   saveLevel(level);
+
+  // Set up SSH for multi-user support (system service only)
+  if (level === 'system') {
+    ensureOpenSSHServer();
+    const keyPath = ensureServiceKey();
+    if (keyPath) {
+      const currentUser = os.userInfo().username;
+      authorizeServiceKey(keyPath, currentUser);
+    }
+  }
 
   execFileSync('schtasks', ['/Run', '/TN', TASK_NAME], { stdio: 'inherit' });
   logOk('Task started');
@@ -560,8 +714,34 @@ async function win32Start() {
 }
 
 async function win32Stop() {
-  execFileSync('schtasks', ['/End', '/TN', TASK_NAME], { stdio: 'inherit' });
-  logOk('Task stopped');
+  try {
+    execFileSync('schtasks', ['/End', '/TN', TASK_NAME], { stdio: 'pipe' });
+  } catch {}
+
+  // Kill the actual node processes on our ports
+  const config = resolveConfig();
+  const ports = [config.port || 3457, 3400];
+  let killed = 0;
+  for (const port of ports) {
+    try {
+      const output = execFileSync('netstat', ['-ano'], { encoding: 'utf-8' });
+      for (const line of output.split(String.fromCharCode(10))) {
+        if (line.includes(':' + port + ' ') && line.includes('LISTENING')) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parseInt(parts[parts.length - 1], 10);
+          if (pid > 0) {
+            try { process.kill(pid, 'SIGTERM'); killed++; } catch {}
+          }
+        }
+      }
+    } catch {}
+  }
+
+  if (killed > 0) {
+    logOk('Stopped ' + killed + ' process(es)');
+  } else {
+    logOk('Task stopped');
+  }
 }
 
 async function win32Status() {

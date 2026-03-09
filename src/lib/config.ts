@@ -31,7 +31,16 @@ export function getUserPaths(username: string) {
   }
 
   // Agent session data lives in the shell user's home (read-only access via group perms)
-  const homeDir = resolvedUser === os.userInfo().username ? os.homedir() : `/home/${resolvedUser}`;
+  let homeDir: string;
+  if (resolvedUser === os.userInfo().username) {
+    homeDir = os.homedir();
+  } else if (process.platform === 'win32') {
+    const usersDir = path.dirname(os.homedir());
+    const candidate = path.join(usersDir, resolvedUser);
+    homeDir = fs.existsSync(candidate) ? candidate : os.homedir();
+  } else {
+    homeDir = `/home/${resolvedUser}`;
+  }
 
   // Spaces writable data is centralized under the app process owner's home
   // so we don't need write access to other users' home directories

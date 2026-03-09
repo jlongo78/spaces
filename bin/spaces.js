@@ -300,16 +300,19 @@ function startServer() {
       console.log(`\n  Ready at http://localhost:${PORT}\n`);
 
       const url = `http://localhost:${PORT}`;
-      try {
-        if (process.platform === 'win32') {
-          execFileSync('cmd', ['/c', 'start', url], { stdio: 'ignore' });
-        } else if (process.platform === 'darwin') {
-          execFileSync('open', [url], { stdio: 'ignore' });
-        } else {
-          execFileSync('xdg-open', [url], { stdio: 'ignore' });
+      const isService = process.env.SPACES_SERVICE === '1';
+      if (!isService) {
+        try {
+          if (process.platform === 'win32') {
+            execFileSync('cmd', ['/c', 'start', url], { stdio: 'ignore' });
+          } else if (process.platform === 'darwin') {
+            execFileSync('open', [url], { stdio: 'ignore' });
+          } else {
+            execFileSync('xdg-open', [url], { stdio: 'ignore' });
+          }
+        } catch {
+          console.log(`  Open ${url} in your browser`);
         }
-      } catch {
-        console.log(`  Open ${url} in your browser`);
       }
     }
   });
@@ -383,16 +386,27 @@ function startServer() {
 // ─── Stop running server ─────────────────────────────────────
 function findPidsOnPort(port) {
   const pids = new Set();
-  // Try lsof first
-  try {
-    const output = execFileSync('lsof', ['-ti', `tcp:${port}`], { encoding: 'utf-8' }).trim();
-    for (const p of output.split('\n')) { if (p.trim()) pids.add(parseInt(p.trim(), 10)); }
-  } catch {}
-  // Fallback to fuser (catches processes lsof misses)
-  try {
-    const output = execFileSync('fuser', [`${port}/tcp`], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-    for (const p of output.split(/\s+/)) { if (p.trim()) pids.add(parseInt(p.trim(), 10)); }
-  } catch {}
+  if (process.platform === 'win32') {
+    try {
+      const output = execFileSync('netstat', ['-ano'], { encoding: 'utf-8' });
+      for (const line of output.split(String.fromCharCode(10))) {
+        if (line.includes(':' + port + ' ') && line.includes('LISTENING')) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parseInt(parts[parts.length - 1], 10);
+          if (pid > 0) pids.add(pid);
+        }
+      }
+    } catch {}
+  } else {
+    try {
+      const output = execFileSync('lsof', ['-ti', `tcp:${port}`], { encoding: 'utf-8' }).trim();
+      for (const p of output.split('\n')) { if (p.trim()) pids.add(parseInt(p.trim(), 10)); }
+    } catch {}
+    try {
+      const output = execFileSync('fuser', [`${port}/tcp`], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+      for (const p of output.split(/\s+/)) { if (p.trim()) pids.add(parseInt(p.trim(), 10)); }
+    } catch {}
+  }
   return [...pids].filter(p => !isNaN(p) && p > 0);
 }
 
@@ -428,7 +442,7 @@ function stopServer() {
         }
         escalated = true;
       }
-      require('child_process').spawnSync('sleep', ['0.2']);
+      if (process.platform === 'win32') { require('child_process').spawnSync('powershell', ['-Command', 'Start-Sleep -Milliseconds 200']); } else { require('child_process').spawnSync('sleep', ['0.2']); }
     }
   } else {
     console.log(`  No running server found on port ${port}`);

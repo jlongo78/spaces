@@ -303,6 +303,55 @@ function parseCookies(cookieHeader) {
 
 const SERVICE_KEY = path.join(os.homedir(), '.spaces', 'service_key');
 
+// Ensure the SSH service key exists, has correct permissions, and is authorized.
+function ensureServiceKeyAtRuntime() {
+  if (process.platform !== 'win32') return;
+  const { spawnSync } = require('child_process');
+  const currentUser = os.userInfo().username;
+
+  // Generate key if missing
+  if (!fs.existsSync(SERVICE_KEY)) {
+    const dir = path.dirname(SERVICE_KEY);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const result = spawnSync('ssh-keygen', [
+      '-t', 'ed25519', '-f', SERVICE_KEY, '-N', '', '-C', 'spaces-service-key',
+    ], { stdio: 'pipe', timeout: 10000 });
+    if (result.status !== 0) {
+      console.error('[SSH] Failed to generate service key');
+      return;
+    }
+    // Lock down permissions: only the process owner + SYSTEM
+    spawnSync('icacls', [SERVICE_KEY, '/inheritance:r',
+      '/remove', 'BUILTIN\\Administrators', '/remove', 'BUILTIN\\Users', '/remove', 'Everyone',
+      '/grant:r', currentUser + ':(F)',
+      '/grant', 'NT AUTHORITY\\SYSTEM:(F)'], { stdio: 'pipe', timeout: 5000 });
+    console.log('[SSH] Generated service key as ' + currentUser);
+  }
+
+  // Always ensure the public key is authorized
+  if (!fs.existsSync(SERVICE_KEY + '.pub')) return;
+  try {
+    const pubKey = fs.readFileSync(SERVICE_KEY + '.pub', 'utf-8').trim();
+    const adminAuthKeys = path.join(process.env.ProgramData || 'C:\\ProgramData', 'ssh', 'administrators_authorized_keys');
+    const authDir = path.dirname(adminAuthKeys);
+    if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+    // Grant SYSTEM full access so we can read/write
+    spawnSync('icacls', [adminAuthKeys, '/grant', 'SYSTEM:(F)'], { stdio: 'pipe', timeout: 5000 });
+    let existing = '';
+    try { existing = fs.readFileSync(adminAuthKeys, 'utf-8'); } catch {}
+    if (!existing.includes(pubKey)) {
+      fs.appendFileSync(adminAuthKeys, pubKey + String.fromCharCode(10));
+      console.log('[SSH] Authorized service key in administrators_authorized_keys');
+    }
+    // Lock down: SYSTEM full (for future writes), Administrators read
+    spawnSync('icacls', [adminAuthKeys, '/inheritance:r',
+      '/grant:r', 'SYSTEM:(F)', '/grant', 'Administrators:(R)'], { stdio: 'pipe', timeout: 5000 });
+  } catch (e) {
+    console.error('[SSH] Could not authorize key (non-fatal):', e.message);
+  }
+}
+try { ensureServiceKeyAtRuntime(); } catch (e) { console.error('[SSH] Key setup failed (non-fatal):', e.message); }
+
 // Session store: keeps ptys alive across WebSocket reconnections
 // Key: paneId, Value: { pty, ws (current WebSocket or null), buffer (rolling output), username }
 const sessions = new Map();
@@ -340,6 +389,23 @@ function findGitBash() {
     const first = result.trim().split('\n')[0].trim();
     if (first && first.toLowerCase().includes('git') && fs.existsSync(first)) return first;
   } catch { /* not found */ }
+  return null;
+}
+
+// ─── SSH binary detection (Windows) ──────────────────────
+function findSshBinary() {
+  if (process.platform !== 'win32') return '/usr/bin/ssh';
+  // Windows OpenSSH ships in System32
+  const sysSSH = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'OpenSSH', 'ssh.exe');
+  if (fs.existsSync(sysSSH)) return sysSSH;
+  // Git for Windows also bundles ssh
+  const gitSSH = 'C:\\Program Files\\Git\\usr\\bin\\ssh.exe';
+  if (fs.existsSync(gitSSH)) return gitSSH;
+  try {
+    const result = require('child_process').execSync('where ssh.exe 2>nul', { encoding: 'utf-8', timeout: 3000 });
+    const first = result.trim().split(String.fromCharCode(10))[0].trim();
+    if (first && fs.existsSync(first)) return first;
+  } catch {}
   return null;
 }
 
@@ -451,6 +517,16 @@ function handleConnection(wss, ws, req) {
     const isLocal = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1' || remoteIp.startsWith('172.') || remoteIp.startsWith('::ffff:172.');
     if ((terminalToken === 'desktop-local' || terminalToken === 'session-auth') && (SPACES_TIER === 'desktop' || SPACES_TIER === 'community' || isLocal)) {
       username = os.userInfo().username;
+      // When running as SYSTEM, resolve to the first real user from admin DB
+      if (process.platform === "win32" && username.toUpperCase() === "SYSTEM") {
+        const db = getAdminDb();
+        if (db) {
+          try {
+            const row = db.prepare("SELECT username FROM users LIMIT 1").get();
+            if (row) username = row.username;
+          } catch {}
+        }
+      }
       console.log(`[Auth] Authenticated via desktop token: ${username}`);
     } else {
       // Verify terminal token — if signed by this server's secret, trust it
@@ -549,18 +625,26 @@ function handleConnection(wss, ws, req) {
   const shellUser = lookupShellUser(username);
   const processUser = os.userInfo().username;
   let shell, args;
-  const isSSH = !isWindows && shellUser !== processUser;
+  const isSSH = shellUser !== processUser;
   if (isSSH) {
     // SSH to localhost as the mapped shell user using the service key
-    shell = '/usr/bin/ssh';
+    const sshBin = findSshBinary();
+    if (!sshBin) {
+      console.error(`[Spawn] SSH binary not found — cannot spawn as ${shellUser}`);
+      ws.send(JSON.stringify({ type: 'error', data: 'SSH not available. Install OpenSSH to enable multi-user terminals.' }));
+      ws.close();
+      return;
+    }
+    shell = sshBin;
     args = [
-      '-4',
-      '-i', SERVICE_KEY,
       '-o', 'StrictHostKeyChecking=accept-new',
       '-o', `UserKnownHostsFile=${path.join(os.homedir(), '.spaces', 'known_hosts')}`,
+      '-i', SERVICE_KEY,
       '-t',
       `${shellUser}@localhost`,
     ];
+    // Force IPv4 — localhost may resolve to ::1 (IPv6) which sshd can reject
+    args.unshift('-4');
   } else if (isWindows && agentType !== 'shell') {
     // Agents like Claude Code require bash on Windows — find git-bash
     shell = findGitBash();
@@ -583,7 +667,7 @@ function handleConnection(wss, ws, req) {
   // Fall back to HOME if cwd doesn't exist (e.g. remote path from another node)
   let safeCwd = cwd;
   if (!fs.existsSync(safeCwd)) {
-    safeCwd = process.env.HOME || '/root';
+    safeCwd = os.homedir();
     console.log(`[Spawn] cwd "${cwd}" does not exist, falling back to "${safeCwd}"`);
   }
 
@@ -644,11 +728,17 @@ function handleConnection(wss, ws, req) {
 
   // SSH sessions start in the remote user's home dir — cd to target cwd first
   if (isSSH) {
-    // Use single quotes to prevent shell expansion; escape any single quotes in the path
-    const escapedCwd = safeCwd.replace(/'/g, "'\\''");
     setTimeout(() => {
       if (!session.exited) {
-        term.write(`cd '${escapedCwd}'\r`);
+        if (isWindows) {
+          // Windows cmd.exe uses double quotes
+          const escapedCwd = safeCwd.replace(/"/g, '""');
+          term.write(`cd /d "${escapedCwd}"\r`);
+        } else {
+          // Unix shells use single quotes
+          const escapedCwd = safeCwd.replace(/'/g, "'\\''");
+          term.write(`cd '${escapedCwd}'\r`);
+        }
       }
     }, 300);
   }
@@ -775,6 +865,13 @@ function handleConnection(wss, ws, req) {
 function getUserHome(username) {
   const shellUser = lookupShellUser(username);
   if (shellUser === os.userInfo().username) return os.homedir();
+  if (process.platform === 'win32') {
+    // On Windows, user profiles live under the Users directory
+    const usersDir = path.dirname(os.homedir());
+    const userHome = path.join(usersDir, shellUser);
+    if (fs.existsSync(userHome)) return userHome;
+    return os.homedir();
+  }
   return `/home/${shellUser}`;
 }
 
