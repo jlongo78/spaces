@@ -7,7 +7,29 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
-const PACKAGES_DIR = path.join(os.homedir(), '.spaces', 'packages');
+// Resolve the target user's home directory.
+// On Windows, if running from a separate admin account, find the user
+// who actually has Claude Code data (.claude/ directory).
+function resolveTargetHome() {
+  const currentHome = os.homedir();
+  if (process.platform !== 'win32') return currentHome;
+  // Check if the current user has .claude — if so, they're the target
+  if (fs.existsSync(path.join(currentHome, '.claude'))) return currentHome;
+  // Scan for users with .claude
+  const usersDir = path.dirname(currentHome);
+  const skip = new Set(['Public', 'Default', 'Default User', 'All Users']);
+  try {
+    const claudeUsers = fs.readdirSync(usersDir)
+      .filter(name => !skip.has(name) && !name.startsWith('.'))
+      .filter(name => fs.existsSync(path.join(usersDir, name, '.claude')));
+    if (claudeUsers.length === 1) return path.join(usersDir, claudeUsers[0]);
+  } catch {}
+  return currentHome;
+}
+
+const TARGET_HOME = resolveTargetHome();
+const SPACES_DIR = path.join(TARGET_HOME, '.spaces');
+const PACKAGES_DIR = path.join(SPACES_DIR, 'packages');
 const NODE_MODULES_DIR = path.join(PACKAGES_DIR, 'node_modules', '@spaces');
 
 // ─── Package definitions ─────────────────────────────────────
@@ -36,6 +58,38 @@ function logOk(msg) { console.log(`  ✓ ${msg}`); }
 function logErr(msg) { console.error(`  ✗ ${msg}`); }
 function logWarn(msg) { console.log(`  ! ${msg}`); }
 
+// On Windows, ensure Git is in PATH (admin accounts may not inherit user PATH)
+function ensureGitInPath() {
+  if (process.platform !== 'win32') return;
+  try {
+    execFileSync('git', ['--version'], { stdio: 'pipe', shell: true });
+    return; // git already available
+  } catch {}
+  // Try common Git install locations (system-wide and per-user)
+  const candidates = [
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'cmd'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Git', 'cmd'),
+    // Per-user installs (check target user and all profiles)
+    path.join(TARGET_HOME, 'AppData', 'Local', 'Programs', 'Git', 'cmd'),
+    path.join(TARGET_HOME, 'AppData', 'Local', 'Programs', 'Git', 'mingw64', 'bin'),
+  ];
+  // Also check all user profiles in case Git is installed by a different user
+  try {
+    const usersDir = path.dirname(os.homedir());
+    for (const name of fs.readdirSync(usersDir)) {
+      candidates.push(path.join(usersDir, name, 'AppData', 'Local', 'Programs', 'Git', 'cmd'));
+      candidates.push(path.join(usersDir, name, 'AppData', 'Local', 'Programs', 'Git', 'mingw64', 'bin'));
+    }
+  } catch {}
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, 'git.exe'))) {
+      process.env.PATH = process.env.PATH + ';' + dir;
+      return;
+    }
+  }
+}
+ensureGitInPath();
+
 function run(cmd, args, opts = {}) {
   const isWin = process.platform === 'win32';
   const safeArgs = isWin
@@ -49,6 +103,10 @@ function run(cmd, args, opts = {}) {
   });
 }
 
+// Git args prefix: allow operating on repos owned by a different user
+// (e.g. admin account managing packages in the target user's home)
+const GIT_SAFE = ['-c', 'safe.directory=*'];
+
 /**
  * Clone a repo, trying SSH first then HTTPS (with optional PAT).
  */
@@ -59,7 +117,7 @@ function gitClone(repo, dest, isPrivate) {
   // Try SSH first
   try {
     log(`Cloning ${repo} (SSH)...`);
-    run('git', ['clone', '--depth', '1', sshUrl, dest]);
+    run('git', [...GIT_SAFE, 'clone', '--depth', '1', sshUrl, dest]);
     return;
   } catch {
     // SSH failed, try HTTPS
@@ -71,13 +129,13 @@ function gitClone(repo, dest, isPrivate) {
     if (pat) {
       log(`Cloning ${repo} (HTTPS + token)...`);
       const authedUrl = `https://${pat}@github.com/${repo}.git`;
-      run('git', ['clone', '--depth', '1', authedUrl, dest]);
+      run('git', [...GIT_SAFE, 'clone', '--depth', '1', authedUrl, dest]);
       return;
     }
   }
 
   log(`Cloning ${repo} (HTTPS)...`);
-  run('git', ['clone', '--depth', '1', httpsUrl, dest]);
+  run('git', [...GIT_SAFE, 'clone', '--depth', '1', httpsUrl, dest]);
 }
 
 /**
@@ -85,7 +143,7 @@ function gitClone(repo, dest, isPrivate) {
  */
 function gitPull(dir) {
   log('Pulling latest...');
-  run('git', ['pull', '--ff-only'], { cwd: dir });
+  run('git', [...GIT_SAFE, 'pull', '--ff-only'], { cwd: dir });
 }
 
 /**
@@ -203,7 +261,7 @@ function installPackage(pkgKey) {
   }
 
   // 8. Update tier in server.json
-  const configPath = path.join(os.homedir(), '.spaces', 'server.json');
+  const configPath = path.join(SPACES_DIR, 'server.json');
   try {
     const config = fs.existsSync(configPath)
       ? JSON.parse(fs.readFileSync(configPath, 'utf-8'))
@@ -427,7 +485,7 @@ function uninstallPackage(pkgKey) {
     console.log(`\n  Uninstalling ${pkg.name}...\n`);
     uninstallOne(pkgKey);
     // Reset tier to community if removing a tier package
-    const configPath = path.join(os.homedir(), '.spaces', 'server.json');
+    const configPath = path.join(SPACES_DIR, 'server.json');
     try {
       if (fs.existsSync(configPath)) {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
@@ -464,7 +522,7 @@ function uninstallPackage(pkgKey) {
     }
 
     // Reset tier to community in server.json
-    const configPath = path.join(os.homedir(), '.spaces', 'server.json');
+    const configPath = path.join(SPACES_DIR, 'server.json');
     try {
       if (fs.existsSync(configPath)) {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
