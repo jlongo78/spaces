@@ -24,12 +24,23 @@ export function ApiKeyList() {
     setShowCreate(false);
   };
 
-  const copyKey = () => {
-    if (newKey) {
-      navigator.clipboard.writeText(newKey);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const copyKey = async () => {
+    if (!newKey) return;
+    try {
+      await navigator.clipboard.writeText(newKey);
+    } catch {
+      // Fallback for non-secure contexts (HTTP)
+      const textarea = document.createElement('textarea');
+      textarea.value = newKey;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   if (isLoading) {
