@@ -8,12 +8,19 @@ const os = require('os');
 const fs = require('fs');
 const readline = require('readline');
 
-const SPACES_DIR = path.join(os.homedir(), '.spaces');
-const CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
-const LOGS_DIR = path.join(SPACES_DIR, 'logs');
+let SPACES_DIR = path.join(os.homedir(), '.spaces');
+let CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
+let LOGS_DIR = path.join(SPACES_DIR, 'logs');
 const SERVICE_NAME = 'spaces';
 const LABEL = 'com.agentspaces.spaces';
 const TASK_NAME = 'Spaces';
+
+// Override SPACES_DIR to point to a different user's home
+function setTargetHome(homedir) {
+  SPACES_DIR = path.join(homedir, '.spaces');
+  CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
+  LOGS_DIR = path.join(SPACES_DIR, 'logs');
+}
 
 // ─── Helpers ──────────────────────────────────────────────────
 function log(msg) { console.log(`  ${msg}`); }
@@ -63,6 +70,56 @@ function promptLevel() {
 
 function ensureLogsDir() {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
+}
+
+// Detect Windows user profiles that have .claude/ (Claude Code data)
+function findClaudeUsers() {
+  if (process.platform !== 'win32') return [];
+  const usersDir = path.dirname(os.homedir());
+  const skip = new Set(['Public', 'Default', 'Default User', 'All Users']);
+  try {
+    return fs.readdirSync(usersDir)
+      .filter(name => !skip.has(name) && !name.startsWith('.'))
+      .filter(name => {
+        const claudeDir = path.join(usersDir, name, '.claude');
+        return fs.existsSync(claudeDir);
+      })
+      .map(name => ({ name, homedir: path.join(usersDir, name) }));
+  } catch { return []; }
+}
+
+// Prompt for which user's home directory to target (system service only).
+// Looks for users with .claude/ (Claude Code data) since that's what gets synced.
+function promptTargetUser() {
+  return new Promise((resolve) => {
+    const currentHome = os.homedir();
+    const users = findClaudeUsers();
+
+    // No Claude users found — fall back to current user
+    if (users.length === 0) {
+      resolve(currentHome);
+      return;
+    }
+    // Single Claude user — auto-select
+    if (users.length === 1) {
+      log(`Using home directory: ${users[0].homedir}`);
+      resolve(users[0].homedir);
+      return;
+    }
+
+    // Multiple Claude users — ask which one
+    console.log('');
+    log('Multiple users have Claude Code data:');
+    users.forEach((u, i) => log(`  ${i + 1}. ${u.name} (${u.homedir})`));
+    console.log('');
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(`  Run as user [1]: `, (answer) => {
+      rl.close();
+      const idx = parseInt(answer.trim() || '1', 10) - 1;
+      const chosen = users[idx] || users[0];
+      resolve(chosen.homedir);
+    });
+  });
 }
 
 
@@ -617,9 +674,9 @@ function win32WrapperScript(level) {
     '@echo off',
   ];
   // When running as SYSTEM, override USERPROFILE so os.homedir() resolves
-  // to the installing user's home directory (where .spaces/ config lives).
+  // to the target user's home directory (where .spaces/ config lives).
   if (level === 'system') {
-    const homedir = os.homedir();
+    const homedir = path.dirname(SPACES_DIR); // use resolved target, not os.homedir()
     const drive = path.parse(homedir).root.slice(0, -1);
     const rest = homedir.slice(drive.length);
     lines.push(`set USERPROFILE=${homedir}`);
@@ -644,6 +701,14 @@ function win32WrapperScript(level) {
 
 async function win32Install() {
   const level = await promptLevel();
+
+  // For system service, determine the target user's home directory
+  // (may differ from the admin account running the installer)
+  if (level === 'system' && process.platform === 'win32') {
+    const targetHome = await promptTargetUser();
+    setTargetHome(targetHome);
+  }
+
   const wrapperPath = win32WrapperScript(level);
 
   log(`Wrapper script written to ${wrapperPath}`);

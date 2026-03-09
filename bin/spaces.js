@@ -84,6 +84,10 @@ if (subcommand === 'service') {
 if (cliFlags.setup) {
   require('./spaces-setup');
   // spaces-setup handles its own process.exit
+} else if (subcommand && !subcommand.startsWith('-')) {
+  console.error(`  Unknown command: ${subcommand}`);
+  console.error(`  Run "spaces --help" for usage`);
+  process.exit(1);
 } else {
   startServer();
 }

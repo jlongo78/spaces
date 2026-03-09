@@ -330,12 +330,13 @@ function ensureServiceKeyAtRuntime() {
 
   // Always ensure the public key is authorized
   if (!fs.existsSync(SERVICE_KEY + '.pub')) return;
+  const pubKey = fs.readFileSync(SERVICE_KEY + '.pub', 'utf-8').trim();
+
+  // Authorize in administrators_authorized_keys (for admin shell users)
   try {
-    const pubKey = fs.readFileSync(SERVICE_KEY + '.pub', 'utf-8').trim();
     const adminAuthKeys = path.join(process.env.ProgramData || 'C:\\ProgramData', 'ssh', 'administrators_authorized_keys');
     const authDir = path.dirname(adminAuthKeys);
     if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
-    // Grant SYSTEM full access so we can read/write
     spawnSync('icacls', [adminAuthKeys, '/grant', 'SYSTEM:(F)'], { stdio: 'pipe', timeout: 5000 });
     let existing = '';
     try { existing = fs.readFileSync(adminAuthKeys, 'utf-8'); } catch {}
@@ -343,11 +344,42 @@ function ensureServiceKeyAtRuntime() {
       fs.appendFileSync(adminAuthKeys, pubKey + String.fromCharCode(10));
       console.log('[SSH] Authorized service key in administrators_authorized_keys');
     }
-    // Lock down: SYSTEM full (for future writes), Administrators read
     spawnSync('icacls', [adminAuthKeys, '/inheritance:r',
       '/grant:r', 'SYSTEM:(F)', '/grant', 'Administrators:(R)'], { stdio: 'pipe', timeout: 5000 });
   } catch (e) {
-    console.error('[SSH] Could not authorize key (non-fatal):', e.message);
+    console.error('[SSH] Could not authorize admin key (non-fatal):', e.message);
+  }
+
+  // Authorize in each shell user's ~/.ssh/authorized_keys (for non-admin users)
+  // Scan user profiles that have a .claude directory (likely terminal targets)
+  try {
+    const usersDir = path.dirname(os.homedir());
+    const skip = new Set(['Public', 'Default', 'Default User', 'All Users']);
+    const profiles = fs.readdirSync(usersDir)
+      .filter(name => !skip.has(name) && !name.startsWith('.'))
+      .filter(name => fs.existsSync(path.join(usersDir, name, '.claude')));
+    for (const username of profiles) {
+      try {
+        const sshDir = path.join(usersDir, username, '.ssh');
+        if (!fs.existsSync(sshDir)) fs.mkdirSync(sshDir, { recursive: true });
+        const authKeysPath = path.join(sshDir, 'authorized_keys');
+        let existing = '';
+        try { existing = fs.readFileSync(authKeysPath, 'utf-8'); } catch {}
+        if (!existing.includes(pubKey)) {
+          fs.appendFileSync(authKeysPath, pubKey + String.fromCharCode(10));
+          // OpenSSH on Windows requires authorized_keys to be owned by the user
+          // and not writable by others; lock down permissions
+          spawnSync('icacls', [authKeysPath, '/inheritance:r',
+            '/grant:r', username + ':(F)',
+            '/grant', 'NT AUTHORITY\\SYSTEM:(F)'], { stdio: 'pipe', timeout: 5000 });
+          console.log('[SSH] Authorized service key for user ' + username);
+        }
+      } catch (e) {
+        console.error('[SSH] Could not authorize key for ' + username + ' (non-fatal):', e.message);
+      }
+    }
+  } catch (e) {
+    console.error('[SSH] Could not scan user profiles (non-fatal):', e.message);
   }
 }
 try { ensureServiceKeyAtRuntime(); } catch (e) { console.error('[SSH] Key setup failed (non-fatal):', e.message); }

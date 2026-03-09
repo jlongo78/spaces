@@ -208,14 +208,23 @@ function installPackage(pkgKey) {
     const config = fs.existsSync(configPath)
       ? JSON.parse(fs.readFileSync(configPath, 'utf-8'))
       : { port: 3457, basePath: '' };
-    // teams → team tier, pro → federation tier (upgrade only, don't downgrade)
+    // teams → team tier, pro → federation tier
+    // Add-on packages set their tier; base package resets to community
+    // only if no add-on package is currently installed
     const tierMap = { teams: 'team', pro: 'federation' };
-    const tierRank = { community: 0, team: 1, federation: 2 };
-    const newTier = tierMap[pkgKey] || config.tier || 'community';
-    if ((tierRank[newTier] || 0) >= (tierRank[config.tier] || 0)) {
-      config.tier = newTier;
+    if (tierMap[pkgKey]) {
+      // Installing an add-on — set its tier
+      config.tier = tierMap[pkgKey];
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-      logOk(`Tier set to ${newTier}`);
+      logOk(`Tier set to ${tierMap[pkgKey]}`);
+    } else if (!config.tier || config.tier === 'community') {
+      // Base package install, no add-on tier — ensure community
+      config.tier = 'community';
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      logOk(`Tier set to community`);
+    } else {
+      // Base package install but an add-on tier exists — preserve it
+      logOk(`Tier unchanged (${config.tier})`);
     }
   } catch {}
 
