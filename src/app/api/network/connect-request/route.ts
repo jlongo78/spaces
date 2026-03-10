@@ -2,16 +2,16 @@ import { NextRequest } from 'next/server';
 import { getPro } from '@/lib/pro';
 
 const notAvailable = () =>
-  Response.json({ error: 'Requires @spaces/pro' }, { status: 404 });
+  Response.json({ incoming: [], outgoing: [] });
 
-// POST is unauthenticated (receives incoming requests from other nodes)
 export async function POST(req: NextRequest) {
   const pro = getPro();
-  return pro?.network.api.connectRequest.POST(req) ?? notAvailable();
+  const handler = pro?.network?.api?.connectRequest?.POST;
+  return handler ? handler(req) : Response.json({ error: 'Not available' }, { status: 404 });
 }
 
-// GET is authenticated (lists pending requests for the UI)
 export async function GET() {
   const pro = getPro();
-  return pro?.network.api.connectRequest.GET() ?? notAvailable();
+  const handler = pro?.network?.api?.connectRequest?.GET;
+  return handler ? handler() : notAvailable();
 }
