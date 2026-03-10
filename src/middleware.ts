@@ -64,10 +64,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // Connection request/callback endpoints are unauthenticated (verified by token in body)
-  if (pathname === '/api/network/connect-request' && request.method === 'POST') {
-    return NextResponse.next();
-  }
-  if (pathname === '/api/network/connect-callback' && request.method === 'POST') {
+  if (request.method === 'POST' && (
+    pathname === '/api/network/connect-request' || pathname === '/api/network/connect-request/' ||
+    pathname === '/api/network/connect-callback' || pathname === '/api/network/connect-callback/'
+  )) {
     return NextResponse.next();
   }
 
