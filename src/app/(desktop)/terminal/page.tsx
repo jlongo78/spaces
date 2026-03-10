@@ -425,8 +425,8 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
             Home
           </button>
         </div>
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="w-full max-w-2xl">
+        <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto min-h-0">
+          <div className="w-full max-w-2xl my-auto">
             <div className="text-center mb-10">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={`${basePath}/spaces_icon.png`} alt="Spaces" className="w-16 h-16 mx-auto mb-4" />
@@ -691,6 +691,14 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
                 });
                 setActiveWorkspace(prev => prev ? { ...prev, collaboration: newVal } : prev);
                 setWorkspaces(prev => prev.map(w => w.id === activeWorkspace.id ? { ...w, collaboration: newVal } : w));
+
+                // Sync all agent panes in this workspace to match the new collaboration state
+                const agentPanes = panes.filter(p => p.workspaceId === activeWorkspace.id && p.agentType !== 'shell');
+                for (const p of agentPanes) {
+                  if (p.isCollaborating !== newVal) {
+                    await updatePane(p.id, { isCollaborating: newVal } as Partial<PaneData>);
+                  }
+                }
               }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border transition-colors ${
                 activeWorkspace.collaboration
