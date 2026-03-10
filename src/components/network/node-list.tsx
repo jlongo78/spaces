@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useNodes, useRemoveNode, useCheckHealth } from '@/hooks/use-network';
+import { useNodes, useRemoveNode, useCheckHealth, useSendConnectionRequest } from '@/hooks/use-network';
 import { NodeAddDialog } from './node-add-dialog';
-import { Plus, Trash2, RefreshCw, Globe, Loader2, Link } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, Globe, Loader2, Link, Radio } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
 
 const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
@@ -17,6 +17,7 @@ export function NodeList() {
   const { data: nodes, isLoading } = useNodes();
   const removeNode = useRemoveNode();
   const checkHealth = useCheckHealth();
+  const sendRequest = useSendConnectionRequest();
   const [showAdd, setShowAdd] = useState(false);
   const [connectNode, setConnectNode] = useState<{ id: string; url: string; name: string } | null>(null);
 
@@ -125,7 +126,7 @@ export function NodeList() {
             Discovered on Network
           </h3>
           <p className="text-[11px] text-zinc-400 mb-3">
-            These nodes were found via mDNS. Enter an API key to connect.
+            These nodes were found via mDNS. Request a connection or enter an API key manually.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             {discoveredNodes.map((node) => {
@@ -142,12 +143,21 @@ export function NodeList() {
                     </div>
                     <div className="flex items-center gap-1">
                       <button
+                        onClick={() => sendRequest.mutate({ nodeUrl: node.url, nodeId: node.id, nodeName: node.name })}
+                        disabled={sendRequest.isPending}
+                        className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-500 disabled:opacity-50"
+                        title="Request connection (no API key needed)"
+                      >
+                        {sendRequest.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Radio className="w-3 h-3" />}
+                        Request
+                      </button>
+                      <button
                         onClick={() => setConnectNode({ id: node.id, url: node.url, name: node.name })}
-                        className="flex items-center gap-1 px-2 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-500"
+                        className="flex items-center gap-1 px-2 py-1 text-xs border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
                         title="Connect with API key"
                       >
                         <Link className="w-3 h-3" />
-                        Connect
+                        API Key
                       </button>
                       <button
                         onClick={() => {

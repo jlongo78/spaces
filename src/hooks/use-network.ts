@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { NodeRecord, ApiKeyRecord, NodeIdentity } from '@/types/network';
+import type { NodeRecord, ApiKeyRecord, NodeIdentity, ConnectionRequest } from '@/types/network';
 import { api } from '@/lib/api';
 
 // ─── Node Identity ──────────────────────────────────────────
@@ -157,6 +157,97 @@ export function useCheckHealth() {
       return res.json();
     },
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['network-nodes'] });
+    },
+  });
+}
+
+// ─── Connection Requests ───────────────────────────────────
+
+export function useConnectionRequests() {
+  return useQuery({
+    queryKey: ['connection-requests'],
+    queryFn: async (): Promise<{ incoming: ConnectionRequest[]; outgoing: ConnectionRequest[] }> => {
+      const res = await fetch(api('/api/network/connect-request'));
+      if (!res.ok) return { incoming: [], outgoing: [] };
+      return res.json();
+    },
+    refetchInterval: 5000, // Poll for new requests
+  });
+}
+
+export function useSendConnectionRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { nodeUrl: string; nodeId: string; nodeName: string }) => {
+      // First, create an outgoing request record on our side
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // Get our identity
+      const identityRes = await fetch(api('/api/network/identity'));
+      const identity = await identityRes.json();
+
+      // Store the outgoing request locally
+      const storeRes = await fetch(api('/api/network/connect-request'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromNodeId: identity.nodeId,
+          fromNodeName: identity.nodeName,
+          fromUrl: `${window.location.protocol}//${window.location.host}`,
+          requestToken: token,
+          _outgoing: true,  // Signal to store as outgoing locally
+          _targetNodeId: data.nodeId,
+          _targetNodeName: data.nodeName,
+          _targetNodeUrl: data.nodeUrl,
+        }),
+      });
+
+      // Send the request to the remote node
+      const remoteUrl = `${data.nodeUrl.replace(/\/+$/, '')}/api/network/connect-request`;
+      const res = await fetch(remoteUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromNodeId: identity.nodeId,
+          fromNodeName: identity.nodeName,
+          fromUrl: `${window.location.protocol}//${window.location.host}`,
+          requestToken: token,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error(body.error || `Request failed (${res.status})`);
+      }
+
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['connection-requests'] });
+    },
+  });
+}
+
+export function useRespondToRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { id: string; action: 'accept' | 'deny' }) => {
+      const res = await fetch(api(`/api/network/connect-request/${data.id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: data.action }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: 'Failed' }));
+        throw new Error(body.error || 'Failed to respond');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['connection-requests'] });
       qc.invalidateQueries({ queryKey: ['network-nodes'] });
     },
   });

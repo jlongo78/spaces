@@ -63,6 +63,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Connection request/callback endpoints are unauthenticated (verified by token in body)
+  if (pathname === '/api/network/connect-request' && request.method === 'POST') {
+    return NextResponse.next();
+  }
+  if (pathname === '/api/network/connect-callback' && request.method === 'POST') {
+    return NextResponse.next();
+  }
+
   // Internal API requests from MCP servers / agent processes (localhost only)
   if (request.headers.get('x-spaces-internal') === (process.env.SPACES_SESSION_SECRET || '').slice(0, 16) &&
       (request.headers.get('host')?.startsWith('localhost') || request.headers.get('host')?.startsWith('127.0.0.1'))) {

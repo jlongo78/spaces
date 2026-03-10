@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useNodeIdentity, useUpdateNodeName } from '@/hooks/use-network';
 import { NodeList } from '@/components/network/node-list';
 import { ApiKeyList } from '@/components/network/api-key-list';
+import { ConnectionRequests } from '@/components/network/connection-requests';
 import { Pencil, Check, X, Loader2, Copy } from 'lucide-react';
 
 export default function NetworkPage() {
@@ -103,6 +104,11 @@ export default function NetworkPage() {
             </div>
           </div>
         ) : null}
+      </section>
+
+      {/* Connection Requests */}
+      <section className="mb-8">
+        <ConnectionRequests />
       </section>
 
       {/* API Keys */}

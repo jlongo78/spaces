@@ -47,3 +47,15 @@ export interface HandshakeResponse {
   projectCount: number;
   workspaceCount: number;
 }
+
+export interface ConnectionRequest {
+  id: string;
+  direction: 'incoming' | 'outgoing';
+  nodeId: string;
+  nodeName: string;
+  nodeUrl: string;
+  requestToken: string;
+  status: 'pending' | 'accepted' | 'denied' | 'expired';
+  created: string;
+  expires: string;
+}
