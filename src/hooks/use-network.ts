@@ -180,42 +180,17 @@ export function useSendConnectionRequest() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: { nodeUrl: string; nodeId: string; nodeName: string }) => {
-      // First, create an outgoing request record on our side
-      const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-        .map(b => b.toString(16).padStart(2, '0')).join('');
-
-      // Get our identity
-      const identityRes = await fetch(api('/api/network/identity'));
-      const identity = await identityRes.json();
-
-      // Store the outgoing request locally
-      const storeRes = await fetch(api('/api/network/connect-request'), {
+      // Send through our own server which proxies to the remote node
+      // (avoids CORS issues from direct browser-to-remote requests)
+      const res = await fetch(api('/api/network/connect-request'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fromNodeId: identity.nodeId,
-          fromNodeName: identity.nodeName,
-          fromUrl: `${window.location.protocol}//${window.location.host}`,
-          requestToken: token,
-          _outgoing: true,  // Signal to store as outgoing locally
-          _targetNodeId: data.nodeId,
-          _targetNodeName: data.nodeName,
-          _targetNodeUrl: data.nodeUrl,
+          _sendRequest: true,
+          targetNodeId: data.nodeId,
+          targetNodeName: data.nodeName,
+          targetNodeUrl: data.nodeUrl,
         }),
-      });
-
-      // Send the request to the remote node
-      const remoteUrl = `${data.nodeUrl.replace(/\/+$/, '')}/api/network/connect-request`;
-      const res = await fetch(remoteUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fromNodeId: identity.nodeId,
-          fromNodeName: identity.nodeName,
-          fromUrl: `${window.location.protocol}//${window.location.host}`,
-          requestToken: token,
-        }),
-        signal: AbortSignal.timeout(10000),
       });
 
       if (!res.ok) {
