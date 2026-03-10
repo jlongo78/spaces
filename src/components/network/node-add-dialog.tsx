@@ -1,35 +1,47 @@
 'use client';
 
 import { useState } from 'react';
-import { useAddNode } from '@/hooks/use-network';
+import { useAddNode, useConnectDiscoveredNode } from '@/hooks/use-network';
 import { X, Loader2 } from 'lucide-react';
 
 interface NodeAddDialogProps {
   onClose: () => void;
+  prefillUrl?: string;
+  prefillName?: string;
+  nodeId?: string;
 }
 
-export function NodeAddDialog({ onClose }: NodeAddDialogProps) {
+export function NodeAddDialog({ onClose, prefillUrl, prefillName, nodeId }: NodeAddDialogProps) {
   const addNode = useAddNode();
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState(prefillUrl || '');
   const [apiKey, setApiKey] = useState('');
-  const [name, setName] = useState('');
+  const [name, setName] = useState(prefillName || '');
   const [error, setError] = useState('');
+  const isConnecting = !!prefillUrl;
+
+  const connectDiscovered = useConnectDiscoveredNode();
 
   const handleAdd = async () => {
     setError('');
     try {
-      await addNode.mutateAsync({ url, apiKey, name: name || undefined });
+      if (isConnecting && nodeId) {
+        await connectDiscovered.mutateAsync({ id: nodeId, url, apiKey, name: name || undefined });
+      } else {
+        await addNode.mutateAsync({ url, apiKey, name: name || undefined });
+      }
       onClose();
     } catch (e: any) {
       setError(e.message || 'Failed to connect');
     }
   };
 
+  const isPending = addNode.isPending || connectDiscovered.isPending;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl border border-zinc-200 dark:border-zinc-800 w-full max-w-md mx-4">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-200 dark:border-zinc-800">
-          <h2 className="text-base font-semibold">Add Node</h2>
+          <h2 className="text-base font-semibold">{isConnecting ? 'Connect to Node' : 'Add Node'}</h2>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
             <X className="w-4 h-4" />
           </button>
@@ -41,14 +53,23 @@ export function NodeAddDialog({ onClose }: NodeAddDialogProps) {
               Node URL
             </label>
             <input
-              autoFocus
+              autoFocus={!isConnecting}
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
+              readOnly={isConnecting}
               placeholder="https://my-server.example.com/spaces"
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-700 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className={`w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
+                isConnecting
+                  ? 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 text-zinc-500'
+                  : 'bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-700'
+              }`}
             />
-            <p className="text-[11px] text-zinc-400 mt-1">The base URL of the remote Spaces instance</p>
+            {isConnecting ? (
+              <p className="text-[11px] text-zinc-400 mt-1">Auto-discovered on your network</p>
+            ) : (
+              <p className="text-[11px] text-zinc-400 mt-1">The base URL of the remote Spaces instance</p>
+            )}
           </div>
 
           <div>
@@ -56,6 +77,7 @@ export function NodeAddDialog({ onClose }: NodeAddDialogProps) {
               API Key
             </label>
             <input
+              autoFocus={isConnecting}
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
@@ -65,18 +87,20 @@ export function NodeAddDialog({ onClose }: NodeAddDialogProps) {
             <p className="text-[11px] text-zinc-400 mt-1">Generated on the remote node's Network page</p>
           </div>
 
-          <div>
-            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5 block">
-              Display Name <span className="text-zinc-400">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Auto-detected from remote node"
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-700 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
-          </div>
+          {!isConnecting && (
+            <div>
+              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5 block">
+                Display Name <span className="text-zinc-400">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Auto-detected from remote node"
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-700 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          )}
 
           {error && (
             <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">
@@ -94,10 +118,10 @@ export function NodeAddDialog({ onClose }: NodeAddDialogProps) {
           </button>
           <button
             onClick={handleAdd}
-            disabled={!url.trim() || !apiKey.trim() || addNode.isPending}
+            disabled={!url.trim() || !apiKey.trim() || isPending}
             className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-500 disabled:opacity-50"
           >
-            {addNode.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Connect
           </button>
         </div>

@@ -481,6 +481,7 @@ function handleCollabToggle(paneId, session) {
         SPACES_PANE_ID: paneId,
         SPACES_WORKSPACE_ID: config.workspaceId,
         SPACES_PANE_NAME: config.paneName,
+        SPACES_USERNAME: session.username,
         SPACES_API_URL: `http://localhost:${API_PORT}`,
         SPACES_COLLABORATING: '1',
       };
@@ -715,6 +716,7 @@ function handleConnection(wss, ws, req) {
     if (config) {
       env.SPACES_WORKSPACE_ID = config.workspaceId;
       env.SPACES_PANE_NAME = config.paneName;
+      env.SPACES_USERNAME = username;
       isCollaborating = true;
       env.SPACES_COLLABORATING = '1';
       console.log(`[Collab] Enabled for pane ${paneId.slice(0, 8)} — workspace ${config.workspaceId}, name "${config.paneName}"`);
@@ -1169,11 +1171,11 @@ function setupWss(wss) {
   return pingInterval;
 }
 
-function startMdnsIfNeeded() {
+function startMdnsIfNeeded(httpPort) {
   if (SPACES_TIER === 'federation') {
     try {
       const { startMdns } = require('./mdns-service');
-      startMdns(PORT);
+      startMdns(httpPort || PORT);
     } catch (err) {
       console.log('[mDNS] Discovery not available:', err.message);
     }
@@ -1220,12 +1222,13 @@ function createTerminalServer(httpServer) {
     // Non-/ws upgrades are left for other listeners (e.g. HMR proxy)
   });
 
-  startMdnsIfNeeded();
-  // Start message watcher once the server is listening
+  // Start mDNS and message watcher once we know the HTTP port
   if (httpServer.listening) {
+    startMdnsIfNeeded(httpServer.address().port);
     startMessageWatcher(httpServer.address().port);
   } else {
     httpServer.on('listening', () => {
+      startMdnsIfNeeded(httpServer.address().port);
       startMessageWatcher(httpServer.address().port);
     });
   }

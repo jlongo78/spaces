@@ -69,6 +69,29 @@ export function useAddNode() {
   });
 }
 
+export function useConnectDiscoveredNode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { id: string; url: string; apiKey: string; name?: string }) => {
+      // Use the same POST flow as addNode — it does the handshake and
+      // upserts via ON CONFLICT, so it works for already-discovered nodes.
+      const res = await fetch(api('/api/network/nodes'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: data.url, apiKey: data.apiKey, name: data.name }),
+      });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error || 'Failed to connect');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['network-nodes'] });
+    },
+  });
+}
+
 export function useRemoveNode() {
   const qc = useQueryClient();
   return useMutation({

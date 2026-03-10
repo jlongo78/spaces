@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useNodes, useRemoveNode, useCheckHealth } from '@/hooks/use-network';
 import { NodeAddDialog } from './node-add-dialog';
-import { Plus, Trash2, RefreshCw, Globe, Loader2 } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, Globe, Loader2, Link } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
 
 const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
@@ -18,6 +18,7 @@ export function NodeList() {
   const removeNode = useRemoveNode();
   const checkHealth = useCheckHealth();
   const [showAdd, setShowAdd] = useState(false);
+  const [connectNode, setConnectNode] = useState<{ id: string; url: string; name: string } | null>(null);
 
   if (isLoading) {
     return (
@@ -26,6 +27,9 @@ export function NodeList() {
       </div>
     );
   }
+
+  const connectedNodes = nodes?.filter(n => n.apiKeyHint) || [];
+  const discoveredNodes = nodes?.filter(n => n.discoveredVia === 'mdns' && !n.apiKeyHint) || [];
 
   return (
     <div className="space-y-3">
@@ -38,7 +42,7 @@ export function NodeList() {
           <Plus className="w-3.5 h-3.5" />
           Add Node
         </button>
-        {nodes && nodes.length > 0 && (
+        {connectedNodes.length > 0 && (
           <button
             onClick={() => checkHealth.mutate()}
             disabled={checkHealth.isPending}
@@ -50,10 +54,10 @@ export function NodeList() {
         )}
       </div>
 
-      {/* Node cards */}
-      {nodes && nodes.length > 0 ? (
+      {/* Connected node cards */}
+      {connectedNodes.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          {nodes.map((node) => {
+          {connectedNodes.map((node) => {
             const st = statusConfig[node.status] || statusConfig.unknown;
             return (
               <div
@@ -114,8 +118,80 @@ export function NodeList() {
         </div>
       )}
 
+      {/* Discovered via mDNS but not yet connected */}
+      {discoveredNodes.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
+            Discovered on Network
+          </h3>
+          <p className="text-[11px] text-zinc-400 mb-3">
+            These nodes were found via mDNS. Enter an API key to connect.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {discoveredNodes.map((node) => {
+              const st = statusConfig[node.status] || statusConfig.unknown;
+              return (
+                <div
+                  key={node.id}
+                  className="border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg p-4 hover:border-indigo-400 dark:hover:border-indigo-600 transition-colors"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${st.bg}`} />
+                      <h3 className="font-medium text-sm">{node.name}</h3>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setConnectNode({ id: node.id, url: node.url, name: node.name })}
+                        className="flex items-center gap-1 px-2 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-500"
+                        title="Connect with API key"
+                      >
+                        <Link className="w-3 h-3" />
+                        Connect
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Remove "${node.name}" from discovered list?`)) {
+                            removeNode.mutate(node.id);
+                          }
+                        }}
+                        className="p-1 text-zinc-400 hover:text-red-500 rounded"
+                        title="Dismiss"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-zinc-500">
+                    <div className="flex items-center gap-1 font-mono truncate" title={node.url}>
+                      <Globe className="w-3 h-3 flex-shrink-0" />
+                      {node.url}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className={st.color}>{st.label}</span>
+                      {node.version && <span>v{node.version}</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Add dialog */}
       {showAdd && <NodeAddDialog onClose={() => setShowAdd(false)} />}
+
+      {/* Connect discovered node dialog */}
+      {connectNode && (
+        <NodeAddDialog
+          onClose={() => setConnectNode(null)}
+          prefillUrl={connectNode.url}
+          prefillName={connectNode.name}
+          nodeId={connectNode.id}
+        />
+      )}
     </div>
   );
 }

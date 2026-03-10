@@ -116,13 +116,13 @@ export default function NetworkPage() {
         <ApiKeyList />
       </section>
 
-      {/* Connected Nodes */}
+      {/* Nodes */}
       <section>
         <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">
-          Connected Nodes
+          Nodes
         </h2>
         <p className="text-xs text-zinc-400 mb-3">
-          Remote Spaces instances that share sessions and terminals with this node.
+          Remote Spaces instances on your network. Connect with an API key to share sessions and terminals.
         </p>
         <NodeList />
       </section>
