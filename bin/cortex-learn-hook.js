@@ -35,25 +35,36 @@ async function main() {
   // Classify the exchange type with simple heuristics
   const knowledgeType = classifyExchange(lastExchange.question, lastExchange.answer);
 
-  // Build the knowledge text: combine Q&A into a learnable unit
-  const text = `Q: ${lastExchange.question}\nA: ${lastExchange.answer}`;
+  // Condense the answer: take the first ~500 chars which usually contain
+  // the key insight, plus the question for context
+  const condensedAnswer = lastExchange.answer.length > 500
+    ? lastExchange.answer.slice(0, 500) + '...'
+    : lastExchange.answer;
 
-  // Truncate to avoid excessively large entries (keep to ~2000 chars)
-  const truncatedText = text.length > 2000 ? text.slice(0, 2000) + '...' : text;
-
-  // POST to Cortex knowledge API
+  // Store TWO entries for better search matching:
+  // 1. Short question-focused entry (embeds well for similarity search)
+  // 2. Full Q&A entry with the substantive answer
   const apiPort = process.env.SPACES_PORT || '3457';
   const secret = process.env.SPACES_SESSION_SECRET || '';
   const internalToken = secret.slice(0, 16);
 
-  const payload = JSON.stringify({
-    text: truncatedText,
+  const questionEntry = JSON.stringify({
+    text: lastExchange.question,
+    type: 'context',
+    layer: 'personal',
+  });
+
+  const answerEntry = JSON.stringify({
+    text: `${lastExchange.question}\n\n${condensedAnswer}`,
     type: knowledgeType,
     layer: 'personal',
   });
 
   try {
-    const result = await postToApi(apiPort, internalToken, '/api/cortex/knowledge/', payload);
+    await Promise.all([
+      postToApi(apiPort, internalToken, '/api/cortex/knowledge/', questionEntry),
+      postToApi(apiPort, internalToken, '/api/cortex/knowledge/', answerEntry),
+    ]);
     process.stderr.write(`[Cortex Learn] Ingested ${knowledgeType}: ${lastExchange.question.slice(0, 60)}\n`);
   } catch (err) {
     process.stderr.write(`[Cortex Learn] Failed: ${err.message}\n`);
