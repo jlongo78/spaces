@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import tar from 'tar';
+import * as tar from 'tar';
 import type { CortexStore } from '../store';
 import type { EmbeddingProvider } from '../embeddings';
 import type { KnowledgeUnit } from '../knowledge/types';

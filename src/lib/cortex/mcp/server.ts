@@ -1,11 +1,5 @@
-// CortexInstance type - will be replaced with import from '../index' in Task 14
-export interface CortexInstance {
-  config: any;
-  store: { add: Function; delete: Function; stats: Function; search: Function; };
-  search: { search: Function; };
-  pipeline: any;
-  embedding: { name: string; dimensions: number; embed(texts: string[]): Promise<number[][]>; };
-}
+import type { CortexInstance } from '../index';
+export type { CortexInstance };
 
 export const CORTEX_TOOLS = [
   {
@@ -248,11 +242,10 @@ export async function handleToolCall(
           os.tmpdir(),
           `cortex-export-${Date.now()}.cortexpack`,
         );
-        const result = await exportCortexpack(cortex, {
+        const result = await exportCortexpack(cortex.store, outputPath, {
           scope: args.scope ?? 'full',
-          workspaceId: args.workspace_id ?? null,
+          workspaceId: args.workspace_id,
           includeEmbeddings: args.include_embeddings ?? false,
-          outputPath,
         });
         return { content: [{ type: 'text', text: JSON.stringify({ path: result.path, unitCount: result.unitCount }) }] };
       } catch (err: any) {
@@ -262,9 +255,8 @@ export async function handleToolCall(
     case 'cortex_import': {
       try {
         const { importCortexpack } = await import('../portability/importer');
-        const progress = await importCortexpack(cortex, {
-          path: args.path,
-          targetLayer: args.target_layer ?? null,
+        const progress = await importCortexpack(args.path, cortex.store, cortex.embedding, {
+          targetLayer: args.target_layer ?? 'personal',
           mergeStrategy: args.merge_strategy ?? 'append',
           reEmbed: args.re_embed ?? false,
         });
