@@ -54,6 +54,79 @@ export const CORTEX_TOOLS = [
     description: 'Get Cortex health and statistics.',
     inputSchema: { type: 'object' as const, properties: {} },
   },
+  {
+    name: 'cortex_recall',
+    description: 'Retrieve a specific knowledge unit by ID or exact text match.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        id: { type: 'string', description: 'Knowledge unit ID' },
+        text: { type: 'string', description: 'Exact text to match' },
+      },
+    },
+  },
+  {
+    name: 'cortex_similar',
+    description: 'Find analogous experiences or knowledge similar to the given text.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        text: { type: 'string', description: 'Text to find similarities for' },
+        limit: { type: 'number', description: 'Max results (default 5)' },
+      },
+      required: ['text'],
+    },
+  },
+  {
+    name: 'cortex_context',
+    description: 'Get full workspace context including all relevant knowledge for a workspace.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        workspace_id: { type: 'number', description: 'Workspace ID' },
+        depth: { type: 'string', enum: ['brief', 'full'], description: 'brief=10 results, full=50 results' },
+      },
+      required: ['workspace_id'],
+    },
+  },
+  {
+    name: 'cortex_timeline',
+    description: 'Get chronological history of decisions, patterns, and changes.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        workspace_id: { type: 'number', description: 'Workspace ID to scope timeline' },
+        project_path: { type: 'string', description: 'Project path to scope timeline' },
+        limit: { type: 'number', description: 'Max results (default 20)' },
+      },
+    },
+  },
+  {
+    name: 'cortex_export',
+    description: 'Export Cortex knowledge to a portable .cortexpack file.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        scope: { type: 'string', enum: ['full', 'workspace', 'personal'], description: 'Export scope (default full)' },
+        workspace_id: { type: 'number', description: 'Workspace ID for workspace scope' },
+        include_embeddings: { type: 'boolean', description: 'Include raw embedding vectors' },
+      },
+    },
+  },
+  {
+    name: 'cortex_import',
+    description: 'Import knowledge from a .cortexpack file.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        path: { type: 'string', description: 'Path to the .cortexpack file' },
+        target_layer: { type: 'string', description: 'Layer to import into' },
+        merge_strategy: { type: 'string', enum: ['append', 'merge', 'replace'], description: 'How to handle conflicts (default append)' },
+        re_embed: { type: 'boolean', description: 'Re-generate embeddings on import' },
+      },
+      required: ['path'],
+    },
+  },
 ];
 
 export async function handleToolCall(
@@ -107,6 +180,98 @@ export async function handleToolCall(
       return { content: [{ type: 'text', text: JSON.stringify({
         status: 'healthy', embedding: cortex.embedding.name, layers: stats,
       }) }] };
+    }
+    case 'cortex_recall': {
+      if (!args.id && !args.text) {
+        return { content: [{ type: 'text', text: 'Either id or text must be provided' }], isError: true };
+      }
+      if (args.id) {
+        const safeId = String(args.id).replace(/'/g, "''");
+        const dummyVector = new Array(cortex.embedding.dimensions).fill(0);
+        const results: any[] = [];
+        for (const layer of ['personal', 'workspace', 'team']) {
+          const layerResults = await cortex.store.search(layer, dummyVector, 1, `id = '${safeId}'`);
+          results.push(...layerResults);
+        }
+        return { content: [{ type: 'text', text: JSON.stringify({ results }) }] };
+      } else {
+        const [textVector] = await cortex.embedding.embed([args.text]);
+        const results = await cortex.search.search(textVector, { limit: 1 });
+        return { content: [{ type: 'text', text: JSON.stringify({ results }) }] };
+      }
+    }
+    case 'cortex_similar': {
+      const [textVector] = await cortex.embedding.embed([args.text]);
+      const results = await cortex.search.search(textVector, {
+        limit: args.limit ?? 5,
+      });
+      return { content: [{ type: 'text', text: JSON.stringify({ results }) }] };
+    }
+    case 'cortex_context': {
+      const limit = args.depth === 'full' ? 50 : 10;
+      const dummyVector = new Array(cortex.embedding.dimensions).fill(0);
+      const layerKey = `workspace/${args.workspace_id}`;
+      const results = await cortex.store.search(layerKey, dummyVector, limit);
+      const sorted = Array.isArray(results)
+        ? results.sort((a: any, b: any) => (b.confidence ?? 0) - (a.confidence ?? 0))
+        : results;
+      return { content: [{ type: 'text', text: JSON.stringify({ results: sorted }) }] };
+    }
+    case 'cortex_timeline': {
+      const limit = args.limit ?? 20;
+      const timelineTypes = ['decision', 'pattern', 'error_fix', 'summary'];
+      const dummyVector = new Array(cortex.embedding.dimensions).fill(0);
+      let layerKey: string;
+      if (args.workspace_id) {
+        layerKey = `workspace/${args.workspace_id}`;
+      } else {
+        layerKey = 'personal';
+      }
+      const raw = await cortex.store.search(layerKey, dummyVector, limit * 4);
+      const filtered = Array.isArray(raw)
+        ? raw.filter((r: any) => timelineTypes.includes(r.type))
+            .sort((a: any, b: any) => {
+              const ta = a.source_timestamp ?? a.created ?? '';
+              const tb = b.source_timestamp ?? b.created ?? '';
+              return tb.localeCompare(ta);
+            })
+            .slice(0, limit)
+        : raw;
+      return { content: [{ type: 'text', text: JSON.stringify({ results: filtered }) }] };
+    }
+    case 'cortex_export': {
+      try {
+        const { exportCortexpack } = await import('../portability/exporter');
+        const os = await import('os');
+        const pathModule = await import('path');
+        const outputPath = pathModule.join(
+          os.tmpdir(),
+          `cortex-export-${Date.now()}.cortexpack`,
+        );
+        const result = await exportCortexpack(cortex, {
+          scope: args.scope ?? 'full',
+          workspaceId: args.workspace_id ?? null,
+          includeEmbeddings: args.include_embeddings ?? false,
+          outputPath,
+        });
+        return { content: [{ type: 'text', text: JSON.stringify({ path: result.path, unitCount: result.unitCount }) }] };
+      } catch (err: any) {
+        return { content: [{ type: 'text', text: JSON.stringify({ error: err?.message ?? String(err) }) }], isError: true };
+      }
+    }
+    case 'cortex_import': {
+      try {
+        const { importCortexpack } = await import('../portability/importer');
+        const progress = await importCortexpack(cortex, {
+          path: args.path,
+          targetLayer: args.target_layer ?? null,
+          mergeStrategy: args.merge_strategy ?? 'append',
+          reEmbed: args.re_embed ?? false,
+        });
+        return { content: [{ type: 'text', text: JSON.stringify(progress) }] };
+      } catch (err: any) {
+        return { content: [{ type: 'text', text: JSON.stringify({ error: err?.message ?? String(err) }) }], isError: true };
+      }
     }
     default:
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
