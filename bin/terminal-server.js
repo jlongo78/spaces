@@ -735,6 +735,11 @@ function handleConnection(wss, ws, req) {
 
     ws.send(JSON.stringify({ type: 'ready', paneId, reattached: true }));
 
+    // Send Cortex injection data on reattach so badge updates
+    if (existing.agentType !== 'shell') {
+      injectCortexContext(existing.cwd, existing.workspaceId, ws).catch(() => {});
+    }
+
     ws.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw.toString());
