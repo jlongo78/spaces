@@ -6,9 +6,10 @@ import { Settings, RefreshCw, FolderOpen, Loader2, Shield, CheckCircle2, BarChar
 import { api } from '@/lib/api';
 import { track, setOptOut } from '@/lib/telemetry';
 import { useTier } from '@/hooks/use-tier';
+import { CortexSettings } from '@/components/cortex/cortex-settings';
 
 export default function SettingsPage() {
-  const { hasAuth, tier, version } = useTier();
+  const { hasAuth, tier, version, hasCortex } = useTier();
   const hasSelfContainedAuth = typeof document !== 'undefined' && document.cookie.includes('spaces-session=');
   const sync = useSync();
   const [syncResult, setSyncResult] = useState<string>('');
@@ -417,6 +418,11 @@ export default function SettingsPage() {
             </label>
           )}
         </div>
+
+        {/* Cortex */}
+        {hasCortex && <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
+          <CortexSettings />
+        </div>}
 
         {/* About */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">

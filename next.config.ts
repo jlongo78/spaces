@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
   trailingSlash: true,
   // Inline SPACES_BASE_PATH into the client bundle so api() can use it
   env: { SPACES_BASE_PATH: basePath },
-  serverExternalPackages: ['better-sqlite3', 'node-pty', 'ws', 'chokidar', '@spaces/pro', '@spaces/teams'],
+  serverExternalPackages: ['better-sqlite3', 'node-pty', 'ws', 'chokidar', '@spaces/pro', '@spaces/teams', '@lancedb/lancedb'],
   allowedDevOrigins: ['arc.robindale.com'],
   devIndicators: false,
   turbopack: {

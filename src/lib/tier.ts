@@ -16,6 +16,7 @@ export const HAS_MULTIUSER = IS_TEAM;
 export const HAS_ADMIN = IS_TEAM;
 export const HAS_COLLABORATION = IS_TEAM;
 export const HAS_NETWORK = IS_FEDERATION;
+export const HAS_CORTEX = IS_TEAM;
 export const IS_DESKTOP = !IS_TEAM;
 
 /** Tier flags object for the /api/tier endpoint */
@@ -30,6 +31,7 @@ export function getTierFlags() {
     hasCollaboration: HAS_COLLABORATION,
     hasNetwork: HAS_NETWORK,
     hasMultiuser: HAS_MULTIUSER,
+    hasCortex: HAS_CORTEX,
     isDesktop: IS_DESKTOP,
     basePath: process.env.SPACES_BASE_PATH || '',
   };

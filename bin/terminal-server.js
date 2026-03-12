@@ -465,6 +465,166 @@ const AGENTS = {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+// ─── Cortex Claude Code hook config ──────────────────────
+// Write a UserPromptSubmit hook into .claude/settings.local.json
+// so every prompt gets a RAG search before Claude sees it.
+function writeCortexHookConfig(cwd) {
+  try {
+    const claudeDir = path.join(cwd, '.claude');
+    if (!fs.existsSync(claudeDir)) fs.mkdirSync(claudeDir, { recursive: true });
+
+    const settingsPath = path.join(claudeDir, 'settings.local.json');
+    let settings = {};
+    if (fs.existsSync(settingsPath)) {
+      try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')); } catch {}
+    }
+
+    // Resolve absolute paths to hook scripts (Node.js — works everywhere)
+    const ragHook = path.resolve(__dirname, 'cortex-hook.js');
+    const learnHook = path.resolve(__dirname, 'cortex-learn-hook.js');
+
+    // Merge — don't clobber existing hooks for other events
+    if (!settings.hooks) settings.hooks = {};
+
+    // RAG search: runs on every prompt, injects relevant context
+    settings.hooks.UserPromptSubmit = [
+      {
+        hooks: [
+          {
+            type: 'command',
+            command: `node "${ragHook}"`,
+            timeout: 10,
+          },
+        ],
+      },
+    ];
+
+    // Learn: runs after Claude finishes, ingests the exchange back into Cortex
+    settings.hooks.Stop = [
+      {
+        hooks: [
+          {
+            type: 'command',
+            command: `node "${learnHook}"`,
+            timeout: 15,
+          },
+        ],
+      },
+    ];
+
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+    console.log(`[Cortex] Wrote Claude Code hooks (RAG + Learn) to ${settingsPath}`);
+  } catch (err) {
+    console.error(`[Cortex] Failed to write hook config:`, err.message);
+  }
+}
+
+// ─── Cortex context injection ────────────────────────────
+// Fetch relevant knowledge from Cortex API and write a context file
+// in the workspace before the agent launches.
+async function injectCortexContext(cwd, workspaceId, ws) {
+  if (SPACES_TIER !== 'team' && SPACES_TIER !== 'federation') return 0;
+  try {
+    const projectName = path.basename(cwd);
+    const query = encodeURIComponent(`${projectName} workspace context`);
+    const params = `q=${query}&limit=10${workspaceId ? `&workspace_id=${workspaceId}` : ''}`;
+    const url = `http://localhost:${API_PORT}/api/cortex/search?${params}`;
+
+    // Use internal auth bypass (x-spaces-internal header) to skip session middleware
+    const internalToken = (process.env.SPACES_SESSION_SECRET || '').slice(0, 16);
+    const options = {
+      timeout: 5000,
+      headers: {
+        'x-spaces-internal': internalToken,
+      },
+    };
+
+    const body = await new Promise((resolve, reject) => {
+      const req = http.get(url, options, (res) => {
+        // Follow redirects (Next.js trailing-slash redirects)
+        if (res.statusCode === 308 || res.statusCode === 307 || res.statusCode === 301 || res.statusCode === 302) {
+          const redirectUrl = res.headers.location;
+          if (redirectUrl) {
+            const fullUrl = redirectUrl.startsWith('http') ? redirectUrl : `http://localhost:${API_PORT}${redirectUrl}`;
+            const req2 = http.get(fullUrl, options, (res2) => {
+              let data = '';
+              res2.on('data', (chunk) => { data += chunk; });
+              res2.on('end', () => {
+                if (res2.statusCode !== 200) {
+                  reject(new Error(`Cortex API returned ${res2.statusCode}: ${data.slice(0, 200)}`));
+                } else {
+                  resolve(data);
+                }
+              });
+            });
+            req2.on('error', reject);
+            return;
+          }
+        }
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`Cortex API returned ${res.statusCode}: ${data.slice(0, 200)}`));
+          } else {
+            resolve(data);
+          }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
+
+    const parsed = JSON.parse(body);
+    const results = parsed.results;
+    if (!results || results.length === 0) {
+      console.log(`[Cortex] No knowledge found for "${projectName}"`);
+      return 0;
+    }
+
+    // Format context (mirrors src/lib/cortex/retrieval/injection.ts)
+    const TYPE_LABELS = {
+      decision: 'Decision', pattern: 'Pattern', preference: 'Preference',
+      error_fix: 'Error Fix', context: 'Context', code_pattern: 'Code',
+      command: 'Command', conversation: 'Conversation', summary: 'Summary',
+    };
+    const lines = ['<cortex-context>', 'Relevant context from your workspace history:', ''];
+    let tokens = 20;
+    const included = [];
+    for (const unit of results) {
+      const label = TYPE_LABELS[unit.type] || unit.type;
+      const date = (unit.source_timestamp || '').slice(0, 10);
+      const confidence = (unit.confidence * 100).toFixed(0);
+      let entry = `[${label}]`;
+      if (date) entry += ` ${date}:`;
+      entry += ` ${unit.text}`;
+      if (unit.session_id) entry += `\nSource: session ${unit.session_id}, confidence: ${confidence}%`;
+      const entryTokens = Math.ceil(entry.length / 4);
+      if (tokens + entryTokens > 2000) break;
+      lines.push(entry, '');
+      tokens += entryTokens;
+      included.push({ type: unit.type, text: unit.text.slice(0, 80) });
+    }
+    lines.push('</cortex-context>');
+
+    // Write context file (readable artifact for any agent)
+    const spacesDir = path.join(cwd, '.spaces');
+    if (!fs.existsSync(spacesDir)) fs.mkdirSync(spacesDir, { recursive: true });
+    fs.writeFileSync(path.join(spacesDir, 'cortex-context.md'), lines.join('\n'), 'utf-8');
+    console.log(`[Cortex] Injected ${included.length} knowledge units for ${path.basename(cwd)}`);
+
+    // Notify client for injection badge
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'cortex-injection', count: included.length, items: included }));
+    }
+
+    return included.length;
+  } catch (err) {
+    console.error(`[Cortex] Injection failed:`, err.message);
+    return 0;
+  }
+}
+
 // ─── Git Bash detection (Windows) ────────────────────────
 function findGitBash() {
   const custom = process.env.CLAUDE_CODE_GIT_BASH_PATH;
@@ -692,6 +852,11 @@ function handleConnection(wss, ws, req) {
 
     ws.send(JSON.stringify({ type: 'ready', paneId, reattached: true }));
 
+    // Send Cortex injection data on reattach so badge updates
+    if (existing.agentType !== 'shell') {
+      injectCortexContext(existing.cwd, existing.workspaceId, ws).catch(() => {});
+    }
+
     ws.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw.toString());
@@ -801,6 +966,11 @@ function handleConnection(wss, ws, req) {
 
   console.log(`[Spawn] user=${username} shell=${shell} args=${JSON.stringify(args)} cwd=${safeCwd} agentType=${agentType}`);
 
+  // Write Cortex RAG hook for Claude Code before spawning
+  if (agentType === 'claude' && (SPACES_TIER === 'team' || SPACES_TIER === 'federation')) {
+    writeCortexHookConfig(safeCwd);
+  }
+
   let term;
   try {
     term = pty.spawn(shell, args, {
@@ -830,6 +1000,11 @@ function handleConnection(wss, ws, req) {
   };
   sessions.set(paneId, session);
   analyticsRecordSessionStart(paneId, username, agentType);
+
+  // ─── Cortex context injection (async, non-blocking) ─────
+  if (agentType !== 'shell') {
+    injectCortexContext(safeCwd, env.SPACES_WORKSPACE_ID || null, ws).catch(() => {});
+  }
 
   // ─── Inject cd for SSH sessions, then agent command ─────
   const agent = AGENTS[agentType] || AGENTS.shell;

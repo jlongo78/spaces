@@ -4,6 +4,7 @@ import os from 'os';
 import crypto from 'crypto';
 import { HAS_MULTIUSER } from '@/lib/tier';
 import { getTeams } from '@/lib/teams';
+import type { CortexConfig } from './cortex/config';
 
 export const config = {
   // Server
@@ -75,6 +76,7 @@ export interface SpacesConfig {
   installId: string;
   telemetryOptOut: boolean;
   devDirectories: string[];
+  cortex?: CortexConfig;
 }
 
 export function readConfig(username: string): SpacesConfig {
@@ -86,6 +88,7 @@ export function readConfig(username: string): SpacesConfig {
         installId: raw.installId || crypto.randomUUID(),
         telemetryOptOut: !!raw.telemetryOptOut,
         devDirectories: Array.isArray(raw.devDirectories) ? raw.devDirectories.filter((d: unknown) => typeof d === 'string') : [],
+        ...(raw.cortex && typeof raw.cortex === 'object' ? { cortex: raw.cortex } : {}),
       };
     }
   } catch { /* corrupt file, recreate */ }

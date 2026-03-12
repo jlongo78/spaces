@@ -62,3 +62,9 @@ nginx-dev.conf
 # Spaces collaboration (auto-generated)
 .mcp.json
 .codex/
+
+# Superpowers brainstorm sessions
+.superpowers/
+
+# Git worktrees
+.worktrees/

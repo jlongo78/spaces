@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AGENT_TYPES } from '@/lib/agents';
+import { useTier } from '@/hooks/use-tier';
+import { InjectionBadge } from '@/components/cortex/injection-badge';
 import type { PaneData } from '@/lib/db/queries';
 import 'xterm/css/xterm.css';
 
@@ -23,6 +25,7 @@ interface TerminalPaneProps {
 }
 
 export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMaximize, onPopout, isPopout, terminalToken, workspaceCollaboration }: TerminalPaneProps) {
+  const { hasCortex } = useTier();
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -35,6 +38,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const colorPopoverRef = useRef<HTMLDivElement>(null);
   const [exited, setExited] = useState(false);
+  const [injectionCount, setInjectionCount] = useState(0);
+  const [injectionItems, setInjectionItems] = useState<Array<{ type: string; text: string }>>([]);
 
   // Use refs for props so the connect function never needs to re-create.
   // This prevents all terminals from reconnecting when parent state changes.
@@ -182,6 +187,9 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             term.write(`\r\n\x1b[31m${msg.data}\x1b[0m\r\n`);
           } else if (msg.type === 'session-detected') {
             onUpdateRef.current(paneRef.current.id, { claudeSessionId: msg.sessionId });
+          } else if (msg.type === 'cortex-injection') {
+            setInjectionCount(msg.count || 0);
+            if (msg.items) setInjectionItems(msg.items);
           } else if (msg.type === 'collab-updated') {
             onUpdateRef.current(paneRef.current.id, { isCollaborating: msg.isCollaborating });
           }
@@ -439,6 +447,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         {!connected && !exited && (
           <span className="text-[10px] text-yellow-500">connecting...</span>
         )}
+
+        {hasCortex && <InjectionBadge count={injectionCount} items={injectionItems} />}
 
         {exited && (
           <button onClick={reconnect} className="text-zinc-400 hover:text-white" title="Restart">

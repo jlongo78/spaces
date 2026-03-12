@@ -10,6 +10,7 @@ export interface TierFlags {
   hasCollaboration: boolean;
   hasNetwork: boolean;
   hasMultiuser: boolean;
+  hasCortex: boolean;
   isDesktop: boolean;
   basePath: string;
   loading: boolean;
@@ -23,6 +24,7 @@ const defaults: TierFlags = {
   hasCollaboration: false,
   hasNetwork: false,
   hasMultiuser: false,
+  hasCortex: false,
   isDesktop: true,
   basePath: '',
   loading: false,
