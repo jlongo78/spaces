@@ -47,6 +47,7 @@ if (cliFlags.help) {
     spaces service stop          Stop the service
     spaces service status        Show service status
     spaces service logs          Tail service logs
+    spaces reset-totp <user>     Reset TOTP/2FA for a user
     spaces --help                Show this help
 `);
   process.exit(0);
@@ -65,6 +66,16 @@ if (subcommand === 'install' || subcommand === 'uninstall' || subcommand === 've
   const installScript = path.join(__dirname, 'spaces-install.js');
   const { status } = require('child_process').spawnSync(
     process.execPath, [installScript, ...args],
+    { stdio: 'inherit', env: process.env }
+  );
+  process.exit(status || 0);
+}
+
+// ─── Route reset-totp to spaces-reset-totp.js ───────
+if (subcommand === 'reset-totp') {
+  const resetScript = path.join(__dirname, 'spaces-reset-totp.js');
+  const { status } = require('child_process').spawnSync(
+    process.execPath, [resetScript, ...args.slice(1)],
     { stdio: 'inherit', env: process.env }
   );
   process.exit(status || 0);
