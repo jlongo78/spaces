@@ -305,11 +305,11 @@ const SERVICE_KEY = path.join(os.homedir(), '.spaces', 'service_key');
 
 // Ensure the SSH service key exists, has correct permissions, and is authorized.
 function ensureServiceKeyAtRuntime() {
-  if (process.platform !== 'win32') return;
   const { spawnSync } = require('child_process');
   const currentUser = os.userInfo().username;
+  const isWindows = process.platform === 'win32';
 
-  // Generate key if missing
+  // Generate key if missing (all platforms)
   if (!fs.existsSync(SERVICE_KEY)) {
     const dir = path.dirname(SERVICE_KEY);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -320,11 +320,15 @@ function ensureServiceKeyAtRuntime() {
       console.error('[SSH] Failed to generate service key');
       return;
     }
-    // Lock down permissions: only the process owner + SYSTEM
-    spawnSync('icacls', [SERVICE_KEY, '/inheritance:r',
-      '/remove', 'BUILTIN\\Administrators', '/remove', 'BUILTIN\\Users', '/remove', 'Everyone',
-      '/grant:r', currentUser + ':(F)',
-      '/grant', 'NT AUTHORITY\\SYSTEM:(F)'], { stdio: 'pipe', timeout: 5000 });
+    if (isWindows) {
+      // Lock down permissions: only the process owner + SYSTEM
+      spawnSync('icacls', [SERVICE_KEY, '/inheritance:r',
+        '/remove', 'BUILTIN\\Administrators', '/remove', 'BUILTIN\\Users', '/remove', 'Everyone',
+        '/grant:r', currentUser + ':(F)',
+        '/grant', 'NT AUTHORITY\\SYSTEM:(F)'], { stdio: 'pipe', timeout: 5000 });
+    } else {
+      spawnSync('chmod', ['600', SERVICE_KEY], { stdio: 'pipe', timeout: 5000 });
+    }
     console.log('[SSH] Generated service key as ' + currentUser);
   }
 
@@ -332,55 +336,114 @@ function ensureServiceKeyAtRuntime() {
   if (!fs.existsSync(SERVICE_KEY + '.pub')) return;
   const pubKey = fs.readFileSync(SERVICE_KEY + '.pub', 'utf-8').trim();
 
-  // Authorize in administrators_authorized_keys (for admin shell users)
-  try {
-    const adminAuthKeys = path.join(process.env.ProgramData || 'C:\\ProgramData', 'ssh', 'administrators_authorized_keys');
-    const authDir = path.dirname(adminAuthKeys);
-    if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
-    // Set restrictive ACL first (SYSTEM write + Administrators read), then append
-    spawnSync('icacls', [adminAuthKeys, '/inheritance:r',
-      '/grant:r', 'SYSTEM:(F)', '/grant', 'Administrators:(R)'], { stdio: 'pipe', timeout: 5000 });
-    let existing = '';
-    try { existing = fs.readFileSync(adminAuthKeys, 'utf-8'); } catch {}
-    if (!existing.includes(pubKey)) {
-      fs.appendFileSync(adminAuthKeys, pubKey + String.fromCharCode(10));
-      console.log('[SSH] Authorized service key in administrators_authorized_keys');
+  if (isWindows) {
+    // Authorize in administrators_authorized_keys (for admin shell users)
+    try {
+      const adminAuthKeys = path.join(process.env.ProgramData || 'C:\\ProgramData', 'ssh', 'administrators_authorized_keys');
+      const authDir = path.dirname(adminAuthKeys);
+      if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+      spawnSync('icacls', [adminAuthKeys, '/inheritance:r',
+        '/grant:r', 'SYSTEM:(F)', '/grant', 'Administrators:(R)'], { stdio: 'pipe', timeout: 5000 });
+      let existing = '';
+      try { existing = fs.readFileSync(adminAuthKeys, 'utf-8'); } catch {}
+      if (!existing.includes(pubKey)) {
+        fs.appendFileSync(adminAuthKeys, pubKey + String.fromCharCode(10));
+        console.log('[SSH] Authorized service key in administrators_authorized_keys');
+      }
+    } catch (e) {
+      console.error('[SSH] Could not authorize admin key (non-fatal):', e.message);
     }
-  } catch (e) {
-    console.error('[SSH] Could not authorize admin key (non-fatal):', e.message);
-  }
 
-  // Authorize in each shell user's ~/.ssh/authorized_keys (for non-admin users)
-  // Scan user profiles that have a .claude directory (likely terminal targets)
-  try {
-    const usersDir = path.dirname(os.homedir());
-    const skip = new Set(['Public', 'Default', 'Default User', 'All Users']);
-    const profiles = fs.readdirSync(usersDir)
-      .filter(name => !skip.has(name) && !name.startsWith('.'))
-      .filter(name => fs.existsSync(path.join(usersDir, name, '.claude')));
-    for (const username of profiles) {
+    // Authorize in each shell user's ~/.ssh/authorized_keys (for non-admin users)
+    try {
+      const usersDir = path.dirname(os.homedir());
+      const skip = new Set(['Public', 'Default', 'Default User', 'All Users']);
+      const profiles = fs.readdirSync(usersDir)
+        .filter(name => !skip.has(name) && !name.startsWith('.'))
+        .filter(name => fs.existsSync(path.join(usersDir, name, '.claude')));
+      for (const username of profiles) {
+        try {
+          const sshDir = path.join(usersDir, username, '.ssh');
+          if (!fs.existsSync(sshDir)) fs.mkdirSync(sshDir, { recursive: true });
+          const authKeysPath = path.join(sshDir, 'authorized_keys');
+          let existing = '';
+          try { existing = fs.readFileSync(authKeysPath, 'utf-8'); } catch {}
+          if (!existing.includes(pubKey)) {
+            fs.appendFileSync(authKeysPath, pubKey + String.fromCharCode(10));
+            spawnSync('icacls', [authKeysPath, '/inheritance:r',
+              '/grant:r', username + ':(F)',
+              '/grant', 'NT AUTHORITY\\SYSTEM:(F)'], { stdio: 'pipe', timeout: 5000 });
+            console.log('[SSH] Authorized service key for user ' + username);
+          }
+        } catch (e) {
+          console.error('[SSH] Could not authorize key for ' + username + ' (non-fatal):', e.message);
+        }
+      }
+    } catch (e) {
+      console.error('[SSH] Could not scan user profiles (non-fatal):', e.message);
+    }
+  } else {
+    // Linux/macOS: authorize all shell users from admin DB as a fallback
+    // (AuthorizedKeysCommand is the primary mechanism, this is belt-and-suspenders)
+    const db = getAdminDb();
+    if (db) {
       try {
-        const sshDir = path.join(usersDir, username, '.ssh');
-        if (!fs.existsSync(sshDir)) fs.mkdirSync(sshDir, { recursive: true });
-        const authKeysPath = path.join(sshDir, 'authorized_keys');
-        let existing = '';
-        try { existing = fs.readFileSync(authKeysPath, 'utf-8'); } catch {}
-        if (!existing.includes(pubKey)) {
-          fs.appendFileSync(authKeysPath, pubKey + String.fromCharCode(10));
-          // OpenSSH on Windows requires authorized_keys to be owned by the user
-          // and not writable by others; lock down permissions
-          spawnSync('icacls', [authKeysPath, '/inheritance:r',
-            '/grant:r', username + ':(F)',
-            '/grant', 'NT AUTHORITY\\SYSTEM:(F)'], { stdio: 'pipe', timeout: 5000 });
-          console.log('[SSH] Authorized service key for user ' + username);
+        const users = db.prepare('SELECT DISTINCT shell_user FROM users').all();
+        for (const row of users) {
+          const shellUser = row.shell_user;
+          try {
+            authorizeShellUser(shellUser, pubKey);
+          } catch (e) {
+            console.error('[SSH] Could not authorize key for ' + shellUser + ' (non-fatal):', e.message);
+          }
         }
       } catch (e) {
-        console.error('[SSH] Could not authorize key for ' + username + ' (non-fatal):', e.message);
+        console.error('[SSH] Could not query admin DB for shell users (non-fatal):', e.message);
       }
     }
-  } catch (e) {
-    console.error('[SSH] Could not scan user profiles (non-fatal):', e.message);
   }
+}
+
+// Authorize the service key for a Linux/macOS shell user
+function authorizeShellUser(shellUser, pubKey) {
+  const { spawnSync } = require('child_process');
+
+  // Resolve home directory
+  let userHome;
+  try {
+    const result = spawnSync('getent', ['passwd', shellUser], { encoding: 'utf-8', timeout: 5000 });
+    const fields = (result.stdout || '').split(':');
+    userHome = fields[5];
+  } catch {}
+  if (!userHome) {
+    userHome = process.platform === 'darwin' ? `/Users/${shellUser}` : `/home/${shellUser}`;
+  }
+  if (!fs.existsSync(userHome)) return;
+
+  const sshDir = path.join(userHome, '.ssh');
+  const authKeysPath = path.join(sshDir, 'authorized_keys');
+
+  // Check if already authorized
+  let existing = '';
+  try { existing = fs.readFileSync(authKeysPath, 'utf-8'); } catch {}
+  if (existing.includes(pubKey)) return;
+
+  // Create .ssh dir with correct ownership
+  if (!fs.existsSync(sshDir)) {
+    spawnSync('sudo', ['mkdir', '-p', sshDir], { stdio: 'pipe', timeout: 5000 });
+    spawnSync('sudo', ['chmod', '700', sshDir], { stdio: 'pipe', timeout: 5000 });
+    spawnSync('sudo', ['chown', `${shellUser}:${shellUser}`, sshDir], { stdio: 'pipe', timeout: 5000 });
+  }
+
+  // Append key and fix permissions
+  const tmpFile = `/tmp/spaces-authkey-${shellUser}-${Date.now()}`;
+  fs.writeFileSync(tmpFile, existing + pubKey + '\n');
+  spawnSync('sudo', ['cp', tmpFile, authKeysPath], { stdio: 'pipe', timeout: 5000 });
+  spawnSync('sudo', ['chmod', '600', authKeysPath], { stdio: 'pipe', timeout: 5000 });
+  spawnSync('sudo', ['chown', `${shellUser}:${shellUser}`, authKeysPath], { stdio: 'pipe', timeout: 5000 });
+  try { fs.unlinkSync(tmpFile); } catch {}
+
+  console.log('[SSH] Authorized service key for user ' + shellUser);
 }
 try { ensureServiceKeyAtRuntime(); } catch (e) { console.error('[SSH] Key setup failed (non-fatal):', e.message); }
 
@@ -678,6 +741,17 @@ function handleConnection(wss, ws, req) {
     ];
     // Force IPv4 — localhost may resolve to ::1 (IPv6) which sshd can reject
     args.unshift('-4');
+
+    // On-demand SSH provisioning: ensure the shell user's authorized_keys is set up
+    // before attempting the connection. This handles users added after service install.
+    if (process.platform !== 'win32' && fs.existsSync(SERVICE_KEY + '.pub')) {
+      try {
+        const pubKey = fs.readFileSync(SERVICE_KEY + '.pub', 'utf-8').trim();
+        authorizeShellUser(shellUser, pubKey);
+      } catch (e) {
+        console.error(`[SSH] On-demand provisioning for ${shellUser} failed (non-fatal):`, e.message);
+      }
+    }
   } else if (isWindows && agentType !== 'shell') {
     // Agents like Claude Code require bash on Windows — find git-bash
     shell = findGitBash();
