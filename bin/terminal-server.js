@@ -402,6 +402,83 @@ const AGENTS = {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+// ─── Cortex context injection ────────────────────────────
+// Fetch relevant knowledge from Cortex API and write a context file
+// in the workspace before the agent launches.
+async function injectCortexContext(cwd, workspaceId, ws) {
+  if (SPACES_TIER !== 'team' && SPACES_TIER !== 'federation') return 0;
+  try {
+    const projectName = path.basename(cwd);
+    const query = encodeURIComponent(`${projectName} workspace context`);
+    const params = `q=${query}&limit=10${workspaceId ? `&workspace_id=${workspaceId}` : ''}`;
+    const url = `http://localhost:${API_PORT}/api/cortex/search?${params}`;
+
+    const body = await new Promise((resolve, reject) => {
+      const req = http.get(url, { timeout: 5000 }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`Cortex API returned ${res.statusCode}: ${data.slice(0, 200)}`));
+          } else {
+            resolve(data);
+          }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
+
+    const parsed = JSON.parse(body);
+    const results = parsed.results;
+    if (!results || results.length === 0) {
+      console.log(`[Cortex] No knowledge found for "${projectName}"`);
+      return 0;
+    }
+
+    // Format context (mirrors src/lib/cortex/retrieval/injection.ts)
+    const TYPE_LABELS = {
+      decision: 'Decision', pattern: 'Pattern', preference: 'Preference',
+      error_fix: 'Error Fix', context: 'Context', code_pattern: 'Code',
+      command: 'Command', conversation: 'Conversation', summary: 'Summary',
+    };
+    const lines = ['<cortex-context>', 'Relevant context from your workspace history:', ''];
+    let tokens = 20;
+    const included = [];
+    for (const unit of results) {
+      const label = TYPE_LABELS[unit.type] || unit.type;
+      const date = (unit.source_timestamp || '').slice(0, 10);
+      const confidence = (unit.confidence * 100).toFixed(0);
+      let entry = `[${label}]`;
+      if (date) entry += ` ${date}:`;
+      entry += ` ${unit.text}`;
+      if (unit.session_id) entry += `\nSource: session ${unit.session_id}, confidence: ${confidence}%`;
+      const entryTokens = Math.ceil(entry.length / 4);
+      if (tokens + entryTokens > 2000) break;
+      lines.push(entry, '');
+      tokens += entryTokens;
+      included.push({ type: unit.type, text: unit.text.slice(0, 80) });
+    }
+    lines.push('</cortex-context>');
+
+    // Write context file
+    const spacesDir = path.join(cwd, '.spaces');
+    if (!fs.existsSync(spacesDir)) fs.mkdirSync(spacesDir, { recursive: true });
+    fs.writeFileSync(path.join(spacesDir, 'cortex-context.md'), lines.join('\n'), 'utf-8');
+    console.log(`[Cortex] Injected ${included.length} knowledge units for ${path.basename(cwd)}`);
+
+    // Notify client for injection badge
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'cortex-injection', count: included.length, items: included }));
+    }
+
+    return included.length;
+  } catch (err) {
+    console.error(`[Cortex] Injection failed:`, err.message);
+    return 0;
+  }
+}
+
 // ─── Git Bash detection (Windows) ────────────────────────
 function findGitBash() {
   const custom = process.env.CLAUDE_CODE_GIT_BASH_PATH;
@@ -756,6 +833,11 @@ function handleConnection(wss, ws, req) {
   };
   sessions.set(paneId, session);
   analyticsRecordSessionStart(paneId, username, agentType);
+
+  // ─── Cortex context injection (async, non-blocking) ─────
+  if (agentType !== 'shell') {
+    injectCortexContext(safeCwd, env.SPACES_WORKSPACE_ID || null, ws).catch(() => {});
+  }
 
   // ─── Inject cd for SSH sessions, then agent command ─────
   const agent = AGENTS[agentType] || AGENTS.shell;
