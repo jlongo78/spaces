@@ -38,6 +38,7 @@ export function CortexIndicator({ onClick }: { onClick?: () => void }) {
     >
       <Brain className="w-4 h-4" />
       <span className="text-xs tabular-nums">{totalUnits}</span>
+      <span className="text-[9px] font-medium uppercase tracking-wider opacity-60">Beta</span>
     </button>
   );
 }

@@ -57,7 +57,10 @@ export function CortexPanel({ open, onClose }: CortexPanelProps) {
     <div className="fixed right-0 top-0 bottom-0 w-96 bg-gray-950 border-l border-white/10 z-50 flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-white/5">
-        <h2 className="text-sm font-medium text-gray-200">Cortex</h2>
+        <h2 className="text-sm font-medium text-gray-200">
+          Cortex
+          <span className="ml-2 text-[9px] font-medium uppercase tracking-wider text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded">Beta</span>
+        </h2>
         <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
           <X className="w-4 h-4" />
         </button>

@@ -966,9 +966,20 @@ function handleConnection(wss, ws, req) {
 
   console.log(`[Spawn] user=${username} shell=${shell} args=${JSON.stringify(args)} cwd=${safeCwd} agentType=${agentType}`);
 
-  // Write Cortex RAG hook for Claude Code before spawning
+  // Write Cortex RAG hook for Claude Code before spawning (only if Cortex is enabled)
   if (agentType === 'claude' && (SPACES_TIER === 'team' || SPACES_TIER === 'federation')) {
-    writeCortexHookConfig(safeCwd);
+    try {
+      const userHome = getUserHome(username);
+      const configPath = path.join(userHome, '.spaces', 'config.json');
+      let cortexEnabled = false;
+      if (fs.existsSync(configPath)) {
+        const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        cortexEnabled = cfg.cortex?.enabled === true;
+      }
+      if (cortexEnabled) writeCortexHookConfig(safeCwd);
+    } catch (e) {
+      console.error('[Cortex] Config check failed (non-fatal):', e.message);
+    }
   }
 
   let term;

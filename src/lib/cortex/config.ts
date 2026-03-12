@@ -42,7 +42,7 @@ export interface CortexConfig {
 }
 
 export const DEFAULT_CORTEX_CONFIG: CortexConfig = {
-  enabled: true,
+  enabled: false,
   embedding: { provider: 'auto', model: null, fallback: 'local', dimensions: null },
   injection: { enabled: true, max_tokens: 2000, max_results: 5, min_confidence: 0.3 },
   ingestion: { auto_ingest: true, distillation: true, distillation_model: 'auto' },

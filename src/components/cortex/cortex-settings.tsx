@@ -39,7 +39,10 @@ export function CortexSettings() {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-medium text-gray-200">Cortex</h3>
+      <h3 className="text-sm font-medium text-gray-200">
+        Cortex
+        <span className="ml-2 text-[9px] font-medium uppercase tracking-wider text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded">Beta</span>
+      </h3>
 
       {/* Enable/disable */}
       <label className="flex items-center justify-between">
