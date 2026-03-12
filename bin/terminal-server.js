@@ -416,26 +416,41 @@ function writeCortexHookConfig(cwd) {
       try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')); } catch {}
     }
 
-    // Resolve absolute path to the hook script (Node.js — works everywhere)
-    const hookScript = path.resolve(__dirname, 'cortex-hook.js');
-    const hookCommand = `node "${hookScript}"`;
+    // Resolve absolute paths to hook scripts (Node.js — works everywhere)
+    const ragHook = path.resolve(__dirname, 'cortex-hook.js');
+    const learnHook = path.resolve(__dirname, 'cortex-learn-hook.js');
 
     // Merge — don't clobber existing hooks for other events
     if (!settings.hooks) settings.hooks = {};
+
+    // RAG search: runs on every prompt, injects relevant context
     settings.hooks.UserPromptSubmit = [
       {
         hooks: [
           {
             type: 'command',
-            command: hookCommand,
+            command: `node "${ragHook}"`,
             timeout: 10,
           },
         ],
       },
     ];
 
+    // Learn: runs after Claude finishes, ingests the exchange back into Cortex
+    settings.hooks.Stop = [
+      {
+        hooks: [
+          {
+            type: 'command',
+            command: `node "${learnHook}"`,
+            timeout: 15,
+          },
+        ],
+      },
+    ];
+
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-    console.log(`[Cortex] Wrote Claude Code RAG hook to ${settingsPath}`);
+    console.log(`[Cortex] Wrote Claude Code hooks (RAG + Learn) to ${settingsPath}`);
   } catch (err) {
     console.error(`[Cortex] Failed to write hook config:`, err.message);
   }
