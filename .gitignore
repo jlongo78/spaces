@@ -65,3 +65,6 @@ nginx-dev.conf
 
 # Superpowers brainstorm sessions
 .superpowers/
+
+# Git worktrees
+.worktrees/
