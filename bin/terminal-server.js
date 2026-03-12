@@ -413,8 +413,37 @@ async function injectCortexContext(cwd, workspaceId, ws) {
     const params = `q=${query}&limit=10${workspaceId ? `&workspace_id=${workspaceId}` : ''}`;
     const url = `http://localhost:${API_PORT}/api/cortex/search?${params}`;
 
+    // Use internal auth bypass (x-spaces-internal header) to skip session middleware
+    const internalToken = (process.env.SPACES_SESSION_SECRET || '').slice(0, 16);
+    const options = {
+      timeout: 5000,
+      headers: {
+        'x-spaces-internal': internalToken,
+      },
+    };
+
     const body = await new Promise((resolve, reject) => {
-      const req = http.get(url, { timeout: 5000 }, (res) => {
+      const req = http.get(url, options, (res) => {
+        // Follow redirects (Next.js trailing-slash redirects)
+        if (res.statusCode === 308 || res.statusCode === 307 || res.statusCode === 301 || res.statusCode === 302) {
+          const redirectUrl = res.headers.location;
+          if (redirectUrl) {
+            const fullUrl = redirectUrl.startsWith('http') ? redirectUrl : `http://localhost:${API_PORT}${redirectUrl}`;
+            const req2 = http.get(fullUrl, options, (res2) => {
+              let data = '';
+              res2.on('data', (chunk) => { data += chunk; });
+              res2.on('end', () => {
+                if (res2.statusCode !== 200) {
+                  reject(new Error(`Cortex API returned ${res2.statusCode}: ${data.slice(0, 200)}`));
+                } else {
+                  resolve(data);
+                }
+              });
+            });
+            req2.on('error', reject);
+            return;
+          }
+        }
         let data = '';
         res.on('data', (chunk) => { data += chunk; });
         res.on('end', () => {
