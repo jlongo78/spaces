@@ -1,19 +1,35 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   Plus, Loader2, Terminal, Search, ChevronDown, ChevronRight,
   Layers, Home, Globe, AlertCircle, LayoutGrid, List, Monitor,
-  Users, Zap, Clock, Filter, X,
+  Users, Zap, Clock, Filter, X, Orbit,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import type { Workspace } from '@/types/claude';
 import { api } from '@/lib/api';
 import type { RemoteNode, RemoteError, Template } from './universe-types';
 import { matchesSearch } from './universe-utils';
 
+const UniverseView = dynamic(
+  () => import('@/components/workspace/universe-view'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full flex items-center justify-center bg-[#07070f]">
+        <div className="flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />
+          <span className="text-xs text-zinc-500">Loading universe...</span>
+        </div>
+      </div>
+    ),
+  },
+);
+
 // ─── Types ─────────────────────────────────────────────────
 
-type ViewMode = 'grid' | 'list';
+type ViewMode = 'grid' | 'list' | 'universe';
 type FilterSource = 'all' | 'local' | 'network';
 
 interface WorkspaceChooserProps {
@@ -33,6 +49,26 @@ interface WorkspaceChooserProps {
 }
 
 // ─── Component ─────────────────────────────────────────────
+
+class UniverseErrorBoundary extends React.Component<
+  { children: React.ReactNode; onError: () => void },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode; onError: () => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch() {
+    this.props.onError();
+  }
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
 
 export function WorkspaceChooser({
   workspaces,
@@ -54,6 +90,8 @@ export function WorkspaceChooser({
   const [filterSource, setFilterSource] = useState<FilterSource>('all');
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const searchRef = useRef<HTMLInputElement>(null);
+  const [universeError, setUniverseError] = useState(false);
+  const [universeToast, setUniverseToast] = useState<string | null>(null);
 
   // Keyboard shortcut: Ctrl+K or / to focus search
   useEffect(() => {
@@ -132,10 +170,44 @@ export function WorkspaceChooser({
           >
             <List className="w-3.5 h-3.5" />
           </button>
+          <button
+            onClick={() => {
+              if (universeError) return;
+              setViewMode('universe');
+            }}
+            className={`p-1.5 rounded transition-colors ${
+              viewMode === 'universe'
+                ? 'text-white bg-zinc-800'
+                : universeError
+                  ? 'text-zinc-800 cursor-not-allowed'
+                  : 'text-zinc-600 hover:text-zinc-400'
+            }`}
+            title={universeError ? '3D view unavailable' : 'Universe view'}
+          >
+            <Orbit className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
       {/* Main content */}
+      {viewMode === 'universe' ? (
+        <div className="flex-1 min-h-0">
+          <UniverseErrorBoundary onError={() => { setUniverseError(true); setViewMode('grid'); setUniverseToast('3D view unavailable — using grid view'); setTimeout(() => setUniverseToast(null), 4000); }}>
+            <UniverseView
+              workspaces={workspaces}
+              wsLoading={wsLoading}
+              hasNetwork={hasNetwork}
+              remoteNodes={remoteNodes}
+              remoteErrors={remoteErrors}
+              remoteLoading={remoteLoading}
+              filterSource={filterSource}
+              onSwitchWorkspace={onSwitchWorkspace}
+              onCreateWorkspace={onCreateWorkspace}
+              onOpenRemote={onOpenRemote}
+            />
+          </UniverseErrorBoundary>
+        </div>
+      ) : (
       <div className="flex-1 overflow-y-auto min-h-0">
         <div className="max-w-4xl mx-auto px-6 py-8">
           {/* Header */}
@@ -350,6 +422,14 @@ export function WorkspaceChooser({
           <div className="h-8" />
         </div>
       </div>
+      )}
+
+      {/* WebGL failure toast */}
+      {universeToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-zinc-300 shadow-lg">
+          {universeToast}
+        </div>
+      )}
     </div>
   );
 }
