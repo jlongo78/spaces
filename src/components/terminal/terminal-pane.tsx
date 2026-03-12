@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AGENT_TYPES } from '@/lib/agents';
+import { useTier } from '@/hooks/use-tier';
+import { InjectionBadge } from '@/components/cortex/injection-badge';
 import type { PaneData } from '@/lib/db/queries';
 import 'xterm/css/xterm.css';
 
@@ -23,6 +25,7 @@ interface TerminalPaneProps {
 }
 
 export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMaximize, onPopout, isPopout, terminalToken, workspaceCollaboration }: TerminalPaneProps) {
+  const { hasCortex } = useTier();
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -35,6 +38,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const colorPopoverRef = useRef<HTMLDivElement>(null);
   const [exited, setExited] = useState(false);
+  const [injectionCount] = useState(0);
 
   // Use refs for props so the connect function never needs to re-create.
   // This prevents all terminals from reconnecting when parent state changes.
@@ -439,6 +443,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         {!connected && !exited && (
           <span className="text-[10px] text-yellow-500">connecting...</span>
         )}
+
+        {hasCortex && <InjectionBadge count={injectionCount} />}
 
         {exited && (
           <button onClick={reconnect} className="text-zinc-400 hover:text-white" title="Restart">
