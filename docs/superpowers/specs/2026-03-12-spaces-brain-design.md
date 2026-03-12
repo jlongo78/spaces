@@ -12,6 +12,17 @@ In federated environments, Cortex nodes actively teach each other — propagatin
 
 The Cortex operates across four knowledge layers (Personal, Workspace, Team, Federation), supports all agent types (Claude Code, Codex, Gemini, Aider), and integrates with Spaces' existing tier model (Community, Pro/Server, Teams, Federation).
 
+## Tier Availability
+
+Cortex is a **premium feature** available only on Teams and Federation tiers. It is not included in the open-source Community version.
+
+- All Cortex API routes check tier before responding (return 403 on Community)
+- All UI components use `useTier()` to conditionally render
+- The `src/lib/cortex/` directory can be excluded from Community builds
+- Federation features (query delegation, active propagation, sync) require the Federation tier specifically
+- Teams tier gets: local Cortex (personal + workspace layers, ingestion, retrieval, MCP, import/export)
+- Federation tier gets: everything in Teams + team layer, federation queries, Cortex-to-Cortex teaching, sync modes
+
 ## Design Principles
 
 - **Zero config** — Cortex works the moment it's enabled. No API keys required (falls back to local embeddings). No manual curation needed.
