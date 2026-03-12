@@ -140,10 +140,29 @@ function gitClone(repo, dest, isPrivate) {
 
 /**
  * Pull latest changes in a repo directory.
+ * Stashes any local modifications first so pull doesn't fail.
  */
 function gitPull(dir) {
   log('Pulling latest...');
+  // Stash local changes if any (e.g. hook-generated files)
+  let stashed = false;
+  try {
+    const status = execFileSync('git', [...GIT_SAFE, 'status', '--porcelain'], { cwd: dir, encoding: 'utf-8' }).trim();
+    if (status) {
+      log('Stashing local changes...');
+      run('git', [...GIT_SAFE, 'stash', '--include-untracked'], { cwd: dir });
+      stashed = true;
+    }
+  } catch {}
   run('git', [...GIT_SAFE, 'pull', '--ff-only'], { cwd: dir });
+  if (stashed) {
+    try {
+      run('git', [...GIT_SAFE, 'stash', 'pop'], { cwd: dir });
+      log('Restored local changes.');
+    } catch {
+      log('Warning: Could not restore stashed changes. Run "git stash pop" manually in ' + dir);
+    }
+  }
 }
 
 /**
