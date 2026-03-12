@@ -19,10 +19,18 @@ async function main() {
 
   // Read the last few lines of the transcript to find the last Q&A exchange
   const lastExchange = await extractLastExchange(transcriptPath);
-  if (!lastExchange || !lastExchange.question || !lastExchange.answer) process.exit(0);
+  if (!lastExchange || !lastExchange.question || !lastExchange.answer) {
+    process.stderr.write(`[Cortex Learn] No exchange found in transcript\n`);
+    process.exit(0);
+  }
+
+  process.stderr.write(`[Cortex Learn] Q: ${lastExchange.question.slice(0, 60)} | A: ${lastExchange.answer.length} chars\n`);
 
   // Skip trivial exchanges (very short answers aren't worth learning)
-  if (lastExchange.answer.length < 100) process.exit(0);
+  if (lastExchange.answer.length < 100) {
+    process.stderr.write(`[Cortex Learn] Skipped — answer too short (${lastExchange.answer.length} chars)\n`);
+    process.exit(0);
+  }
 
   // Classify the exchange type with simple heuristics
   const knowledgeType = classifyExchange(lastExchange.question, lastExchange.answer);
@@ -45,9 +53,10 @@ async function main() {
   });
 
   try {
-    await postToApi(apiPort, internalToken, '/api/cortex/knowledge/', payload);
-  } catch {
-    // Don't block Claude — learning failure is non-critical
+    const result = await postToApi(apiPort, internalToken, '/api/cortex/knowledge/', payload);
+    process.stderr.write(`[Cortex Learn] Ingested ${knowledgeType}: ${lastExchange.question.slice(0, 60)}\n`);
+  } catch (err) {
+    process.stderr.write(`[Cortex Learn] Failed: ${err.message}\n`);
   }
 
   process.exit(0);
@@ -57,39 +66,51 @@ async function main() {
 async function extractLastExchange(transcriptPath) {
   const lines = [];
 
-  // Read only the last 100 lines to avoid parsing huge transcripts
+  // Read the last ~1000 lines — Claude Code exchanges with tool calls can
+  // span hundreds of lines, so we need a large enough window to find text.
   const fileStream = fs.createReadStream(transcriptPath, { encoding: 'utf-8' });
   const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
 
   for await (const line of rl) {
     if (line.trim()) lines.push(line.trim());
-    if (lines.length > 200) lines.shift();
+    if (lines.length > 1000) lines.shift();
   }
 
+  // Strategy: find the last user prompt (non-tool-result), then collect ALL
+  // assistant text between that prompt and the end. This captures the full
+  // response even when it's spread across multiple assistant turns with tool
+  // calls interspersed.
+  let lastUserIdx = -1;
   let lastUserMsg = null;
-  let lastAssistantMsg = null;
 
-  // Walk backwards to find the last assistant message and the user message before it
+  // First pass: find the last real user prompt
   for (let i = lines.length - 1; i >= 0; i--) {
     try {
       const entry = JSON.parse(lines[i]);
-
-      if (!lastAssistantMsg && entry.type === 'assistant') {
-        // Extract text from assistant message
+      if (entry.type === 'user' && !entry.toolUseResult) {
         const text = extractText(entry);
-        if (text) lastAssistantMsg = text;
-      } else if (lastAssistantMsg && !lastUserMsg && entry.type === 'human') {
-        const text = extractText(entry);
-        if (text) lastUserMsg = text;
-        break;
+        if (text) { lastUserMsg = text; lastUserIdx = i; break; }
       }
-    } catch {
-      continue;
-    }
+    } catch { continue; }
   }
 
-  if (!lastUserMsg || !lastAssistantMsg) return null;
-  return { question: lastUserMsg, answer: lastAssistantMsg };
+  if (!lastUserMsg || lastUserIdx === -1) return null;
+
+  // Second pass: collect all assistant text after the user prompt
+  const assistantParts = [];
+  for (let i = lastUserIdx + 1; i < lines.length; i++) {
+    try {
+      const entry = JSON.parse(lines[i]);
+      if (entry.type === 'assistant') {
+        const text = extractText(entry);
+        if (text) assistantParts.push(text);
+      }
+    } catch { continue; }
+  }
+
+  const fullAnswer = assistantParts.join('\n\n');
+  if (!fullAnswer) return null;
+  return { question: lastUserMsg, answer: fullAnswer };
 }
 
 // Extract plain text from a transcript message entry
