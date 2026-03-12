@@ -8,6 +8,9 @@ export default defineConfig({
     root: '.',
     include: ['tests/**/*.test.ts'],
     setupFiles: ['tests/setup.ts'],
+    // Use forks pool to avoid ONNX file-lock contention on Windows
+    // when multiple test files load onnxruntime-node concurrently
+    pool: 'forks',
     coverage: {
       provider: 'v8',
       include: ['src/lib/cortex/**'],
