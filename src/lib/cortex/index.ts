@@ -6,6 +6,7 @@ import { readCortexConfig, type CortexConfig } from './config';
 import { detectProvider, type EmbeddingProvider } from './embeddings';
 import { CortexSearch } from './retrieval/search';
 import { IngestionPipeline } from './ingestion/pipeline';
+import { FederationSync } from './retrieval/sync';
 import path from 'path';
 
 let _instance: CortexInstance | null = null;
@@ -16,6 +17,7 @@ export interface CortexInstance {
   search: CortexSearch;
   pipeline: IngestionPipeline;
   embedding: EmbeddingProvider;
+  sync?: FederationSync;
 }
 
 export function isCortexAvailable(): boolean {
@@ -41,10 +43,27 @@ export async function getCortex(): Promise<CortexInstance | null> {
   const search = new CortexSearch(store);
   const pipeline = new IngestionPipeline(embedding, store);
 
-  _instance = { config, store, search, pipeline, embedding };
+  const instance: CortexInstance = { config, store, search, pipeline, embedding };
+
+  // Initialize background federation sync if enabled
+  if (config.federation.sync_mode === 'background-sync') {
+    const syncIntervalMs = config.federation.sync_interval_minutes * 60 * 1000;
+    const sync = new FederationSync(store, embedding, {
+      intervalMs: syncIntervalMs,
+      connectedNodes: [], // Will be populated by network module
+      timeoutMs: config.federation.query_timeout_ms,
+    });
+    sync.start();
+    instance.sync = sync;
+  }
+
+  _instance = instance;
   return _instance;
 }
 
 export function resetCortex(): void {
+  if (_instance?.sync) {
+    _instance.sync.stop();
+  }
   _instance = null;
 }
