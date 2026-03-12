@@ -2,13 +2,19 @@ import { describe, it, expect } from 'vitest';
 import { CORTEX_TOOLS, handleToolCall } from '@/lib/cortex/mcp/server';
 
 describe('MCP server', () => {
-  it('defines 4 core tools', () => {
-    expect(CORTEX_TOOLS).toHaveLength(4);
+  it('defines all 10 tools', () => {
+    expect(CORTEX_TOOLS).toHaveLength(10);
     const names = CORTEX_TOOLS.map(t => t.name);
     expect(names).toContain('cortex_search');
     expect(names).toContain('cortex_teach');
     expect(names).toContain('cortex_forget');
     expect(names).toContain('cortex_status');
+    expect(names).toContain('cortex_recall');
+    expect(names).toContain('cortex_similar');
+    expect(names).toContain('cortex_context');
+    expect(names).toContain('cortex_timeline');
+    expect(names).toContain('cortex_export');
+    expect(names).toContain('cortex_import');
   });
 
   it('cortex_search requires query param', () => {
