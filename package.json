@@ -36,9 +36,14 @@
     "setup-admin": "node bin/setup-admin.js",
     "server:build": "next build",
     "server:start": "next start --port 3457",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "lint": "eslint"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "@lancedb/lancedb": "^0.26.2",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
@@ -59,6 +64,7 @@
     "@types/react-dom": "^19",
     "@types/three": "^0.183.1",
     "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^4.0.18",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
     "chokidar": "^5.0.0",
@@ -84,6 +90,7 @@
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vitest": "^4.0.18",
     "xterm": "^5.3.0"
   },
   "optionalDependencies": {
