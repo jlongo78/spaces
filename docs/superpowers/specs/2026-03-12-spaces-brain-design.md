@@ -1,20 +1,24 @@
-# Spaces Brain — Continuous Knowledge System
+# Spaces Cortex — Distributed Intelligence Network
 
 **Date:** 2026-03-12
 **Status:** Approved
+**Feature Name:** Cortex
 
 ## Summary
 
-A persistent, self-building knowledge system for Spaces that continuously ingests all AI agent conversations, extracts decisions, patterns, preferences, and error resolutions, stores them as vector embeddings in LanceDB, and automatically injects relevant context into every prompt via hooks. Agents get smarter over time because the Brain remembers everything you've built, decided, and corrected — across all sessions, all agents, all projects.
+A persistent, self-building knowledge system for Spaces that continuously ingests all AI agent conversations, extracts decisions, patterns, preferences, and error resolutions, stores them as vector embeddings in LanceDB, and automatically injects relevant context into every prompt via hooks. Agents get smarter over time because the Cortex remembers everything you've built, decided, and corrected — across all sessions, all agents, all projects.
 
-The Brain operates across four knowledge layers (Personal, Workspace, Team, Federation), supports all agent types (Claude Code, Codex, Gemini, Aider), and integrates with Spaces' existing tier model (Community, Pro/Server, Teams, Federation).
+In federated environments, Cortex nodes actively teach each other — propagating high-confidence knowledge across the network so every node benefits from every other node's experience. The result is a distributed intelligence network that grows smarter with every conversation, on every machine, across every team.
+
+The Cortex operates across four knowledge layers (Personal, Workspace, Team, Federation), supports all agent types (Claude Code, Codex, Gemini, Aider), and integrates with Spaces' existing tier model (Community, Pro/Server, Teams, Federation).
 
 ## Design Principles
 
-- **Zero config** — Brain works the moment it's enabled. No API keys required (falls back to local embeddings). No manual curation needed.
-- **Fully automatic** — All conversations are ingested passively. The Brain decides what's worth remembering. Users never need to manually save knowledge.
-- **Invisible when working, inspectable when curious** — The Brain enhances every prompt silently. But every injection is visible (pane header badge), every knowledge unit is browsable (Brain panel), and everything can be taught, corrected, or forgotten.
+- **Zero config** — Cortex works the moment it's enabled. No API keys required (falls back to local embeddings). No manual curation needed.
+- **Fully automatic** — All conversations are ingested passively. The Cortex decides what's worth remembering. Users never need to manually save knowledge.
+- **Invisible when working, inspectable when curious** — The Cortex enhances every prompt silently. But every injection is visible (pane header badge), every knowledge unit is browsable (Cortex panel), and everything can be taught, corrected, or forgotten.
 - **Privacy by default** — Personal knowledge never leaves your node. Workspace knowledge is shareable only if the workspace is collaborative. Team knowledge flows only between paired federation nodes.
+- **Distributed intelligence** — In federated environments, Cortex nodes actively teach each other. High-confidence knowledge propagates across the network automatically. Every node makes every other node smarter.
 
 ## Architecture
 
@@ -30,16 +34,16 @@ Ingestion Pipeline
   │  Tier 3: Distillation (async) → LLM extracts decisions, patterns, preferences
   ▼
 Storage (LanceDB)
-  │  Personal layer: ~/.spaces/brain/personal/
-  │  Workspace layer: ~/.spaces/brain/workspace/{id}/
-  │  Team layer: ~/.spaces/brain/team/ (cache from federation queries)
+  │  Personal layer: ~/.spaces/cortex/personal/
+  │  Workspace layer: ~/.spaces/cortex/workspace/{id}/
+  │  Team layer: ~/.spaces/cortex/team/ (cache from federation queries)
   ▼
 Retrieval & Injection
   │  Hook injection: automatic, every prompt, <200ms
   │  MCP tool: agent-driven deep queries
   │  Federation query: transparent delegation to remote nodes
   ▼
-Agent receives prompt + relevant Brain context
+Agent receives prompt + relevant Cortex context
 ```
 
 ### Knowledge Layers
@@ -48,12 +52,12 @@ Four layers, organized from most specific to most general:
 
 | Layer | Scope | Privacy | Storage | Examples |
 |-------|-------|---------|---------|----------|
-| **Personal** | Your preferences and style | Never shared | `~/.spaces/brain/personal/` | "Prefers Zod", "No ORMs", "Terse output" |
-| **Workspace** | Project-specific knowledge | Shareable if workspace is collaborative | `~/.spaces/brain/workspace/{id}/` | "Auth uses JWT", "DB schema v3", "Bug #247 fix" |
-| **Team** | Shared conventions | Flows between federation nodes | `~/.spaces/brain/team/` (local cache) | "API uses /v2/ prefix", "All endpoints return {data, error}" |
+| **Personal** | Your preferences and style | Never shared | `~/.spaces/cortex/personal/` | "Prefers Zod", "No ORMs", "Terse output" |
+| **Workspace** | Project-specific knowledge | Shareable if workspace is collaborative | `~/.spaces/cortex/workspace/{id}/` | "Auth uses JWT", "DB schema v3", "Bug #247 fix" |
+| **Team** | Shared conventions | Flows between federation nodes | `~/.spaces/cortex/team/` (local cache) | "API uses /v2/ prefix", "All endpoints return {data, error}" |
 | **Federation** | Org-wide patterns | Query delegation across nodes | Not stored locally — queried on demand | Cross-team patterns, org standards |
 
-On every prompt, the Brain searches: Personal → Workspace → Team → Federation. Most specific wins. Results merged by relevance score.
+On every prompt, the Cortex searches: Personal → Workspace → Team → Federation. Most specific wins. Results merged by relevance score.
 
 ## Ingestion Pipeline
 
@@ -121,7 +125,7 @@ Bootstrap is incremental — if interrupted, picks up where it left off using sy
 | `code_pattern` | Code block analysis | 0.7 | 60 days | "Components use forwardRef + displayName" |
 | `command` | Command extraction | 0.6 | 30 days | "Deploy: npm run deploy:staging" |
 | `conversation` | Raw chunking | 0.4 | 14 days | Fallback: raw conversation segment |
-| `summary` | Session summarization | 0.6 | 60 days | "Session built the Brain ingestion pipeline" |
+| `summary` | Session summarization | 0.6 | 60 days | "Session built the Cortex ingestion pipeline" |
 
 ### Storage Schema (LanceDB)
 
@@ -151,7 +155,7 @@ Table: knowledge
 - **Source quality:** Distilled = 0.8 base, raw chunks = 0.4
 - **Repetition:** Same pattern across 3+ sessions → +0.1 per occurrence (cap 0.95)
 - **Recency:** Last 7 days → +0.1 boost
-- **User validation:** Explicit `brain_teach` → 0.95
+- **User validation:** Explicit `cortex_teach` → 0.95
 - **Contradiction:** Newer knowledge contradicts older → older gets confidence reduced, gains `superseded_by` pointer
 
 ### Staleness Detection
@@ -177,10 +181,10 @@ Target latency: <200ms.
    - Team via federation (weight 0.7, if available)
 3. **Reranking** — Score by: vector similarity, recency, confidence, source quality, staleness. Take top-k (default: 5).
 4. **Token budget** — Cap at ~2000 tokens (configurable). Summarize or truncate lower-ranked results if over budget.
-5. **Inject** — Append `<brain-context>` block to prompt:
+5. **Inject** — Append `<cortex-context>` block to prompt:
 
 ```
-<brain-context>
+<cortex-context>
 Relevant context from your workspace history:
 
 [Decision] 2026-03-10: Auth uses JWT with httpOnly cookies, refresh token rotation.
@@ -193,38 +197,38 @@ Source: 4 sessions over 2 weeks, confidence: 0.92
 with jitter in the reconnect handler. See session def456.
 
 [Preference] You previously corrected: "Don't mock the database in integration tests."
-</brain-context>
+</cortex-context>
 ```
 
 For Claude Code: uses the `user-prompt-submit` hook.
 
-For other agents (Codex, Gemini, Aider): terminal intercept approach — watches PTY input stream and injects context via wrapper script that prepends brain context to stdin.
+For other agents (Codex, Gemini, Aider): terminal intercept approach — watches PTY input stream and injects context via wrapper script that prepends cortex context to stdin.
 
 ### Path 2: MCP Tool (agent-driven, on-demand)
 
-The Brain exposes an MCP server with these tools:
+The Cortex exposes an MCP server with these tools:
 
 | Tool | Purpose | Key Params |
 |------|---------|------------|
-| `brain_search` | Semantic search across layers | query, layers, types, workspace_id, time_range, min_confidence, limit |
-| `brain_recall` | Retrieve specific unit by ID or exact match | id, exact |
-| `brain_context` | Full context for a workspace | workspace_id, depth (brief/full) |
-| `brain_similar` | Find analogous past experiences | input, type (error/code/problem), limit |
-| `brain_timeline` | Chronological decision/change history | workspace_id, project_path, limit |
-| `brain_teach` | Explicitly store knowledge (confidence 0.95) | text, type, layer, workspace_id |
-| `brain_forget` | Remove or downrank knowledge | id, query, action (delete/downrank) |
-| `brain_status` | Brain health and stats | — |
-| `brain_export` | Export brain to .brainpack | scope, workspace_id, include_embeddings, format |
-| `brain_import` | Import .brainpack archive | path, target_layer, merge_strategy, re_embed |
+| `cortex_search` | Semantic search across layers | query, layers, types, workspace_id, time_range, min_confidence, limit |
+| `cortex_recall` | Retrieve specific unit by ID or exact match | id, exact |
+| `cortex_context` | Full context for a workspace | workspace_id, depth (brief/full) |
+| `cortex_similar` | Find analogous past experiences | input, type (error/code/problem), limit |
+| `cortex_timeline` | Chronological decision/change history | workspace_id, project_path, limit |
+| `cortex_teach` | Explicitly store knowledge (confidence 0.95) | text, type, layer, workspace_id |
+| `cortex_forget` | Remove or downrank knowledge | id, query, action (delete/downrank) |
+| `cortex_status` | Cortex health and stats | — |
+| `cortex_export` | Export cortex to .cortexpack | scope, workspace_id, include_embeddings, format |
+| `cortex_import` | Import .cortexpack archive | path, target_layer, merge_strategy, re_embed |
 
 ### Path 3: Federation Query (transparent)
 
 When team-layer results are needed:
 
-1. Local Brain constructs search request (query embedding + filters)
-2. Request goes to `GET /api/network/proxy/{nodeId}/api/brain/search`
+1. Local Cortex constructs search request (query embedding + filters)
+2. Request goes to `GET /api/network/proxy/{nodeId}/api/cortex/search`
 3. Remote node runs search locally, returns results
-4. Local Brain merges remote results with local by relevance score
+4. Local Cortex merges remote results with local by relevance score
 5. All connected nodes queried in parallel, configurable timeout (default 500ms)
 
 ## Federation
@@ -239,7 +243,7 @@ When team-layer results are needed:
 
 Background sync: polls connected nodes every N minutes (default 5), imports new knowledge units using merge-by-similarity.
 
-Real-time sync: persistent WebSocket to `/api/brain/federation/stream`. New team-layer units pushed as created.
+Real-time sync: persistent WebSocket to `/api/cortex/federation/stream`. New team-layer units pushed as created.
 
 ### Privacy Model
 
@@ -249,10 +253,10 @@ Real-time sync: persistent WebSocket to `/api/brain/federation/stream`. New team
 
 ## Import/Export (Portable Knowledge)
 
-### .brainpack Format
+### .cortexpack Format
 
 ```
-my-project.brainpack (tar.gz)
+my-project.cortexpack (tar.gz)
 ├── manifest.json          — version, source node, export date, stats
 ├── knowledge.jsonl        — knowledge units as JSON lines
 ├── embeddings.lance/      — LanceDB table snapshot (optional, large)
@@ -275,61 +279,66 @@ Without embeddings: ~5-50MB typical. With embeddings: larger but skips re-embedd
 ### Use Cases
 
 - **Cloud ↔ Local sync** — Export from cloud VM, import locally (or vice versa)
-- **Onboarding** — Senior dev exports workspace brain, new team member imports. Instant ramp-up.
-- **Project handoff** — Export brain with codebase. Next developer gets the reasoning, not just the code.
+- **Onboarding** — Senior dev exports workspace cortex, new team member imports. Instant ramp-up.
+- **Project handoff** — Export cortex with codebase. Next developer gets the reasoning, not just the code.
 - **Backup/restore** — Periodic export as backup
-- **Machine migration** — Moving to new laptop? Export all brains, import on new machine.
+- **Machine migration** — Moving to new laptop? Export all cortexes, import on new machine.
 
 ## REST API
 
 ```
-# Brain status and health
-GET    /api/brain/status
+# Cortex status and health
+GET    /api/cortex/status
 
 # Knowledge CRUD
-GET    /api/brain/search?q=...&layer=...&type=...
-GET    /api/brain/knowledge/:id
-POST   /api/brain/knowledge          — create (brain_teach)
-PATCH  /api/brain/knowledge/:id      — update confidence/layer/metadata
-DELETE /api/brain/knowledge/:id      — remove (brain_forget)
+GET    /api/cortex/search?q=...&layer=...&type=...
+GET    /api/cortex/knowledge/:id
+POST   /api/cortex/knowledge          — create (cortex_teach)
+PATCH  /api/cortex/knowledge/:id      — update confidence/layer/metadata
+DELETE /api/cortex/knowledge/:id      — remove (cortex_forget)
 
 # Workspace context
-GET    /api/brain/workspace/:id/context
-GET    /api/brain/timeline?workspace_id=...
+GET    /api/cortex/workspace/:id/context
+GET    /api/cortex/timeline?workspace_id=...
 
 # Bootstrap
-POST   /api/brain/ingest/bootstrap
-GET    /api/brain/ingest/status
+POST   /api/cortex/ingest/bootstrap
+GET    /api/cortex/ingest/status
 
 # Import/Export
-POST   /api/brain/export             — body: {scope, workspace_id?, include_embeddings?}
-POST   /api/brain/import             — multipart .brainpack upload
-GET    /api/brain/import/status
+POST   /api/cortex/export             — body: {scope, workspace_id?, include_embeddings?}
+POST   /api/cortex/import             — multipart .cortexpack upload
+GET    /api/cortex/import/status
 
 # Settings
-GET    /api/brain/settings
-POST   /api/brain/settings
+GET    /api/cortex/settings
+POST   /api/cortex/settings
 
 # Federation (served to remote nodes)
-GET    /api/brain/federation/search  — remote search endpoint
-WS     /api/brain/federation/stream  — real-time sync WebSocket
+GET    /api/cortex/federation/search  — remote search endpoint
+WS     /api/cortex/federation/stream  — real-time sync WebSocket
+
+# Active Knowledge Propagation
+POST   /api/cortex/federation/teach     — receive propagated knowledge from remote node
+GET    /api/cortex/federation/pending   — knowledge pending review (contradictions)
+POST   /api/cortex/federation/resolve   — resolve contradiction
 ```
 
 ## UI Integration
 
-### 1. Top Bar — Brain Status Indicator
+### 1. Top Bar — CortexStatus Indicator
 
-Small purple "Brain" badge in the top bar, always visible. Shows knowledge unit count. Pulses gently during active ingestion or retrieval. Colors: green (healthy), amber (ingesting), red (error). Click to open Brain panel.
+Small purple "Cortex" badge in the top bar, always visible. Shows knowledge unit count. Pulses gently during active ingestion or retrieval. Colors: green (healthy), amber (ingesting), red (error). Click to open Cortex panel.
 
-### 2. Brain Panel — Slide-out Knowledge Explorer
+### 2. CortexPanel — Slide-out Knowledge Explorer
 
-Opens from the right when Brain indicator is clicked:
+Opens from the right when Cortex indicator is clicked:
 
 - **Search bar** — Semantic search across all knowledge
 - **Stats row** — Total units, distilled count, average confidence
 - **Layer tabs** — Personal / Workspace / Team
 - **Knowledge list** — Each unit shows: type badge (color-coded), text, confidence, source, age
-- **Actions** — Teach Brain, Export, Settings
+- **Actions** — Teach Cortex, Export, Settings
 
 Knowledge type colors:
 - Decision: blue (#60a5fa)
@@ -338,13 +347,13 @@ Knowledge type colors:
 - Error Fix: amber (#fbbf24)
 - Context: gray (#94a3b8)
 
-### 3. Pane Header — Brain Activity Badge
+### 3. Pane Header — CortexActivity Badge
 
-Each terminal pane header shows a small badge when the Brain injected context into the last prompt: "3 items" with a purple dot. Click to see exactly what context was provided. Builds trust through transparency.
+Each terminal pane header shows a small badge when the Cortex injected context into the last prompt: "3 items" with a purple dot. Click to see exactly what context was provided. Builds trust through transparency.
 
-### 4. Settings Page — Brain Configuration
+### 4. Settings Page — CortexConfiguration
 
-Settings → Brain section:
+Settings → Cortex section:
 - Enable/disable toggle
 - Embedding provider (auto-detected, with override)
 - Injection token budget (default 2000)
@@ -395,9 +404,9 @@ Settings → Brain section:
 ## File Structure
 
 ```
-src/lib/brain/
-├── index.ts                 — Brain singleton, initialization
-├── config.ts                — Brain settings management
+src/lib/cortex/
+├── index.ts                 — Cortex singleton, initialization
+├── config.ts                — Cortex settings management
 ├── store.ts                 — LanceDB connection, table management
 ├── embeddings/
 │   ├── index.ts             — Embedding provider router
@@ -418,7 +427,7 @@ src/lib/brain/
 │   └── scheduler.ts         — Idle-time scheduling
 ├── retrieval/
 │   ├── search.ts            — Multi-layer vector search with reranking
-│   ├── injection.ts         — Prompt augmentation (brain-context block)
+│   ├── injection.ts         — Prompt augmentation (cortex-context block)
 │   ├── federation.ts        — Remote node query delegation
 │   └── scoring.ts           — Confidence, staleness, relevance scoring
 ├── knowledge/
@@ -426,12 +435,12 @@ src/lib/brain/
 │   ├── staleness.ts         — Staleness detection and decay
 │   └── contradiction.ts     — Contradiction detection between units
 ├── portability/
-│   ├── exporter.ts          — .brainpack export
-│   └── importer.ts          — .brainpack import with merge strategies
+│   ├── exporter.ts          — .cortexpack export
+│   └── importer.ts          — .cortexpack import with merge strategies
 └── mcp/
-    └── server.ts            — MCP server exposing brain tools
+    └── server.ts            — MCP server exposing cortex tools
 
-src/app/api/brain/
+src/app/api/cortex/
 ├── status/route.ts
 ├── search/route.ts
 ├── knowledge/route.ts
@@ -448,15 +457,15 @@ src/app/api/brain/
     ├── search/route.ts
     └── stream/route.ts
 
-src/components/brain/
-├── brain-indicator.tsx      — Top bar status badge
-├── brain-panel.tsx          — Slide-out knowledge explorer
-├── brain-settings.tsx       — Settings page section
+src/components/cortex/
+├── cortex-indicator.tsx      — Top bar status badge
+├── cortex-panel.tsx          — Slide-out knowledge explorer
+├── cortex-settings.tsx       — Settings page section
 ├── knowledge-card.tsx       — Individual knowledge unit display
 └── injection-badge.tsx      — Pane header injection indicator
 
-~/.spaces/brain/
-├── config.json              — Brain settings
+~/.spaces/cortex/
+├── config.json              — Cortex settings
 ├── personal/                — Personal layer LanceDB tables
 ├── workspace/
 │   ├── 1/                   — Workspace 1 LanceDB tables
@@ -465,10 +474,243 @@ src/components/brain/
 └── team/                    — Team layer cache (from federation)
 ```
 
+## Dependencies & Platform Compatibility
+
+### LanceDB
+
+Use `@lancedb/lancedb` (the official Node.js package). This has native Rust bindings for optimal performance, with a WASM fallback for platforms where native compilation fails.
+
+**Installation strategy:**
+
+1. Primary: `@lancedb/lancedb` with native bindings (best performance)
+2. Fallback: If native compilation fails during `npm install`, the package provides WASM builds that work everywhere
+3. The package supports Windows (MSVC + MINGW), macOS (Intel + Apple Silicon), and Linux (x64 + ARM64)
+
+Since Spaces already depends on `better-sqlite3` (native), users are already set up for native compilation. LanceDB adds ~15MB to the install.
+
+### Local Embedding Model
+
+For the local embedding fallback, use `@xenova/transformers` (Transformers.js) which runs models via ONNX Runtime in Node.js. The `all-MiniLM-L6-v2` model is ~23MB and loads once on first use.
+
+### Embedding Provider Chain
+
+Check for API keys in order: Voyage AI (`VOYAGE_API_KEY`) → OpenAI (`OPENAI_API_KEY`) → local (ONNX). Default to the best available. Anthropic does not offer a public embedding API; Voyage AI is the recommended partner.
+
+### Embedding Dimension Management
+
+Different providers produce different dimensions (MiniLM: 384, OpenAI: 1536, Voyage: 1024). The Cortex stores the current embedding dimension in config. If the user changes providers:
+
+1. Detect dimension mismatch on startup
+2. Warn: "Embedding provider changed. Re-embedding all knowledge units in background."
+3. Queue full re-embedding as a background job (same as bootstrap, but embedding-only)
+4. During transition, old vectors are still searchable (LanceDB handles mixed queries via separate partitions), new results take priority
+
+## Error Handling & Resilience
+
+### Ingestion Pipeline Failures
+
+- **Tier 1 (fast pass):** If a session file is malformed or being actively written to, skip that file and log a warning. Retry on next sync cycle. Never crash the pipeline for a single bad file.
+- **Tier 2 (embedding):** If the embedding API returns an error (rate limit, network, invalid response), move the chunk to a retry queue with exponential backoff (1s, 5s, 30s, 5min). After 5 failures, fall back to local embeddings for that batch. If local also fails, store the chunk as text-only (searchable via FTS but not vector search) and log an error.
+- **Tier 3 (distillation):** If the LLM call fails or returns malformed output, discard that distillation attempt and log. The raw chunks remain searchable. Retry distillation on next idle cycle. Never block ingestion on distillation failures.
+
+### LanceDB Corruption Recovery
+
+LanceDB uses Arrow IPC format. Partial writes can corrupt tables. Recovery strategy:
+
+1. On startup, verify table integrity (LanceDB provides health checks)
+2. If corruption detected, log error, rename corrupt directory to `{layer}.corrupt.{timestamp}/`
+3. Create fresh empty table
+4. Trigger re-ingestion from raw session files (bootstrap in repair mode — embedding-only, no re-parsing)
+5. The raw JSONL session files are the source of truth; LanceDB is a derived index
+
+### Graceful Degradation
+
+The Cortex continues to function even when components fail:
+
+| Failure | Behavior |
+|---------|----------|
+| Embedding API down | Fall back to local embeddings automatically |
+| Local embeddings fail | Store text-only chunks, skip vector search, use FTS keyword matching |
+| LanceDB unavailable | Cortex indicator shows red, injection disabled, MCP tools return empty results |
+| Federation node unreachable | Skip that node's results, merge what's available |
+| Distillation LLM unavailable | Raw chunks still searchable, distillation queued for later |
+| Bootstrap interrupted | Resume from last checkpoint on next run |
+
+### Circuit Breaker
+
+External API calls (embedding, distillation, federation) use a circuit breaker pattern:
+
+- **Closed** (normal): requests flow through
+- **Open** (after 5 consecutive failures): stop calling for 60 seconds, return fallback
+- **Half-open** (after cooldown): try one request, if success → close, if fail → reopen
+
+## Non-Claude Agent Injection
+
+Claude Code has hook support (`PreToolUse`, `PostToolUse`, `Notification`, `Stop`). However, Claude Code does not currently support a `user-prompt-submit` hook for intercepting prompts before they're sent.
+
+**Primary injection strategy (all agents): MCP Tool**
+
+The Cortex registers as an MCP server. Claude Code (and any agent that supports MCP) can call `cortex_search` and `cortex_context` as tools. The agent receives cortex context as tool results, which it naturally incorporates.
+
+To make this automatic (without the agent needing to know to ask), the Cortex's MCP server description includes instructions telling the agent to query the Cortex at the start of each task. This is how MCP servers like `memory` work today — the server description says "always check memory first."
+
+**Secondary injection strategy (future): PTY-level injection**
+
+For agents without MCP support, and for the auto-injection experience (user doesn't need to configure anything), a future version could:
+
+1. Intercept at the WebSocket layer in `terminal/server.ts` — when a `data` message from the client matches a prompt pattern (newline after text), inject cortex context
+2. This happens before the data reaches node-pty, so the agent sees the enriched prompt
+3. This requires careful handling of escape sequences, binary data, and multi-byte characters
+4. **Deferred to a future phase** — MCP is the v1 approach
+
+## Integration with Existing Data Layer
+
+### SQLite Cross-References
+
+Cortex knowledge units reference SQLite entities via:
+
+- `workspace_id` → `workspaces.id` in SQLite
+- `session_id` → `sessions.session_id` in SQLite
+
+These are soft references (no foreign key enforcement across databases). The Cortex tolerates dangling references gracefully — if a workspace is deleted from SQLite, its knowledge units remain in LanceDB but are no longer returned in workspace-scoped queries (workspace doesn't exist = no results).
+
+### Lifecycle Coupling
+
+- **Workspace deleted** → Cortex workspace layer directory is not automatically deleted (knowledge may still be valuable in personal layer). A "Clean up Cortex data" option in UI allows explicit deletion.
+- **Session deleted from SQLite** → Knowledge units sourced from that session remain (the knowledge is independent of the session index).
+- **Bootstrap reads from** → Raw agent JSONL files on disk (not from SQLite). The SQLite index helps map sessions to workspaces, but the actual content comes from the source files.
+
+### FTS5 Coexistence
+
+The existing FTS5 full-text search (`sessions_fts`) continues to work for session content search. The Cortex adds semantic/vector search on top. The `/api/search` route could be extended to combine FTS5 keyword results with Cortex vector results for hybrid search, but this is not required for v1.
+
+## Configuration
+
+Cortex settings are stored as a `cortex` key within the existing `~/.spaces/config.json` (managed by `src/lib/config.ts`, extending `SpacesConfig`). This avoids a separate config file and keeps all Spaces configuration in one place.
+
+The `~/.spaces/cortex/` directory contains only LanceDB data files, not configuration.
+
+## Performance Budget
+
+### Hook/MCP Injection Latency Target: <200ms (local only)
+
+| Step | Budget |
+|------|--------|
+| Query signal extraction | 5ms |
+| LanceDB search (personal + workspace) | 20-50ms |
+| Reranking + staleness scoring | 10ms |
+| Result formatting | 5ms |
+| **Total local** | **40-70ms** |
+
+Federation queries are fire-and-forget with a 500ms timeout. If federation results arrive before the agent processes the prompt, they're included. If not, local results are sufficient. Federation results may also arrive and be available for the *next* prompt.
+
+### Disk Space Management
+
+- **Warning threshold:** Cortex UI shows a warning when total Cortex storage exceeds 500MB
+- **Maximum size:** Configurable (default: 2GB). When exceeded, automatic pruning removes lowest-confidence + highest-staleness entries first
+- **Pruning strategy:** Remove `conversation` type chunks first (lowest value), then `command`, then stale `context`. Never auto-prune `decision`, `preference`, or `error_fix` types — these are too valuable.
+
+## Active Knowledge Propagation (Cortex-to-Cortex Teaching)
+
+In federated environments, Cortex nodes don't just respond to queries — they actively teach each other. High-confidence knowledge propagates across the network automatically, creating a distributed intelligence mesh where every node benefits from every other node's experience.
+
+### Propagation Mechanics
+
+When a Cortex node produces a knowledge unit that crosses a **propagation threshold**, it becomes a candidate for teaching:
+
+| Criteria | Threshold | Rationale |
+|----------|-----------|-----------|
+| Confidence score | ≥ 0.85 | Only propagate knowledge the source node is confident about |
+| Type | `decision`, `pattern`, `preference`, `error_fix` | High-value types only — raw `conversation` and `context` chunks stay local |
+| Layer | `team` | Personal and workspace knowledge are never propagated automatically |
+| Validation | User-validated or repeated 3+ times | Prevents propagation of noise |
+
+### Propagation Flow
+
+```
+Node A discovers high-confidence pattern
+  │
+  ▼
+Propagation check: confidence ≥ 0.85, team layer, validated type?
+  │ yes
+  ▼
+Package as teaching unit:
+  { knowledge, source_node, confidence, provenance_chain }
+  │
+  ▼
+Push to all paired federation nodes via:
+  - Real-time sync: WebSocket push (immediate)
+  - Background sync: included in next sync batch
+  - Query-only: piggyback on next query response as "suggested knowledge"
+  │
+  ▼
+Receiving node (Node B):
+  1. Dedup check — already have this? (cosine similarity > 0.95 → skip)
+  2. Contradiction check — conflicts with local knowledge? → flag for review
+  3. Confidence adjustment — remote knowledge arrives at 0.8 × source confidence
+     (trust but verify — local experience always ranks higher)
+  4. Store in team layer with provenance: "Learned from Node A"
+  │
+  ▼
+Node B's agents now benefit from Node A's experience
+```
+
+### Provenance Chain
+
+Every propagated knowledge unit carries a provenance chain — a record of where the knowledge originated and how it traveled:
+
+```json
+{
+  "origin_node": "node-abc",
+  "origin_timestamp": "2026-03-10T14:30:00Z",
+  "hops": [
+    { "node": "node-abc", "confidence": 0.92, "timestamp": "2026-03-10T14:30:00Z" },
+    { "node": "node-def", "confidence": 0.74, "timestamp": "2026-03-10T15:00:00Z" }
+  ],
+  "max_hops": 3
+}
+```
+
+**Max hops** prevents knowledge from echoing endlessly across the network. Default: 3 hops. Knowledge that has traveled through 3 nodes is not propagated further (it's available via query delegation if needed).
+
+### Confidence Decay Across Hops
+
+Each hop reduces confidence by 20%:
+
+- **Origin:** 0.92
+- **Hop 1:** 0.92 × 0.8 = 0.74
+- **Hop 2:** 0.74 × 0.8 = 0.59
+- **Hop 3:** 0.59 × 0.8 = 0.47 (no further propagation)
+
+This ensures that firsthand knowledge always outranks secondhand knowledge. A node's own direct experience is always the strongest signal.
+
+### Contradiction Resolution
+
+When propagated knowledge contradicts local knowledge:
+
+1. **Local wins by default** — Local knowledge has higher base confidence (no hop decay)
+2. **Flag for review** — The contradiction is surfaced in the Cortex panel: "Node X says Y, but you've been doing Z. Which is correct?"
+3. **User resolves** — User can accept the remote knowledge (updates local), reject it (downranks the remote unit), or mark as "context-dependent" (both valid in different situations)
+4. **Resolution propagates** — If the user explicitly validates remote knowledge, that validation propagates back to the source node as a confidence boost
+
+### Rate Limiting
+
+- **Per-node-pair:** Max 50 knowledge units pushed per sync cycle
+- **Dedup window:** Knowledge within 0.95 cosine similarity of existing units is silently dropped
+- **Backpressure:** If a receiving node's ingestion queue exceeds 500 items, it signals the sender to slow down
+
+### API Additions
+
+```
+# Federation teaching endpoints (served to remote nodes)
+POST   /api/cortex/federation/teach     — receive propagated knowledge
+GET    /api/cortex/federation/pending    — knowledge pending review (contradictions)
+POST   /api/cortex/federation/resolve    — resolve contradiction
+```
+
 ## Deferred / Future Considerations
 
-- **Brain-to-brain teaching** — One Brain recommends knowledge to another Brain on a different node (active push, not just passive query)
 - **Knowledge graph visualization** — 3D visualization of how knowledge units relate (could reuse R3F infrastructure)
-- **Auto-CLAUDE.md generation** — Brain distills its most confident preferences/patterns into a CLAUDE.md file automatically
+- **Auto-CLAUDE.md generation** — Cortex distills its most confident preferences/patterns into a CLAUDE.md file automatically
 - **Multi-modal knowledge** — Screenshots, diagrams, architecture images stored alongside text
 - **Knowledge unit voting** — In teams, members can upvote/downvote knowledge units to improve confidence scoring
