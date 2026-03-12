@@ -123,6 +123,88 @@ function promptTargetUser() {
 }
 
 
+// --- SSH AuthorizedKeysCommand setup (Linux/macOS) ---
+// Configures sshd to dynamically authorize Spaces users via a lookup script,
+// eliminating the need to manually manage ~/.ssh/authorized_keys per user.
+function configureAuthorizedKeysCommand() {
+  if (process.platform === 'win32') return; // Windows uses a different approach
+
+  const scriptSrc = path.join(__dirname, 'ssh-auth-keys.sh');
+  const scriptDst = '/opt/spaces/bin/ssh-auth-keys.sh';
+  const sshdConfig = '/etc/ssh/sshd_config';
+  const spacesConfDrop = '/etc/ssh/sshd_config.d/spaces.conf';
+
+  // Install the script to a stable system path
+  try {
+    spawnSync('sudo', ['mkdir', '-p', '/opt/spaces/bin'], { stdio: 'pipe', timeout: 5000 });
+    spawnSync('sudo', ['cp', scriptSrc, scriptDst], { stdio: 'pipe', timeout: 5000 });
+    spawnSync('sudo', ['chmod', '755', scriptDst], { stdio: 'pipe', timeout: 5000 });
+    spawnSync('sudo', ['chown', 'root:root', scriptDst], { stdio: 'pipe', timeout: 5000 });
+    logOk('Installed ssh-auth-keys.sh to ' + scriptDst);
+  } catch (e) {
+    logErr('Failed to install ssh-auth-keys.sh: ' + e.message);
+    return;
+  }
+
+  // Prefer sshd_config.d drop-in if the Include directive exists
+  const sshdContent = fs.existsSync(sshdConfig)
+    ? fs.readFileSync(sshdConfig, 'utf-8') : '';
+
+  const configLines = [
+    '# Spaces: dynamically authorize shell users via admin DB lookup',
+    'AuthorizedKeysCommand ' + scriptDst + ' %u',
+    'AuthorizedKeysCommandUser nobody',
+  ].join('\n') + '\n';
+
+  // Already configured?
+  if (sshdContent.includes('ssh-auth-keys.sh')) {
+    logOk('AuthorizedKeysCommand already configured in sshd_config');
+    return;
+  }
+
+  // Try drop-in directory first (cleaner, doesn't touch main config)
+  const hasIncludeDir = sshdContent.includes('Include /etc/ssh/sshd_config.d/');
+  if (hasIncludeDir) {
+    try {
+      spawnSync('sudo', ['mkdir', '-p', '/etc/ssh/sshd_config.d'], { stdio: 'pipe', timeout: 5000 });
+      const result = spawnSync('sudo', ['tee', spacesConfDrop], {
+        input: configLines, stdio: ['pipe', 'pipe', 'inherit'], timeout: 5000,
+      });
+      if (result.status === 0) {
+        logOk('Created ' + spacesConfDrop);
+      }
+    } catch (e) {
+      logErr('Failed to write drop-in config: ' + e.message);
+    }
+  } else {
+    // Append directly to sshd_config
+    try {
+      const appendContent = '\n# Spaces SSH authorization\n' + configLines;
+      const result = spawnSync('sudo', ['tee', '-a', sshdConfig], {
+        input: appendContent, stdio: ['pipe', 'pipe', 'inherit'], timeout: 5000,
+      });
+      if (result.status === 0) {
+        logOk('Added AuthorizedKeysCommand to ' + sshdConfig);
+      }
+    } catch (e) {
+      logErr('Failed to update sshd_config: ' + e.message);
+    }
+  }
+
+  // Restart sshd to pick up the change
+  try {
+    spawnSync('sudo', ['systemctl', 'restart', 'sshd'], { stdio: 'pipe', timeout: 10000 });
+    logOk('Restarted sshd');
+  } catch {
+    try {
+      spawnSync('sudo', ['systemctl', 'restart', 'ssh'], { stdio: 'pipe', timeout: 10000 });
+      logOk('Restarted ssh');
+    } catch {
+      log('Warning: could not restart sshd — restart it manually');
+    }
+  }
+}
+
 // --- SSH key provisioning (for multi-user system service) ---
 function checkOpenSSHServer() {
   if (process.platform !== 'win32') return true;
@@ -405,6 +487,15 @@ async function linuxInstall() {
     }
   }
 
+  // Set up SSH AuthorizedKeysCommand for seamless multi-user terminal access
+  if (level === 'system') {
+    configureAuthorizedKeysCommand();
+    const keyPath = ensureServiceKey();
+    if (keyPath) {
+      authorizeServiceKey(keyPath, os.userInfo().username);
+    }
+  }
+
   logOk(`Spaces installed as ${level} service`);
 }
 
@@ -595,6 +686,15 @@ async function darwinInstall() {
     execFileSync('launchctl', ['load', '-w', plistPath], { stdio: 'inherit' });
   }
   logOk('Service loaded');
+
+  // Set up SSH AuthorizedKeysCommand for seamless multi-user terminal access
+  if (level === 'system') {
+    configureAuthorizedKeysCommand();
+    const keyPath = ensureServiceKey();
+    if (keyPath) {
+      authorizeServiceKey(keyPath, os.userInfo().username);
+    }
+  }
 
   logOk(`Spaces installed as ${level} service`);
 }
