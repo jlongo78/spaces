@@ -402,6 +402,45 @@ const AGENTS = {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+// ─── Cortex Claude Code hook config ──────────────────────
+// Write a UserPromptSubmit hook into .claude/settings.local.json
+// so every prompt gets a RAG search before Claude sees it.
+function writeCortexHookConfig(cwd) {
+  try {
+    const claudeDir = path.join(cwd, '.claude');
+    if (!fs.existsSync(claudeDir)) fs.mkdirSync(claudeDir, { recursive: true });
+
+    const settingsPath = path.join(claudeDir, 'settings.local.json');
+    let settings = {};
+    if (fs.existsSync(settingsPath)) {
+      try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')); } catch {}
+    }
+
+    // Resolve absolute path to the hook script (Node.js — works everywhere)
+    const hookScript = path.resolve(__dirname, 'cortex-hook.js');
+    const hookCommand = `node "${hookScript}"`;
+
+    // Merge — don't clobber existing hooks for other events
+    if (!settings.hooks) settings.hooks = {};
+    settings.hooks.UserPromptSubmit = [
+      {
+        hooks: [
+          {
+            type: 'command',
+            command: hookCommand,
+            timeout: 10,
+          },
+        ],
+      },
+    ];
+
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+    console.log(`[Cortex] Wrote Claude Code RAG hook to ${settingsPath}`);
+  } catch (err) {
+    console.error(`[Cortex] Failed to write hook config:`, err.message);
+  }
+}
+
 // ─── Cortex context injection ────────────────────────────
 // Fetch relevant knowledge from Cortex API and write a context file
 // in the workspace before the agent launches.
@@ -490,7 +529,7 @@ async function injectCortexContext(cwd, workspaceId, ws) {
     }
     lines.push('</cortex-context>');
 
-    // Write context file
+    // Write context file (readable artifact for any agent)
     const spacesDir = path.join(cwd, '.spaces');
     if (!fs.existsSync(spacesDir)) fs.mkdirSync(spacesDir, { recursive: true });
     fs.writeFileSync(path.join(spacesDir, 'cortex-context.md'), lines.join('\n'), 'utf-8');
@@ -837,6 +876,11 @@ function handleConnection(wss, ws, req) {
   }
 
   console.log(`[Spawn] user=${username} shell=${shell} args=${JSON.stringify(args)} cwd=${safeCwd} agentType=${agentType}`);
+
+  // Write Cortex RAG hook for Claude Code before spawning
+  if (agentType === 'claude' && (SPACES_TIER === 'team' || SPACES_TIER === 'federation')) {
+    writeCortexHookConfig(safeCwd);
+  }
 
   let term;
   try {
