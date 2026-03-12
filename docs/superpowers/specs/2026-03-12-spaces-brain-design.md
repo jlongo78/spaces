@@ -412,8 +412,7 @@ src/lib/cortex/
 │   ├── index.ts             — Embedding provider router
 │   ├── voyage.ts            — Voyage AI provider
 │   ├── openai.ts            — OpenAI provider
-│   ├── anthropic.ts         — Anthropic provider
-│   └── local.ts             — ONNX Runtime local provider
+│   └── local.ts             — Transformers.js ONNX Runtime local provider
 ├── ingestion/
 │   ├── pipeline.ts          — Ingestion pipeline orchestrator
 │   ├── chunker.ts           — Message chunking logic
@@ -455,7 +454,10 @@ src/app/api/cortex/
 ├── settings/route.ts
 └── federation/
     ├── search/route.ts
-    └── stream/route.ts
+    ├── stream/route.ts
+    ├── teach/route.ts
+    ├── pending/route.ts
+    └── resolve/route.ts
 
 src/components/cortex/
 ├── cortex-indicator.tsx      — Top bar status badge
@@ -490,7 +492,7 @@ Since Spaces already depends on `better-sqlite3` (native), users are already set
 
 ### Local Embedding Model
 
-For the local embedding fallback, use `@xenova/transformers` (Transformers.js) which runs models via ONNX Runtime in Node.js. The `all-MiniLM-L6-v2` model is ~23MB and loads once on first use.
+For the local embedding fallback, use `@huggingface/transformers` (Transformers.js) which runs models via ONNX Runtime in Node.js. The `all-MiniLM-L6-v2` model is ~23MB and loads once on first use.
 
 ### Embedding Provider Chain
 
@@ -586,7 +588,7 @@ The existing FTS5 full-text search (`sessions_fts`) continues to work for sessio
 
 ## Configuration
 
-Cortex settings are stored as a `cortex` key within the existing `~/.spaces/config.json` (managed by `src/lib/config.ts`, extending `SpacesConfig`). This avoids a separate config file and keeps all Spaces configuration in one place.
+Cortex settings are stored as a `cortex` key within the existing `~/.spaces/config.json`. This requires adding a `cortex?: CortexConfig` field to the `SpacesConfig` interface in `src/lib/config.ts`, and updating `readConfig`/`writeConfig` to preserve unknown keys (or explicitly handle the `cortex` field). This avoids a separate config file and keeps all Spaces configuration in one place.
 
 The `~/.spaces/cortex/` directory contains only LanceDB data files, not configuration.
 
@@ -675,7 +677,7 @@ Every propagated knowledge unit carries a provenance chain — a record of where
 
 ### Confidence Decay Across Hops
 
-Each hop reduces confidence by 20%:
+Each hop multiplies confidence by 0.8 (retains 80%):
 
 - **Origin:** 0.92
 - **Hop 1:** 0.92 × 0.8 = 0.74
@@ -698,15 +700,6 @@ When propagated knowledge contradicts local knowledge:
 - **Per-node-pair:** Max 50 knowledge units pushed per sync cycle
 - **Dedup window:** Knowledge within 0.95 cosine similarity of existing units is silently dropped
 - **Backpressure:** If a receiving node's ingestion queue exceeds 500 items, it signals the sender to slow down
-
-### API Additions
-
-```
-# Federation teaching endpoints (served to remote nodes)
-POST   /api/cortex/federation/teach     — receive propagated knowledge
-GET    /api/cortex/federation/pending    — knowledge pending review (contradictions)
-POST   /api/cortex/federation/resolve    — resolve contradiction
-```
 
 ## Deferred / Future Considerations
 
