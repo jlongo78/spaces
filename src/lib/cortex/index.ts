@@ -7,6 +7,10 @@ import { detectProvider, type EmbeddingProvider } from './embeddings';
 import { CortexSearch } from './retrieval/search';
 import { IngestionPipeline } from './ingestion/pipeline';
 import { FederationSync } from './retrieval/sync';
+import { Distiller } from './distillation/distiller';
+import { DistillationScheduler } from './distillation/scheduler';
+import { DistillationQueue } from './distillation/queue';
+import { createCallLLM } from './distillation/llm';
 import path from 'path';
 
 let _instance: CortexInstance | null = null;
@@ -18,6 +22,8 @@ export interface CortexInstance {
   pipeline: IngestionPipeline;
   embedding: EmbeddingProvider;
   sync?: FederationSync;
+  distillQueue?: DistillationQueue;
+  distillScheduler?: DistillationScheduler;
 }
 
 export function isCortexAvailable(): boolean {
@@ -43,7 +49,50 @@ export async function getCortex(): Promise<CortexInstance | null> {
   const search = new CortexSearch(store);
   const pipeline = new IngestionPipeline(embedding, store);
 
-  const instance: CortexInstance = { config, store, search, pipeline, embedding };
+  // Initialize distillation if enabled and LLM provider available
+  let distillQueue: DistillationQueue | undefined;
+  let distillScheduler: DistillationScheduler | undefined;
+
+  if (config.ingestion.distillation) {
+    const callLLM = createCallLLM();
+    if (callLLM) {
+      distillQueue = new DistillationQueue(cortexDir);
+      const distiller = new Distiller(store, embedding, callLLM);
+
+      distillScheduler = new DistillationScheduler(async (chunkIds) => {
+        const entries = distillQueue!.getEntries(chunkIds);
+        if (entries.length === 0) return;
+
+        // Group by layerKey so workspace chunks go to the correct layer
+        const byLayer = new Map<string, { texts: string[]; ctx: { workspaceId: number | null; agentType: string } }>();
+        for (const e of entries) {
+          if (!byLayer.has(e.layerKey)) {
+            byLayer.set(e.layerKey, { texts: [], ctx: { workspaceId: e.workspaceId, agentType: e.agentType } });
+          }
+          byLayer.get(e.layerKey)!.texts.push(e.text);
+        }
+
+        for (const [layerKey, { texts, ctx }] of byLayer) {
+          await distiller.distill(texts, layerKey, ctx);
+        }
+        distillQueue!.remove(chunkIds);
+      });
+
+      // Re-enqueue any pending items from previous session
+      const pendingIds = distillQueue.pendingIds();
+      if (pendingIds.length > 0) {
+        distillScheduler.enqueue(pendingIds);
+      }
+
+      pipeline.distillQueue = distillQueue;
+      pipeline.distillScheduler = distillScheduler;
+    }
+  }
+
+  const instance: CortexInstance = {
+    config, store, search, pipeline, embedding,
+    distillQueue, distillScheduler,
+  };
 
   // Initialize background federation sync if enabled
   if (config.federation.sync_mode === 'background-sync') {
@@ -64,6 +113,9 @@ export async function getCortex(): Promise<CortexInstance | null> {
 export function resetCortex(): void {
   if (_instance?.sync) {
     _instance.sync.stop();
+  }
+  if (_instance?.distillScheduler) {
+    _instance.distillScheduler.stop();
   }
   _instance = null;
 }

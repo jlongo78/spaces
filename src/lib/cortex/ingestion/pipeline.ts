@@ -6,6 +6,8 @@ import { getConfidenceBase } from '../knowledge/types';
 import { chunkMessages, type SessionMessage, type ChunkContext } from './chunker';
 import { textHash } from './deduplicator';
 import { detectErrorFixPairs, extractDecisionPatterns, extractCommands } from './extractors';
+import type { DistillationQueue } from '../distillation/queue';
+import type { DistillationScheduler } from '../distillation/scheduler';
 
 export interface IngestionResult {
   chunksCreated: number;
@@ -15,9 +17,12 @@ export interface IngestionResult {
 }
 
 const COSINE_DEDUP_THRESHOLD = 0.05;
+const DISTILLABLE_TYPES = new Set(['decision', 'error_fix']);
 
 export class IngestionPipeline {
   private hashSet = new Set<string>();
+  distillQueue?: DistillationQueue;
+  distillScheduler?: DistillationScheduler;
 
   constructor(
     private embedding: EmbeddingProvider,
@@ -111,6 +116,17 @@ export class IngestionPipeline {
 
           await this.store.add(layerKey, unit);
           result.chunksEmbedded++;
+
+          // Enqueue for distillation if the type qualifies
+          if (this.distillQueue && this.distillScheduler && DISTILLABLE_TYPES.has(unit.type)) {
+            this.distillQueue.enqueue(unit.id, {
+              text: unit.text,
+              layerKey,
+              workspaceId: unit.workspace_id,
+              agentType: unit.agent_type,
+            });
+            this.distillScheduler.enqueue([unit.id]);
+          }
         }
       } catch (err) {
         result.errors.push(`Tier 2 batch error: ${err}`);
