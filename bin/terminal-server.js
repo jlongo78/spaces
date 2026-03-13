@@ -512,8 +512,20 @@ function writeCortexHookConfig(cwd) {
       },
     ];
 
+    // Register Cortex MCP server
+    const mcpServer = path.resolve(__dirname, 'cortex-mcp.js');
+    if (!settings.mcpServers) settings.mcpServers = {};
+    settings.mcpServers.cortex = {
+      command: 'node',
+      args: [mcpServer],
+      env: {
+        SPACES_URL: `http://localhost:${API_PORT}`,
+        SPACES_INTERNAL_TOKEN: (process.env.SPACES_SESSION_SECRET || '').slice(0, 16),
+      },
+    };
+
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-    console.log(`[Cortex] Wrote Claude Code hooks (RAG + Learn) to ${settingsPath}`);
+    console.log(`[Cortex] Wrote Claude Code hooks (RAG + Learn) + MCP server to ${settingsPath}`);
   } catch (err) {
     console.error(`[Cortex] Failed to write hook config:`, err.message);
   }
