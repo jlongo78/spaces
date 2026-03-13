@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
       scope: body.scope || 'full',
       workspaceId: body.workspace_id,
       includeEmbeddings: body.include_embeddings ?? false,
+      dimensions: cortex.embedding.dimensions,
     });
 
     const fileBuffer = fs.readFileSync(result.path);

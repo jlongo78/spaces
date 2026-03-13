@@ -43,6 +43,7 @@ export async function exportCortexpack(
     scope: 'full' | 'workspace' | 'personal';
     workspaceId?: number;
     includeEmbeddings?: boolean;
+    dimensions?: number;
   },
 ): Promise<{ path: string; unitCount: number }> {
   const tmpDir = `${outputPath}.tmp`;
@@ -56,7 +57,7 @@ export async function exportCortexpack(
 
   const allUnits: KnowledgeUnit[] = [];
   for (const layer of layers) {
-    const dummyVector = new Array(384).fill(0);
+    const dummyVector = new Array(opts.dimensions || 384).fill(0);
     const units = await store.search(layer, dummyVector, 10000);
     allUnits.push(...units);
   }
