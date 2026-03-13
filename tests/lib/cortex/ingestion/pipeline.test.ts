@@ -73,4 +73,32 @@ describe('IngestionPipeline', () => {
     expect(mockStore.updateAccessCount).toHaveBeenCalledWith(expect.any(String), 'existing-1');
     expect(mockStore.add).not.toHaveBeenCalled();
   });
+
+  it('classifies error/fix chunks via extractors', async () => {
+    const msgs = [
+      { role: 'human', content: 'I got TypeError: cannot read undefined', timestamp: new Date().toISOString() },
+      { role: 'assistant', content: 'Fixed by adding null check before access.', timestamp: new Date().toISOString() },
+    ];
+    const ctx = { sessionId: 's3', workspaceId: 1, agentType: 'claude' as const, projectPath: '/p' };
+
+    await pipeline.ingest(msgs, ctx);
+
+    const addCall = mockStore.add.mock.calls[0];
+    const storedUnit = addCall[1];
+    expect(storedUnit.type).toBe('error_fix');
+  });
+
+  it('classifies decision chunks via extractors', async () => {
+    const msgs = [
+      { role: 'human', content: 'Which framework?', timestamp: new Date().toISOString() },
+      { role: 'assistant', content: 'We decided to use Next.js for the frontend because of SSR support.', timestamp: new Date().toISOString() },
+    ];
+    const ctx = { sessionId: 's4', workspaceId: 1, agentType: 'claude' as const, projectPath: '/p' };
+
+    await pipeline.ingest(msgs, ctx);
+
+    const addCall = mockStore.add.mock.calls[0];
+    const storedUnit = addCall[1];
+    expect(storedUnit.type).toBe('decision');
+  });
 });

@@ -5,6 +5,7 @@ import type { KnowledgeUnit, RawChunk } from '../knowledge/types';
 import { getConfidenceBase } from '../knowledge/types';
 import { chunkMessages, type SessionMessage, type ChunkContext } from './chunker';
 import { textHash } from './deduplicator';
+import { detectErrorFixPairs, extractDecisionPatterns, extractCommands } from './extractors';
 
 export interface IngestionResult {
   chunksCreated: number;
@@ -40,6 +41,9 @@ export class IngestionPipeline {
       return result;
     }
     result.chunksCreated = chunks.length;
+
+    // Tier 1.5: Classify chunks via regex extractors
+    this.classifyChunks(chunks);
 
     // Tier 1.5: Hash dedup (pre-embed) — skip embedding for exact matches
     const novel: RawChunk[] = [];
@@ -115,5 +119,27 @@ export class IngestionPipeline {
     }
 
     return result;
+  }
+
+  /** Enrich chunk types using regex extractors. Mutates chunks in place. */
+  private classifyChunks(chunks: RawChunk[]): void {
+    for (const chunk of chunks) {
+      const errorFixes = detectErrorFixPairs(chunk.text);
+      const decisions = extractDecisionPatterns(chunk.text);
+      const commands = extractCommands(chunk.text);
+
+      // Priority: decision > error_fix > conversation (default)
+      if (decisions.length > 0) {
+        chunk.type = 'decision';
+        chunk.metadata.decisions = decisions;
+      } else if (errorFixes.length > 0) {
+        chunk.type = 'error_fix';
+        chunk.metadata.error_fixes = errorFixes;
+      }
+
+      if (commands.length > 0) {
+        chunk.metadata.commands = commands;
+      }
+    }
   }
 }
