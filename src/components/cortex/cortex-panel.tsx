@@ -26,39 +26,29 @@ export function CortexPanel({ open, onClose }: CortexPanelProps) {
     } catch { /* ignore */ }
   }, []);
 
-  const fetchBrowse = useCallback(async () => {
+  const fetchResults = useCallback(async (searchQuery?: string) => {
     setLoading(true);
     try {
-      const res = await fetch(api('/api/cortex/search?limit=20'));
+      const params = new URLSearchParams({ limit: '20', layer: activeTab });
+      if (searchQuery) params.set('q', searchQuery);
+      const res = await fetch(api(`/api/cortex/search?${params}`));
       if (res.ok) {
         const data = await res.json();
         setResults(data.results || []);
       }
     } catch { /* ignore */ }
     setLoading(false);
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     if (open) {
       fetchStats();
-      fetchBrowse();
+      fetchResults(query || undefined);
     }
-  }, [open, fetchStats, fetchBrowse]);
+  }, [open, activeTab, fetchStats, fetchResults]);
 
-  const handleSearch = async () => {
-    if (!query.trim()) {
-      fetchBrowse();
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(api(`/api/cortex/search?q=${encodeURIComponent(query)}&limit=20`));
-      if (res.ok) {
-        const data = await res.json();
-        setResults(data.results || []);
-      }
-    } catch { /* ignore */ }
-    setLoading(false);
+  const handleSearch = () => {
+    fetchResults(query.trim() || undefined);
   };
 
   const handleDelete = (id: string) => {
@@ -69,10 +59,9 @@ export function CortexPanel({ open, onClose }: CortexPanelProps) {
   if (!open) return null;
 
   const tabs: LayerTab[] = ['personal', 'workspace', 'team'];
-  const filtered = results.filter(r => r.layer === activeTab);
 
   return (
-    <div className="fixed right-0 top-0 bottom-0 w-96 bg-gray-950 border-l border-white/10 z-50 flex flex-col">
+    <div className="fixed right-0 top-0 bottom-0 w-96 bg-gray-950 border-l border-white/10 z-[60] flex flex-col shadow-2xl">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-white/5">
         <h2 className="text-sm font-medium text-gray-200">
@@ -129,12 +118,12 @@ export function CortexPanel({ open, onClose }: CortexPanelProps) {
       {/* Results */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {loading && <p className="text-xs text-gray-500 text-center py-4">Searching...</p>}
-        {!loading && filtered.length === 0 && (
+        {!loading && results.length === 0 && (
           <p className="text-xs text-gray-500 text-center py-4">
             {query ? 'No results' : 'No knowledge stored yet'}
           </p>
         )}
-        {filtered.map(unit => (
+        {results.map(unit => (
           <KnowledgeCard key={unit.id} unit={unit} onDelete={handleDelete} />
         ))}
       </div>
