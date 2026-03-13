@@ -162,6 +162,44 @@ export class CortexStore {
     await table.delete(`id = '${safeId}'`);
   }
 
+  async updateAccessCount(layerKey: string, id: string): Promise<void> {
+    const conn = await this.getConnection(layerKey);
+    const tableNames = await conn.tableNames();
+    if (!tableNames.includes(TABLE_NAME)) return;
+
+    const table = await conn.openTable(TABLE_NAME);
+    const safeId = id.replace(/'/g, "''");
+    // LanceDB doesn't support UPDATE; delete + re-add with bumped count
+    // Use query().where() instead of vectorSearch to avoid dimension dependency
+    const rows = await table.query()
+      .where(`id = '${safeId}'`).limit(1).toArray();
+    if (rows.length === 0) return;
+
+    const raw = rows[0];
+    await table.delete(`id = '${safeId}'`);
+    // Reconstruct a plain record to avoid Arrow metadata fields rejected by table.add()
+    const record: Record<string, unknown> = {
+      id: raw.id,
+      vector: Array.from(raw.vector as Iterable<number>),
+      text: raw.text,
+      type: raw.type,
+      layer: raw.layer,
+      workspace_id: raw.workspace_id ?? null,
+      session_id: raw.session_id ?? null,
+      agent_type: raw.agent_type,
+      project_path: raw.project_path ?? null,
+      file_refs: raw.file_refs,
+      confidence: raw.confidence,
+      created: raw.created,
+      source_timestamp: raw.source_timestamp,
+      stale_score: raw.stale_score,
+      access_count: (raw.access_count || 0) + 1,
+      last_accessed: new Date().toISOString(),
+      metadata: raw.metadata,
+    };
+    await table.add([record]);
+  }
+
   async stats(): Promise<Record<string, { count: number }>> {
     const result: Record<string, { count: number }> = {};
     for (const layer of ['personal', 'workspace', 'team']) {

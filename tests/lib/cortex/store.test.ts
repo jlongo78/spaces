@@ -71,4 +71,34 @@ describe('CortexStore', () => {
     expect(stats).toHaveProperty('personal');
     expect(typeof stats.personal.count).toBe('number');
   });
+
+  it('updates access_count on a unit', async () => {
+    const vector = new Array(384).fill(0.1);
+    await store.add('personal', {
+      id: 'access-test',
+      vector,
+      text: 'Access count test',
+      type: 'context',
+      layer: 'personal',
+      workspace_id: null,
+      session_id: null,
+      agent_type: 'claude',
+      project_path: null,
+      file_refs: [],
+      confidence: 0.9,
+      created: new Date().toISOString(),
+      source_timestamp: new Date().toISOString(),
+      stale_score: 0,
+      access_count: 0,
+      last_accessed: null,
+      metadata: {},
+    });
+
+    await store.updateAccessCount('personal', 'access-test');
+
+    const results = await store.browse('personal', 100);
+    const found = results.find(r => r.id === 'access-test');
+    expect(found).toBeDefined();
+    expect(found!.access_count).toBe(1);
+  });
 });

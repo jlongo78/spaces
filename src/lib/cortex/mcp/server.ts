@@ -246,6 +246,7 @@ export async function handleToolCall(
           scope: args.scope ?? 'full',
           workspaceId: args.workspace_id,
           includeEmbeddings: args.include_embeddings ?? false,
+          dimensions: cortex.embedding.dimensions,
         });
         return { content: [{ type: 'text', text: JSON.stringify({ path: result.path, unitCount: result.unitCount }) }] };
       } catch (err: any) {

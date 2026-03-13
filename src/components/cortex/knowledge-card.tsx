@@ -24,6 +24,7 @@ interface KnowledgeCardProps {
     created: string;
     session_id?: string | null;
     layer: string;
+    stale_score?: number;
   };
   onDelete?: (id: string) => void;
 }
@@ -41,9 +42,19 @@ export function KnowledgeCard({ unit, onDelete }: KnowledgeCardProps) {
   return (
     <div className="group border border-white/5 rounded-lg p-3 hover:border-white/10 transition-colors">
       <div className="flex items-start justify-between gap-2">
-        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${colorClass}`}>
-          {unit.type.replace('_', ' ')}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${colorClass}`}>
+            {unit.type.replace('_', ' ')}
+          </span>
+          {(unit.stale_score ?? 0) > 0.3 && (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-amber-500/20 text-amber-400"
+              title="Referenced files have changed since this was learned"
+            >
+              stale
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2 text-[10px] text-gray-500">
           <span>{age}</span>
           <button
