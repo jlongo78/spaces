@@ -401,10 +401,14 @@ function linuxUnitFile(level) {
     envLines.push(`Environment=SPACES_ALLOWED_ORIGINS=${config.allowedOrigins}`);
   }
 
+  // Allow users to set API keys (OPENAI_API_KEY, etc.) in ~/.spaces/env
+  const envFilePath = path.join(SPACES_DIR, 'env');
+
   let serviceSection = [
     'Type=simple',
     `ExecStart=${nodePath} ${spacesPath}`,
     `WorkingDirectory=${projectDir}`,
+    `EnvironmentFile=-${envFilePath}`,
     ...envLines,
     'Restart=on-failure',
     'RestartSec=5',

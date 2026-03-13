@@ -26,12 +26,30 @@ export function CortexPanel({ open, onClose }: CortexPanelProps) {
     } catch { /* ignore */ }
   }, []);
 
+  const fetchBrowse = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(api('/api/cortex/search?limit=20'));
+      if (res.ok) {
+        const data = await res.json();
+        setResults(data.results || []);
+      }
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
-    if (open) fetchStats();
-  }, [open, fetchStats]);
+    if (open) {
+      fetchStats();
+      fetchBrowse();
+    }
+  }, [open, fetchStats, fetchBrowse]);
 
   const handleSearch = async () => {
-    if (!query.trim()) return;
+    if (!query.trim()) {
+      fetchBrowse();
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(api(`/api/cortex/search?q=${encodeURIComponent(query)}&limit=20`));
@@ -113,7 +131,7 @@ export function CortexPanel({ open, onClose }: CortexPanelProps) {
         {loading && <p className="text-xs text-gray-500 text-center py-4">Searching...</p>}
         {!loading && filtered.length === 0 && (
           <p className="text-xs text-gray-500 text-center py-4">
-            {query ? 'No results' : 'Search to explore knowledge'}
+            {query ? 'No results' : 'No knowledge stored yet'}
           </p>
         )}
         {filtered.map(unit => (

@@ -135,6 +135,22 @@ export class CortexStore {
     }));
   }
 
+  async browse(layerKey: string, limit: number): Promise<KnowledgeUnit[]> {
+    const conn = await this.getConnection(layerKey);
+    const tableNames = await conn.tableNames();
+    if (!tableNames.includes(TABLE_NAME)) return [];
+
+    const table = await conn.openTable(TABLE_NAME);
+    const rows = await table.query().limit(limit).toArray();
+
+    return rows.map((row: any) => ({
+      ...row,
+      file_refs: JSON.parse(row.file_refs || '[]'),
+      metadata: JSON.parse(row.metadata || '{}'),
+      last_accessed: row.last_accessed || null,
+    }));
+  }
+
   async delete(layerKey: string, id: string): Promise<void> {
     const conn = await this.getConnection(layerKey);
     const tableNames = await conn.tableNames();

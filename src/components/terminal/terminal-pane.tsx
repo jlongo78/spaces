@@ -114,6 +114,25 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       resolve();
     }));
 
+    // Ctrl-C copies when there's a selection, Ctrl-V pastes from clipboard
+    term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
+      if (ev.type !== 'keydown') return true;
+      if (ev.ctrlKey && ev.key === 'c' && term.hasSelection()) {
+        navigator.clipboard.writeText(term.getSelection());
+        term.clearSelection();
+        return false;
+      }
+      if (ev.ctrlKey && ev.key === 'v') {
+        navigator.clipboard.readText().then(text => {
+          if (text && wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'data', data: text }));
+          }
+        });
+        return false;
+      }
+      return true;
+    });
+
     xtermRef.current = term;
     fitRef.current = fitAddon;
 

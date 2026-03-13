@@ -6,11 +6,21 @@ import { getTeams } from '../teams';
 const initialized = new Set<string>();
 const syncing = new Set<string>();
 let teamsInitialized = false;
+let lastFtsRun = 0;
+const FTS_INTERVAL_MS = 5 * 60 * 1000; // Re-check for unindexed sessions every 5 minutes
 
 export async function ensureInitialized() {
   const username = getCurrentUser();
 
-  if (initialized.has(username)) return;
+  if (initialized.has(username)) {
+    // Periodically re-run FTS indexing for newly synced sessions
+    const now = Date.now();
+    if (now - lastFtsRun > FTS_INTERVAL_MS) {
+      lastFtsRun = now;
+      buildFtsIndex().catch(() => {});
+    }
+    return;
+  }
 
   // This just ensures the DB schema exists
   getDb();
@@ -40,6 +50,7 @@ export async function ensureInitialized() {
       }
 
       // Build FTS index (background, non-blocking)
+      lastFtsRun = Date.now();
       buildFtsIndex((done, total) => {
         if (done > 0 && done % 10 === 0) {
           console.log(`[spaces:${username}] FTS indexing: ${done}/${total}`);

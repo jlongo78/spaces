@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useSessions, useProjects } from '@/hooks/use-sessions';
 import { useNodes } from '@/hooks/use-network';
 import { SessionList } from '@/components/sessions/session-list';
@@ -9,7 +10,8 @@ import { Loader2, AlertTriangle, Globe } from 'lucide-react';
 import { track } from '@/lib/telemetry';
 
 export default function SessionsPage() {
-  const [projectId, setProjectId] = useState<string>('');
+  const searchParams = useSearchParams();
+  const [projectId, setProjectId] = useState<string>(searchParams.get('projectId') || '');
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('modified');
   const [starred, setStarred] = useState(false);
