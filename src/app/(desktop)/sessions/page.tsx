@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSessions, useProjects } from '@/hooks/use-sessions';
 import { useNodes } from '@/hooks/use-network';
@@ -10,6 +10,14 @@ import { Loader2, AlertTriangle, Globe } from 'lucide-react';
 import { track } from '@/lib/telemetry';
 
 export default function SessionsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-indigo-500" /></div>}>
+      <SessionsPageInner />
+    </Suspense>
+  );
+}
+
+function SessionsPageInner() {
   const searchParams = useSearchParams();
   const [projectId, setProjectId] = useState<string>(searchParams.get('projectId') || '');
   const [search, setSearch] = useState('');
