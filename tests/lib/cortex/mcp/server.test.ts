@@ -22,9 +22,12 @@ describe('MCP server', () => {
     expect(tool.inputSchema.required).toContain('query');
   });
 
-  it('cortex_teach requires text, type, layer', () => {
+  it('cortex_teach requires text and type (layer optional when scope provided)', () => {
     const tool = CORTEX_TOOLS.find(t => t.name === 'cortex_teach')!;
-    expect(tool.inputSchema.required).toEqual(['text', 'type', 'layer']);
+    expect(tool.inputSchema.required).toEqual(['text', 'type']);
+    // scope and sensitivity are optional v2 fields
+    expect(tool.inputSchema.properties).toHaveProperty('scope');
+    expect(tool.inputSchema.properties).toHaveProperty('sensitivity');
   });
 
   it('returns error for unknown tool', async () => {
