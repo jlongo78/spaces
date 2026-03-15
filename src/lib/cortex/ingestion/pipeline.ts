@@ -3,6 +3,7 @@ import type { EmbeddingProvider } from '../embeddings';
 import type { CortexStore } from '../store';
 import type { KnowledgeUnit, RawChunk } from '../knowledge/types';
 import { getConfidenceBase } from '../knowledge/types';
+import { layerToScope } from '../knowledge/compat';
 import { chunkMessages, type SessionMessage, type ChunkContext } from './chunker';
 import { textHash } from './deduplicator';
 import { detectErrorFixPairs, extractDecisionPatterns, extractCommands } from './extractors';
@@ -112,6 +113,20 @@ export class IngestionPipeline {
             access_count: 0,
             last_accessed: null,
             metadata: chunk.metadata,
+            // v2 fields
+            scope: layerToScope(chunk.layer, chunk.workspace_id),
+            entity_links: [],
+            evidence_score: getConfidenceBase(chunk.type),
+            corroborations: 0,
+            contradiction_refs: [],
+            sensitivity: 'internal' as const,
+            creator_scope: null,
+            origin: {
+              source_type: 'conversation' as const,
+              source_ref: chunk.session_id ?? '',
+              creator_entity_id: 'person-default-user',
+            },
+            propagation_path: [],
           };
 
           await this.store.add(layerKey, unit);
