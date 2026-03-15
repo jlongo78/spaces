@@ -101,4 +101,53 @@ describe('CortexStore', () => {
     expect(found).toBeDefined();
     expect(found!.access_count).toBe(1);
   });
+
+  it('stores and retrieves v2 fields', async () => {
+    const vector = new Array(384).fill(0).map(() => Math.random());
+    await store.add('personal', {
+      id: 'v2-test-1', vector, text: 'Auth uses JWT', type: 'decision',
+      layer: 'personal', workspace_id: null, session_id: 'sess-1',
+      agent_type: 'claude', project_path: null, file_refs: ['src/auth.ts'],
+      confidence: 0.85, created: new Date().toISOString(),
+      source_timestamp: new Date().toISOString(), stale_score: 0,
+      access_count: 0, last_accessed: null, metadata: {},
+      scope: { level: 'personal', entity_id: 'person-alice' },
+      entity_links: [{ entity_id: 'topic-auth', entity_type: 'topic', relation: 'about', weight: 0.9 }],
+      evidence_score: 0.72, corroborations: 2,
+      contradiction_refs: ['other-id-1'], sensitivity: 'internal',
+      creator_scope: null,
+      origin: { source_type: 'conversation', source_ref: 'sess-1', creator_entity_id: 'person-alice' },
+      propagation_path: [],
+    });
+
+    const results = await store.search('personal', vector, 5);
+    expect(results).toHaveLength(1);
+    expect(results[0].scope).toEqual({ level: 'personal', entity_id: 'person-alice' });
+    expect(results[0].entity_links).toHaveLength(1);
+    expect(results[0].evidence_score).toBeCloseTo(0.72);
+    expect(results[0].corroborations).toBe(2);
+    expect(results[0].contradiction_refs).toEqual(['other-id-1']);
+    expect(results[0].sensitivity).toBe('internal');
+    expect(results[0].origin?.source_type).toBe('conversation');
+  });
+
+  it('reads v1 data with default v2 fields', async () => {
+    const vector = new Array(384).fill(0).map(() => Math.random());
+    await store.add('personal', {
+      id: 'v1-test-1', vector, text: 'Old v1 knowledge', type: 'context',
+      layer: 'personal', workspace_id: null, session_id: null,
+      agent_type: 'claude', project_path: null, file_refs: [],
+      confidence: 0.6, created: new Date().toISOString(),
+      source_timestamp: new Date().toISOString(), stale_score: 0,
+      access_count: 0, last_accessed: null, metadata: {},
+    });
+
+    const results = await store.search('personal', vector, 5);
+    expect(results[0].evidence_score).toBe(0.5);
+    expect(results[0].corroborations).toBe(0);
+    expect(results[0].contradiction_refs).toEqual([]);
+    expect(results[0].sensitivity).toBe('internal');
+    expect(results[0].entity_links).toEqual([]);
+    expect(results[0].propagation_path).toEqual([]);
+  });
 });
