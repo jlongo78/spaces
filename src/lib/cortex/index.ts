@@ -12,6 +12,8 @@ import { DistillationScheduler } from './distillation/scheduler';
 import { DistillationQueue } from './distillation/queue';
 import { createCallLLM } from './distillation/llm';
 import { EntityGraph } from './graph/entity-graph';
+import { ContextEngine } from './retrieval/context-engine';
+import { EntityResolver } from './graph/resolver';
 import path from 'path';
 
 let _instance: CortexInstance | null = null;
@@ -23,6 +25,7 @@ export interface CortexInstance {
   pipeline: IngestionPipeline;
   embedding: EmbeddingProvider;
   graph: EntityGraph;
+  contextEngine?: ContextEngine;
   sync?: FederationSync;
   distillQueue?: DistillationQueue;
   distillScheduler?: DistillationScheduler;
@@ -53,6 +56,15 @@ export async function getCortex(): Promise<CortexInstance | null> {
 
   const search = new CortexSearch(store);
   const pipeline = new IngestionPipeline(embedding, store);
+
+  const resolver = new EntityResolver(graph);
+  const contextEngine = new ContextEngine({
+    store,
+    graph,
+    resolver,
+    embedding,
+    requesterId: 'person-default-user',
+  });
 
   // Initialize distillation if enabled and LLM provider available
   let distillQueue: DistillationQueue | undefined;
@@ -96,6 +108,7 @@ export async function getCortex(): Promise<CortexInstance | null> {
 
   const instance: CortexInstance = {
     config, store, search, pipeline, embedding, graph,
+    contextEngine,
     distillQueue, distillScheduler,
   };
 
