@@ -11,6 +11,7 @@ import { Distiller } from './distillation/distiller';
 import { DistillationScheduler } from './distillation/scheduler';
 import { DistillationQueue } from './distillation/queue';
 import { createCallLLM } from './distillation/llm';
+import { EntityGraph } from './graph/entity-graph';
 import path from 'path';
 
 let _instance: CortexInstance | null = null;
@@ -21,6 +22,7 @@ export interface CortexInstance {
   search: CortexSearch;
   pipeline: IngestionPipeline;
   embedding: EmbeddingProvider;
+  graph: EntityGraph;
   sync?: FederationSync;
   distillQueue?: DistillationQueue;
   distillScheduler?: DistillationScheduler;
@@ -45,6 +47,9 @@ export async function getCortex(): Promise<CortexInstance | null> {
   const store = new CortexStore(cortexDir);
   const embedding = await detectProvider(config.embedding.provider);
   await store.init(embedding.dimensions);
+
+  const graphPath = path.join(cortexDir, 'graph.db');
+  const graph = new EntityGraph(graphPath);
 
   const search = new CortexSearch(store);
   const pipeline = new IngestionPipeline(embedding, store);
@@ -90,7 +95,7 @@ export async function getCortex(): Promise<CortexInstance | null> {
   }
 
   const instance: CortexInstance = {
-    config, store, search, pipeline, embedding,
+    config, store, search, pipeline, embedding, graph,
     distillQueue, distillScheduler,
   };
 
@@ -116,6 +121,9 @@ export function resetCortex(): void {
   }
   if (_instance?.distillScheduler) {
     _instance.distillScheduler.stop();
+  }
+  if (_instance?.graph) {
+    _instance.graph.close();
   }
   _instance = null;
 }
