@@ -1,4 +1,5 @@
 import type { CortexInstance } from '../index';
+import { layerToScope, scopeToLayer, scopeToLayerKey } from '../knowledge/compat';
 export type { CortexInstance };
 
 export const CORTEX_TOOLS = [
@@ -25,10 +26,12 @@ export const CORTEX_TOOLS = [
       properties: {
         text: { type: 'string', description: 'Knowledge to store' },
         type: { type: 'string', description: 'Type: decision, pattern, preference, error_fix' },
-        layer: { type: 'string', description: 'Layer: personal, workspace, team' },
+        layer: { type: 'string', description: 'Layer: personal, workspace, team (optional if scope provided)' },
+        scope: { type: 'object', description: 'v2 scope object: { level, entity_id } (optional if layer provided)' },
         workspace_id: { type: 'number', description: 'Workspace ID if workspace layer' },
+        sensitivity: { type: 'string', description: 'Sensitivity class: public, internal, restricted, confidential' },
       },
-      required: ['text', 'type', 'layer'],
+      required: ['text', 'type'],
     },
   },
   {
@@ -145,18 +148,42 @@ export async function handleToolCall(
       return { content: [{ type: 'text', text: JSON.stringify({ results }) }] };
     }
     case 'cortex_teach': {
+      if (!args.layer && !args.scope) {
+        return { content: [{ type: 'text', text: 'layer or scope is required' }], isError: true };
+      }
       const crypto = await import('crypto');
+      let layer: string = args.layer;
+      let scope: any = args.scope;
+
+      // Resolve layer ↔ scope
+      if (scope && !layer) {
+        layer = scopeToLayer(scope);
+      } else if (layer && !scope) {
+        scope = layerToScope(layer as any, args.workspace_id);
+      }
+
+      const layerKey = scope
+        ? scopeToLayerKey(scope, args.workspace_id)
+        : (layer === 'workspace' && args.workspace_id ? `workspace/${args.workspace_id}` : layer);
+
       const [vector] = await cortex.embedding.embed([args.text]);
-      const layerKey = args.layer === 'workspace' && args.workspace_id
-        ? `workspace/${args.workspace_id}` : args.layer;
       await cortex.store.add(layerKey, {
         id: crypto.randomUUID(), vector, text: args.text, type: args.type,
-        layer: args.layer, workspace_id: args.workspace_id ?? null,
+        layer: layer as any, workspace_id: args.workspace_id ?? null,
         session_id: null, agent_type: 'claude', project_path: null,
         file_refs: [], confidence: 0.95,
         created: new Date().toISOString(), source_timestamp: new Date().toISOString(),
         stale_score: 0, access_count: 0, last_accessed: null,
         metadata: { source: 'mcp_teach' },
+        scope,
+        entity_links: [],
+        evidence_score: 0.95,
+        corroborations: 0,
+        contradiction_refs: [],
+        sensitivity: args.sensitivity ?? 'internal',
+        creator_scope: null,
+        origin: { source_type: 'manual', source_ref: '', creator_entity_id: 'person-default-user' },
+        propagation_path: [],
       });
       return { content: [{ type: 'text', text: JSON.stringify({ success: true }) }] };
     }
