@@ -53,7 +53,7 @@ export function initGraphSchema(db: InstanceType<typeof Database>): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
-    CREATE INDEX IF NOT EXISTS idx_edges_target  ON edges(target_id);
+    CREATE INDEX IF NOT EXISTS idx_edges_target  ON edges(target_id, relation);
     CREATE INDEX IF NOT EXISTS idx_aliases_alias  ON entity_aliases(alias);
     CREATE INDEX IF NOT EXISTS idx_grants_grantee ON access_grants(grantee_entity_id);
   `);
