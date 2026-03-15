@@ -16,6 +16,19 @@ Cortex v2 evolves the existing personal/workspace/team knowledge system into an 
 - **Most restrictive wins** — three layers of boundary enforcement (auto-classification, policy, creator override) where the tightest restriction always applies
 - **Adapter pattern for extensibility** — every signal source normalizes to a common envelope; new sources require zero pipeline changes
 
+### Key Constants
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `DEDUP_COSINE_THRESHOLD` | 0.90 | Two units are duplicates (keep higher-scored) |
+| `CONTRADICTION_COSINE_THRESHOLD` | 0.80 | Two units are similar enough to be potential contradictions (0.80-0.90 is the "contradiction zone") |
+| `CORROBORATION_COSINE_THRESHOLD` | 0.85 | Two units from different sources confirm each other |
+| `HOP_DECAY_FACTOR` | 0.85 | Confidence multiplier per propagation hop (v1 used 0.80; increased to preserve more signal across hops) |
+| `PROMOTION_DECAY` | 0.85 | Same as HOP_DECAY_FACTOR (applied on promotion) |
+| `GRAVITY_INTERVAL_MS` | 21600000 | Gravity scheduler runs every 6 hours |
+| `ARCHIVE_THRESHOLD` | 0.1 | Evidence score below which units are archived after 6 months |
+| `MAX_GRAPH_HOPS` | 4 | Maximum BFS depth for graph proximity computation |
+
 ### Current State (v1)
 
 - 3 flat layers: personal, workspace, team
@@ -31,7 +44,7 @@ Cortex v2 evolves the existing personal/workspace/team knowledge system into an 
 
 ## Architecture: Six Pillars
 
-The system is built in three phases across six interconnected pillars:
+The system is built in three implementation phases (plus a future learning phase) across six interconnected pillars:
 
 ```
 Phase 1 (Foundation):  ① Entity Graph + ② Knowledge Unit Evolution
@@ -89,11 +102,24 @@ All edges carry a `weight` (0-1) and `metadata` JSON.
 
 ### Storage
 
+Entity IDs use the format `{type}-{slug}` (e.g., `person-alice`, `team-platform`, `system-auth-service`, `topic-authentication`). Slugs are lowercase, hyphen-separated, derived from the entity name.
+
 ```sql
 -- SQLite tables
-entities(id TEXT PK, type TEXT, name TEXT, metadata JSON, created TEXT, updated TEXT)
-edges(source_id TEXT, target_id TEXT, relation TEXT, weight REAL, metadata JSON, created TEXT)
-entity_aliases(entity_id TEXT, alias TEXT)  -- "auth" → System:auth-service
+entities(id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL, metadata JSON, created TEXT, updated TEXT)
+edges(source_id TEXT NOT NULL, target_id TEXT NOT NULL, relation TEXT NOT NULL, weight REAL DEFAULT 1.0, metadata JSON, created TEXT,
+      PRIMARY KEY (source_id, target_id, relation),
+      FOREIGN KEY (source_id) REFERENCES entities(id),
+      FOREIGN KEY (target_id) REFERENCES entities(id))
+entity_aliases(entity_id TEXT NOT NULL, alias TEXT NOT NULL,
+      FOREIGN KEY (entity_id) REFERENCES entities(id))
+access_grants(knowledge_id TEXT NOT NULL, grantee_entity_id TEXT NOT NULL, granted_by TEXT NOT NULL, created TEXT,
+      PRIMARY KEY (knowledge_id, grantee_entity_id))
+
+-- Indexes
+CREATE INDEX idx_edges_target ON edges(target_id, relation);
+CREATE INDEX idx_aliases_alias ON entity_aliases(alias);
+CREATE INDEX idx_grants_grantee ON access_grants(grantee_entity_id);
 
 -- Key queries via recursive CTEs:
 -- Graph distance between two entities (BFS)
@@ -101,6 +127,8 @@ entity_aliases(entity_id TEXT, alias TEXT)  -- "auth" → System:auth-service
 -- All knowledge linked to entities within N hops
 -- Entity resolution: "auth" → which entity?
 ```
+
+Edge weights are updated in-place (UPSERT on the composite primary key). A given source-target-relation triple can only have one edge; multiple relationships between the same entities use different `relation` values.
 
 ### Auto-Population
 
@@ -156,7 +184,7 @@ interface EntityLink {
 
 interface Scope {
   level: "personal" | "team" | "department" | "organization"
-  entity_id: string  // which team/dept/org
+  entity_id: string  // which person/team/dept/org (format: {type}-{slug})
 }
 
 type SensitivityClass = "public" | "internal" | "restricted" | "confidential"
@@ -181,6 +209,26 @@ interface PropHop {
   confidence_at_hop: number  // decays per hop (×0.85)
 }
 ```
+
+### Evidence Score Computation
+
+`evidence_score` is a derived value (0-1), recomputed on access and during gravity scheduling:
+
+```
+evidence_score = min(1.0,
+  base_confidence
+  × (1 + 0.1 × corroborations)
+  × (1 + 0.01 × min(access_count, 50))
+  × authority_factor
+  ÷ (1 + 0.5 × contradiction_count)
+)
+```
+
+- `base_confidence`: from KnowledgeType defaults (decision: 0.8, pattern: 0.8, preference: 0.95, error_fix: 0.8, context: 0.6, etc.)
+- `corroborations`: count of independent sources confirming this knowledge (capped contribution at 10)
+- `access_count`: how often this knowledge was retrieved (diminishing returns, capped at 50)
+- `authority_factor`: 1.0 for conversations, 1.1 for git commits, 1.2 for documents/ADRs, 1.3 for manual/admin teach
+- `contradiction_count`: number of active contradictions (penalizes contested knowledge)
 
 ### Migration Strategy
 
@@ -230,11 +278,14 @@ weight(scope) = graph_proximity × intent_bias × freshness_bonus × authority
 ```
 
 - `graph_proximity`: `1 / (1 + shortest_path_distance)` from requester to scope
-- `intent_bias`: from Stage 1 intent category
-- `freshness_bonus`: 1.1 if scope has recent relevant activity
-- `authority`: boost for known experts, senior roles, official sources
+- `intent_bias`: from Stage 1 intent category (values defined in the intent table above)
+- `freshness_bonus`: 1.1 if scope has relevant activity in last 7 days, 1.05 if last 30 days, 1.0 otherwise
+- `authority`: computed as `max(1.0, role_boost + expertise_weight)` where:
+  - `role_boost`: 0.0 for member, 0.1 for lead, 0.15 for senior/principal, 0.2 for director+ (from Person entity role field)
+  - `expertise_weight`: the EXPERT_IN edge weight (0-1) between the source entity and query-relevant topics
+  - For non-person sources (org standards, official docs): `origin.source_type === "document"` gets authority 1.2 (documents outrank conversations)
 
-Computed via SQLite recursive CTE, cached per request.
+Computed via SQLite recursive CTE for graph_proximity, cached per request (~10ms warm, ~30ms cold; precompute proximity for current user at session start as fallback).
 
 ### Stage 4: Parallel Multi-Source Search
 
@@ -302,14 +353,22 @@ interface Policy {
     scope_level?: Scope["level"]
   }
   action: {
-    max_scope?: Scope["level"]       // can't propagate beyond this
-    min_scope?: Scope["level"]       // MUST propagate to at least this
-    required_scope?: string          // must reach this specific scope
+    max_scope?: Scope["level"]       // can't propagate beyond this level
+    propagate_to?: PropagationTarget[] // MUST reach these specific scopes
     trickle_down?: boolean           // auto-visible to child scopes
     cannot_propagate?: boolean       // locked to current scope
   }
 }
+
+interface PropagationTarget {
+  level: Scope["level"]
+  entity_id?: string  // specific entity, or omit for "all at this level"
+  // e.g., { level: "team", entity_id: "team-security" } = must reach security team
+  // e.g., { level: "department" } = must reach at least department level
+}
 ```
+
+`propagate_to` replaces the previous `min_scope` and `required_scope` — it's a single array that handles both "must reach this level" and "must reach this specific team." When multiple targets are specified, all must be satisfied. `max_scope` takes precedence: if a target would exceed `max_scope`, it's skipped (policy contradiction logged as warning).
 
 Example policies:
 - Security findings must reach security team, cannot leave department
@@ -338,6 +397,8 @@ Before the Context Assembly Engine searches, compute accessible scopes:
 | internal | read | read | read | denied |
 | restricted | read | policy-gated | denied | denied |
 | confidential | grant-only | denied | denied | denied |
+
+**Grant mechanism for confidential knowledge:** Creators can grant access to specific people via the `access_grants` table (defined in Pillar 1 Storage). Grants are explicit: `{ knowledge_id, grantee_entity_id, granted_by, created }`. At query time, confidential knowledge is accessible if `requester_entity_id === creator_entity_id` OR an `access_grants` row exists for that requester. Grants are set via MCP tool (`cortex_teach --grant person-alice`), API (`POST /api/cortex/knowledge/{id}/grant`), or future UI.
 
 ### Audit Trail
 
@@ -385,7 +446,48 @@ interface SignalAdapter {
 }
 ```
 
-All adapters produce `SignalEnvelope`. The unified pipeline handles dedup, entity resolution, boundary classification, embedding, storage, distillation queuing, and graph edge updates. Adding a new source = implement one interface, zero pipeline changes.
+All adapters produce `SignalEnvelope`. Adding a new source = implement one interface, zero pipeline changes.
+
+### Unified Signal Pipeline
+
+A new `SignalPipeline` consumes envelopes from all adapters and replaces the existing `IngestionPipeline` as the primary entry point (the old pipeline is wrapped as the Conversation adapter for backward compatibility).
+
+```typescript
+class SignalPipeline {
+  async ingest(envelope: SignalEnvelope): Promise<IngestResult> {
+    // 1. Dedup: hash check (pre-embed) + cosine check (post-embed)
+    // 2. Entity resolution: resolve envelope.entities against graph,
+    //    create EntityLinks for the knowledge unit
+    // 3. Sensitivity: envelope.suggested_sensitivity is the starting point,
+    //    then Boundary Engine Layer 1 (auto-classification) can UPGRADE
+    //    sensitivity (never downgrade). Most restrictive wins.
+    // 4. Type resolution: envelope.suggested_type is accepted unless
+    //    extractors detect a more specific type (e.g., adapter says
+    //    "conversation" but regex detects error_fix pattern → error_fix)
+    // 5. Embed: batch via current EmbeddingProvider
+    // 6. Store: add to LanceDB with full v2 schema
+    // 7. Graph updates: process any edge updates from envelope.raw_metadata
+    //    (e.g., git adapter includes TOUCHES/EXPERT_IN edge updates)
+    // 8. Distillation queue: enqueue distillable types (decision, error_fix)
+  }
+}
+```
+
+The existing `IngestionPipeline.ingest(messages, context)` is preserved as the internal implementation of the Conversation adapter. It converts `SessionMessage[]` into `SignalEnvelope[]` and feeds them to the unified pipeline.
+
+### Signal Source → Knowledge Type Mapping
+
+New signal sources map to existing knowledge types (no new types needed):
+
+| Signal Source | Primary Types | Mapping Logic |
+|--------------|---------------|---------------|
+| Git commits | error_fix, decision | Commit message regex: "fix" → error_fix, "refactor/migrate/switch to" → decision |
+| PR reviews | preference, pattern, code_pattern | Review comments → preference; approval patterns → pattern |
+| Documents (ADRs) | decision | ADRs are decisions by definition |
+| Documents (runbooks) | pattern, command | Operational procedures → pattern; shell blocks → command |
+| Test signals | error_fix, pattern | Failures → error_fix; flaky patterns → pattern |
+| Deployment | error_fix, pattern, decision | Rollbacks → error_fix; deploy practices → pattern |
+| Behavioral | pattern, context | Inferred structures → pattern; gap analysis → context |
 
 ### Scheduling
 
@@ -449,7 +551,7 @@ Four states:
 - **RESOLVED** — human chose a winner or created synthesis. Loser downranked (evidence_score × 0.3).
 - **BLOCKED** — contradicts higher-scope knowledge. Cannot promote until resolved.
 
-Contradiction detection: during ingestion, when a new unit has cosine > 0.80 with an existing unit but opposite sentiment/conclusion (keyword analysis).
+Contradiction detection: during ingestion, when a new unit has cosine similarity > `CONTRADICTION_COSINE_THRESHOLD` (0.80) with an existing unit but opposite sentiment/conclusion (keyword analysis). Units in the 0.80-0.90 range are potential contradictions; above 0.90 (`DEDUP_COSINE_THRESHOLD`) they're duplicates.
 
 ### Gravity Scheduler
 
@@ -489,6 +591,26 @@ Each pillar is a separate implementation cycle (spec → plan → implement → 
 Pillars 1-2 can be built in parallel. Pillars 3-4 can be built in parallel after 1-2 complete. Pillars 5-6 depend on all prior work.
 
 ---
+
+## Degraded / Cold-Start Behavior
+
+The system must degrade gracefully when the graph is incomplete:
+
+- **No graph (fresh install):** Context Assembly Engine falls back to v1 flat-layer behavior (search personal, then workspace, then team with fixed weights). No promotion, no policies, no entity resolution.
+- **Single user, no teams:** Scope is always `personal`. Promotion thresholds adapt: "2+ teams" becomes "2+ independent sessions" (the user corroborates their own knowledge across separate conversations). Trickle-down is a no-op.
+- **No knowledge units:** RAG hook returns empty context silently (already handles this). Learn hook operates normally, building the knowledge base from scratch.
+- **Sparse graph (some entities, few edges):** Graph proximity falls back to scope-level distance when no path exists between entities (personal=0, same team=1, same dept=2, same org=3). Edge weights default to 0.5 when not computed from signals.
+
+## MCP Tool Backward Compatibility
+
+The `cortex_teach` MCP tool and all API endpoints accept both old and new parameters:
+- `--layer personal` maps internally to `scope: { level: "personal", entity_id: "{current-user}" }`
+- New parameters `--scope`, `--sensitivity`, `--grant` are added alongside old ones
+- Existing hooks (`cortex-hook.js`, `cortex-learn-hook.js`) continue working unchanged; enhanced versions are opt-in
+
+## Gravity Scheduler Implementation
+
+The Gravity Scheduler runs as a `setInterval` timer within the Spaces Node.js process (consistent with `FederationSync.start()`). On process restart, it resumes from the last checkpoint stored in SQLite (`gravity_state` table with `last_run` timestamp). Incomplete cycles are idempotent — re-running a promotion scan or decay pass produces the same result.
 
 ## Success Criteria
 
