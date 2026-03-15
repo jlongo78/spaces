@@ -3,12 +3,11 @@ export function computeRelevanceScore(params: {
   confidence: number;
   stale_score: number;
   created: string;
+  evidence_score?: number;
 }): number {
   const recencyBoost = computeRecencyBoost(params.created);
-  return Math.min(
-    1.0,
-    params.similarity * params.confidence * (1 - params.stale_score) * recencyBoost,
-  );
+  const evidence = params.evidence_score ?? params.confidence;
+  return Math.min(1.0, params.similarity * evidence * (1 - params.stale_score) * recencyBoost);
 }
 
 export function computeRecencyBoost(created: string): number {

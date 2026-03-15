@@ -71,6 +71,7 @@ export class CortexSearch {
             confidence: unit.confidence,
             stale_score: unit.stale_score,
             created: unit.created,
+            evidence_score: unit.evidence_score,
           }) * weight;
 
           if (unit.confidence >= minConfidence) {
@@ -107,6 +108,7 @@ export class CortexSearch {
           confidence: result.confidence,
           stale_score: staleScore,
           created: result.created,
+          evidence_score: result.evidence_score,
         }) * (LAYER_WEIGHTS[result.layer] ?? 0.5);
       }
     }

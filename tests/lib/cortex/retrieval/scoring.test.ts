@@ -27,4 +27,27 @@ describe('scoring', () => {
     expect(fresh).toBeLessThan(0.1);
     expect(stale).toBeGreaterThan(0.5);
   });
+
+  it('uses evidence_score when provided instead of confidence', () => {
+    const withConfidenceOnly = computeRelevanceScore({
+      similarity: 0.9, confidence: 0.8, stale_score: 0, created: new Date().toISOString(),
+    });
+    const withHighEvidence = computeRelevanceScore({
+      similarity: 0.9, confidence: 0.8, stale_score: 0, created: new Date().toISOString(),
+      evidence_score: 0.95,
+    });
+    const withLowEvidence = computeRelevanceScore({
+      similarity: 0.9, confidence: 0.8, stale_score: 0, created: new Date().toISOString(),
+      evidence_score: 0.3,
+    });
+    expect(withHighEvidence).toBeGreaterThan(withConfidenceOnly);
+    expect(withLowEvidence).toBeLessThan(withConfidenceOnly);
+  });
+
+  it('falls back to confidence when evidence_score is undefined', () => {
+    const result = computeRelevanceScore({
+      similarity: 0.9, confidence: 0.8, stale_score: 0, created: new Date().toISOString(),
+    });
+    expect(result).toBeGreaterThan(0);
+  });
 });
