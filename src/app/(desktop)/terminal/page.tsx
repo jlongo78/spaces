@@ -60,7 +60,7 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   const [newCwd, setNewCwd] = useState('');
   const [newColor, setNewColor] = useState('#6366f1');
   const [newClaudeSession, setNewClaudeSession] = useState('');
-  const [newAgentType, setNewAgentType] = useState('shell');
+  const [newAgentType, setNewAgentType] = useState('claude');
   const [newAgentMode, setNewAgentMode] = useState<'new' | 'resume'>('new');
   const [newCustomCommand, setNewCustomCommand] = useState('');
   const [newNodeId, setNewNodeId] = useState('');

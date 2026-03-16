@@ -11,15 +11,6 @@ export interface AgentType {
 }
 
 export const AGENT_TYPES: Record<string, AgentType> = {
-  shell: {
-    id: 'shell',
-    name: 'Shell',
-    command: '',
-    resumeFlag: '',
-    supportsResume: false,
-    color: '#71717a',
-    description: 'Plain terminal shell',
-  },
   claude: {
     id: 'claude',
     name: 'Claude Code',
@@ -55,6 +46,15 @@ export const AGENT_TYPES: Record<string, AgentType> = {
     supportsResume: false,
     color: '#8b5cf6',
     description: 'AI pair programming in your terminal',
+  },
+  shell: {
+    id: 'shell',
+    name: 'Shell',
+    command: '',
+    resumeFlag: '',
+    supportsResume: false,
+    color: '#71717a',
+    description: 'Plain terminal shell',
   },
   custom: {
     id: 'custom',

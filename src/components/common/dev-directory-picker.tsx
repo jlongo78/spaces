@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Folder, FolderOpen, ChevronRight, ChevronUp, Loader2, Settings } from 'lucide-react';
+import { Folder, FolderOpen, FolderPlus, ChevronRight, ChevronUp, Loader2, Settings } from 'lucide-react';
 import { api } from '@/lib/api';
 
 interface DevDirectoryPickerProps {
@@ -30,6 +30,10 @@ export function DevDirectoryPicker({ value, onChange }: DevDirectoryPickerProps)
   const [loading, setLoading] = useState(false);
   // 'list' = showing dev dirs, 'browse' = browsing inside one
   const [mode, setMode] = useState<'list' | 'browse'>('list');
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderError, setNewFolderError] = useState('');
+  const [creating, setCreating] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   // Fetch dev directories from config
@@ -95,6 +99,32 @@ export function DevDirectoryPicker({ value, onChange }: DevDirectoryPickerProps)
   const backToList = () => {
     setMode('list');
     setData(null);
+    setShowNewFolder(false);
+  };
+
+  const createFolder = async () => {
+    if (!newFolderName.trim() || !data?.current) return;
+    setCreating(true);
+    setNewFolderError('');
+    try {
+      const res = await fetch(api('/api/folders'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent: data.current, name: newFolderName.trim() }),
+      });
+      if (res.ok) {
+        const { path: newPath } = await res.json();
+        setShowNewFolder(false);
+        setNewFolderName('');
+        select(newPath);
+      } else {
+        const err = await res.json();
+        setNewFolderError(err.error || 'Failed to create folder');
+      }
+    } catch {
+      setNewFolderError('Failed to create folder');
+    }
+    setCreating(false);
   };
 
   // Breadcrumb segments relative to the dev directory root
@@ -229,6 +259,46 @@ export function DevDirectoryPicker({ value, onChange }: DevDirectoryPickerProps)
                         {data!.current.split('/').pop()}
                       </span>
                     </button>
+
+                    {/* New folder */}
+                    {!showNewFolder ? (
+                      <button
+                        onClick={() => { setShowNewFolder(true); setNewFolderError(''); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-green-400 hover:bg-green-500/10 transition-colors border-b border-zinc-700/30"
+                      >
+                        <FolderPlus className="w-3.5 h-3.5" />
+                        <span>New folder</span>
+                      </button>
+                    ) : (
+                      <div className="px-3 py-2 border-b border-zinc-700/30 space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            autoFocus
+                            value={newFolderName}
+                            onChange={e => { setNewFolderName(e.target.value); setNewFolderError(''); }}
+                            onKeyDown={e => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') setShowNewFolder(false); }}
+                            placeholder="Folder name"
+                            className="flex-1 px-2 py-1 text-xs bg-zinc-900 border border-zinc-600 rounded text-white focus:outline-none focus:border-green-500"
+                          />
+                          <button
+                            onClick={createFolder}
+                            disabled={creating || !newFolderName.trim()}
+                            className="px-2.5 py-1 text-xs bg-green-600 hover:bg-green-500 text-white rounded disabled:opacity-40"
+                          >
+                            {creating ? '...' : 'Create'}
+                          </button>
+                          <button
+                            onClick={() => setShowNewFolder(false)}
+                            className="px-1.5 py-1 text-xs text-zinc-500 hover:text-white"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        {newFolderError && (
+                          <div className="text-[10px] text-red-400">{newFolderError}</div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Subfolders */}
                     {data?.folders.length === 0 ? (
