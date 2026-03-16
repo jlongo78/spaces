@@ -9,6 +9,7 @@ import { textHash } from './deduplicator';
 import { detectErrorFixPairs, extractDecisionPatterns, extractCommands } from './extractors';
 import type { DistillationQueue } from '../distillation/queue';
 import type { DistillationScheduler } from '../distillation/scheduler';
+import { classifySensitivity } from '../boundary/classifier';
 
 export interface IngestionResult {
   chunksCreated: number;
@@ -119,7 +120,7 @@ export class IngestionPipeline {
             evidence_score: getConfidenceBase(chunk.type),
             corroborations: 0,
             contradiction_refs: [],
-            sensitivity: 'internal' as const,
+            sensitivity: classifySensitivity(chunk.text),
             creator_scope: null,
             origin: {
               source_type: 'conversation' as const,
