@@ -110,7 +110,7 @@ function parseJSONLFile(filePath: string): SessionMessage[] {
       if (!line.trim()) continue;
       try {
         const entry = JSON.parse(line);
-        if (entry.type === 'human' || entry.type === 'assistant') {
+        if (entry.type === 'human' || entry.type === 'user' || entry.type === 'assistant') {
           const text = typeof entry.message?.content === 'string'
             ? entry.message.content
             : Array.isArray(entry.message?.content)

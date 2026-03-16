@@ -3,7 +3,8 @@ import type { NextRequest } from 'next/server';
 import crypto from 'crypto';
 import { getAuthUser, withUser } from '@/lib/auth';
 import { isCortexAvailable, getCortex } from '@/lib/cortex';
-import { isValidKnowledgeType, isValidLayer } from '@/lib/cortex/knowledge/types';
+import { isValidKnowledgeType, isValidLayer, getConfidenceBase } from '@/lib/cortex/knowledge/types';
+import { layerToScope, scopeToLayer, scopeToLayerKey } from '@/lib/cortex/knowledge/compat';
 
 export async function POST(request: NextRequest) {
   const user = getAuthUser(request);
@@ -16,22 +17,35 @@ export async function POST(request: NextRequest) {
     if (!cortex) return NextResponse.json({ error: 'Cortex disabled' }, { status: 503 });
 
     const body = await request.json();
-    const { text, type, layer, workspace_id } = body;
+    const { text, type, workspace_id } = body;
+    let { layer, scope, sensitivity, origin, entity_links } = body;
 
-    if (!text || !type || !layer) {
-      return NextResponse.json({ error: 'text, type, and layer required' }, { status: 400 });
+    if (!text || !type) {
+      return NextResponse.json({ error: 'text and type are required' }, { status: 400 });
+    }
+    if (!layer && !scope) {
+      return NextResponse.json({ error: 'layer or scope is required' }, { status: 400 });
     }
     if (!isValidKnowledgeType(type)) {
       return NextResponse.json({ error: `Invalid type: ${type}` }, { status: 400 });
     }
-    if (!isValidLayer(layer)) {
+    if (layer && !isValidLayer(layer)) {
       return NextResponse.json({ error: `Invalid layer: ${layer}` }, { status: 400 });
     }
 
+    // Resolve layer ↔ scope
+    if (scope && !layer) {
+      layer = scopeToLayer(scope);
+    } else if (layer && !scope) {
+      scope = layerToScope(layer, workspace_id);
+    }
+
+    const layerKey = scope
+      ? scopeToLayerKey(scope, workspace_id)
+      : (layer === 'workspace' && workspace_id ? `workspace/${workspace_id}` : layer);
+
     const [vector] = await cortex.embedding.embed([text]);
     const id = crypto.randomUUID();
-    const layerKey = layer === 'workspace' && workspace_id
-      ? `workspace/${workspace_id}` : layer;
 
     await cortex.store.add(layerKey, {
       id,
@@ -51,6 +65,15 @@ export async function POST(request: NextRequest) {
       access_count: 0,
       last_accessed: null,
       metadata: { source: 'user_teach' },
+      scope,
+      entity_links: entity_links ?? [],
+      evidence_score: getConfidenceBase(type),
+      corroborations: 0,
+      contradiction_refs: [],
+      sensitivity: sensitivity ?? 'internal',
+      creator_scope: null,
+      origin: origin ?? { source_type: 'manual', source_ref: '', creator_entity_id: `person-${user}` },
+      propagation_path: [],
     });
 
     return NextResponse.json({ id, success: true });

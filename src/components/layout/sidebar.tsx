@@ -15,6 +15,7 @@ import {
   Activity,
   LogOut,
   Globe,
+  Brain,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trackPageView } from '@/lib/telemetry';
@@ -30,6 +31,7 @@ const nav = [
   { href: '/projects', label: 'Projects', icon: FolderOpen },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/network', label: 'Network', icon: Globe },
+  { href: '/cortex', label: 'Cortex', icon: Brain },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -40,6 +42,7 @@ const routeNames: Record<string, string> = {
   '/projects': 'projects',
   '/analytics': 'analytics',
   '/network': 'network',
+  '/cortex': 'cortex',
   '/settings': 'settings',
   '/admin/users': 'admin_users',
   '/admin/analytics': 'admin_analytics',
@@ -88,6 +91,7 @@ export function Sidebar() {
       <nav className="flex-1 p-2 space-y-1">
         {nav.filter(({ href }) => {
           if (href === '/network') return hasNetwork;
+          if (href === '/cortex') return hasCortex;
           return true;
         }).map(({ href, label, icon: Icon }) => {
           const isActive = href === '/'

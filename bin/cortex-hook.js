@@ -19,7 +19,7 @@ async function main() {
   const secret = process.env.SPACES_SESSION_SECRET || '';
   const internalToken = secret.slice(0, 16);
   const query = encodeURIComponent(prompt);
-  const url = `http://localhost:${apiPort}/api/cortex/search/?q=${query}&limit=5`;
+  const url = `http://localhost:${apiPort}/api/cortex/context/?q=${query}&limit=5`;
 
   let body;
   try {
@@ -53,6 +53,20 @@ async function main() {
   }
 
   const parsed = JSON.parse(body);
+
+  // New primary path: context assembly endpoint returns pre-formatted context
+  if (parsed.context) {
+    const output = JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'UserPromptSubmit',
+        additionalContext: parsed.context,
+      },
+    });
+    process.stdout.write(output);
+    process.exit(0);
+  }
+
+  // Fallback: old-style formatting from parsed.results (backward compat)
   const results = parsed.results;
   if (!results || results.length === 0) process.exit(0);
 

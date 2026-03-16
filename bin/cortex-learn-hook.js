@@ -17,6 +17,10 @@ async function main() {
   const transcriptPath = input.transcript_path;
   if (!transcriptPath || !fs.existsSync(transcriptPath)) process.exit(0);
 
+  // Derive a session ID from the transcript filename (strip directory and extension)
+  const path = require('path');
+  const sessionId = path.basename(transcriptPath, path.extname(transcriptPath));
+
   // Read the last few lines of the transcript to find the last Q&A exchange
   const lastExchange = await extractLastExchange(transcriptPath);
   if (!lastExchange || !lastExchange.question || !lastExchange.answer) {
@@ -52,12 +56,16 @@ async function main() {
     text: lastExchange.question,
     type: 'context',
     layer: 'personal',
+    scope: { level: 'personal', entity_id: 'person-default-user' },
+    origin: { source_type: 'conversation', source_ref: sessionId, creator_entity_id: 'person-default-user' },
   });
 
   const answerEntry = JSON.stringify({
     text: `${lastExchange.question}\n\n${condensedAnswer}`,
     type: knowledgeType,
     layer: 'personal',
+    scope: { level: 'personal', entity_id: 'person-default-user' },
+    origin: { source_type: 'conversation', source_ref: sessionId, creator_entity_id: 'person-default-user' },
   });
 
   try {

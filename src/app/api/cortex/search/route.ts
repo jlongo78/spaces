@@ -16,16 +16,25 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const query = url.searchParams.get('q') || '';
     const workspaceId = url.searchParams.get('workspace_id');
+    const layer = url.searchParams.get('layer') as 'personal' | 'workspace' | 'team' | null;
     const limit = parseInt(url.searchParams.get('limit') || '5', 10);
 
+    // Browse mode: return recent knowledge without a search query
     if (!query) {
-      return NextResponse.json({ error: 'Query parameter "q" required' }, { status: 400 });
+      const layers = layer ? [layer] : (['personal', 'workspace', 'team'] as const);
+      const results: any[] = [];
+      for (const l of layers) {
+        const items = await cortex.store.browse(l, limit);
+        results.push(...items);
+      }
+      return NextResponse.json({ results: results.slice(0, limit) });
     }
 
     const [queryVector] = await cortex.embedding.embed([query]);
 
     const results = await cortex.search.search(queryVector, {
       workspaceId: workspaceId ? parseInt(workspaceId, 10) : null,
+      layers: layer ? [layer] : undefined,
       limit,
     });
 

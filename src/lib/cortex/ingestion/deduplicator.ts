@@ -1,3 +1,10 @@
+import { createHash } from 'crypto';
+
+export function textHash(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  return createHash('sha256').update(normalized).digest('hex');
+}
+
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) return 0;
   let dot = 0, magA = 0, magB = 0;

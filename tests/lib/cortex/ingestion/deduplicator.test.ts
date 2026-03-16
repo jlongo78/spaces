@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cosineSimilarity, isDuplicate } from '@/lib/cortex/ingestion/deduplicator';
+import { cosineSimilarity, isDuplicate, textHash } from '@/lib/cortex/ingestion/deduplicator';
 
 describe('deduplicator', () => {
   it('computes cosine similarity correctly', () => {
@@ -18,5 +18,24 @@ describe('deduplicator', () => {
 
     const v3 = [0.0, 1.0, 0.0];
     expect(isDuplicate(v1, v3, 0.95)).toBe(false);
+  });
+});
+
+describe('textHash', () => {
+  it('returns consistent SHA-256 hex for same input', () => {
+    const h1 = textHash('hello world');
+    const h2 = textHash('hello world');
+    expect(h1).toBe(h2);
+    expect(h1).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('normalizes whitespace before hashing', () => {
+    const h1 = textHash('hello   world\n\n');
+    const h2 = textHash('hello world');
+    expect(h1).toBe(h2);
+  });
+
+  it('returns different hashes for different text', () => {
+    expect(textHash('foo')).not.toBe(textHash('bar'));
   });
 });

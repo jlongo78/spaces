@@ -75,6 +75,9 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
+      scrollback: 10000,           // Cap scrollback buffer (default is unlimited → OOM on heavy output)
+      fastScrollModifier: 'alt',   // Alt+scroll for fast scrolling
+      smoothScrollDuration: 0,     // Disable smooth scroll animation (prevents jank on rapid output)
       theme: {
         background: '#0a0a0a',
         foreground: '#e4e4e7',
@@ -113,6 +116,25 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       }
       resolve();
     }));
+
+    // Ctrl-C copies when there's a selection, Ctrl-V pastes from clipboard
+    term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
+      if (ev.type !== 'keydown') return true;
+      if (ev.ctrlKey && ev.key === 'c' && term.hasSelection()) {
+        navigator.clipboard.writeText(term.getSelection());
+        term.clearSelection();
+        return false;
+      }
+      if (ev.ctrlKey && ev.key === 'v') {
+        navigator.clipboard.readText().then(text => {
+          if (text && wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'data', data: text }));
+          }
+        });
+        return false;
+      }
+      return true;
+    });
 
     xtermRef.current = term;
     fitRef.current = fitAddon;

@@ -1,3 +1,5 @@
+import type { EntityType } from '@/lib/cortex/graph/types';
+
 // ─── Knowledge Types ─────────────────────────────────────────
 
 export const KNOWLEDGE_TYPES = [
@@ -59,6 +61,16 @@ export interface KnowledgeUnit {
   access_count: number;
   last_accessed: string | null;
   metadata: Record<string, unknown>;
+  // v2 fields (optional — null/default when reading v1 data)
+  scope?: Scope;
+  entity_links?: EntityLink[];
+  evidence_score?: number;
+  corroborations?: number;
+  contradiction_refs?: string[];
+  sensitivity?: SensitivityClass;
+  creator_scope?: ScopeOverride | null;
+  origin?: Origin;
+  propagation_path?: PropHop[];
 }
 
 /** A chunk produced by Tier 1 fast pass, before embedding. */
@@ -103,7 +115,59 @@ export const PROPAGATABLE_TYPES: KnowledgeType[] = ['decision', 'pattern', 'pref
 export const PROPAGATION_CONFIDENCE_THRESHOLD = 0.85;
 
 /** Confidence multiplier per federation hop. */
-export const HOP_DECAY_FACTOR = 0.8;
+export const HOP_DECAY_FACTOR = 0.85;
 
 /** Max federation hops. */
 export const MAX_HOPS = 3;
+
+// --- v2 Schema Extensions ---
+
+export const SCOPE_LEVELS = ['personal', 'team', 'department', 'organization'] as const;
+export type ScopeLevel = typeof SCOPE_LEVELS[number];
+
+export interface Scope {
+  level: ScopeLevel;
+  entity_id: string;
+}
+
+export interface EntityLink {
+  entity_id: string;
+  entity_type: EntityType;
+  relation: 'created_by' | 'about' | 'scoped_to' | 'derived_from';
+  weight: number;
+}
+
+export const SENSITIVITY_CLASSES = ['public', 'internal', 'restricted', 'confidential'] as const;
+export type SensitivityClass = typeof SENSITIVITY_CLASSES[number];
+
+export interface ScopeOverride {
+  max_level: ScopeLevel;
+}
+
+export const ORIGIN_SOURCE_TYPES = [
+  'conversation', 'git_commit', 'pr_review', 'document',
+  'behavioral', 'distillation', 'manual',
+] as const;
+export type OriginSourceType = typeof ORIGIN_SOURCE_TYPES[number];
+
+export interface Origin {
+  source_type: OriginSourceType;
+  source_ref: string;
+  creator_entity_id: string;
+}
+
+export interface PropHop {
+  from_scope: Scope;
+  to_scope: Scope;
+  reason: 'evidence_threshold' | 'policy_push' | 'manual_promote';
+  timestamp: string;
+  confidence_at_hop: number;
+}
+
+export function isValidScopeLevel(s: string): s is ScopeLevel {
+  return SCOPE_LEVELS.includes(s as ScopeLevel);
+}
+
+export function isValidSensitivity(s: string): s is SensitivityClass {
+  return SENSITIVITY_CLASSES.includes(s as SensitivityClass);
+}
