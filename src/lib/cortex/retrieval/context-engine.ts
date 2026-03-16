@@ -10,6 +10,7 @@ import { detectConflicts } from './conflict';
 import type { ConflictPair } from './conflict';
 import { formatContext } from './formatter';
 import { computeRelevanceScore } from './scoring';
+import { AccessFilter } from '../boundary/access';
 
 export type { IntentResult };
 
@@ -19,6 +20,7 @@ export interface ContextEngineDeps {
   resolver: EntityResolver;
   embedding: EmbeddingProvider;
   requesterId: string;
+  accessFilter?: AccessFilter;
 }
 
 export interface AssemblyResult {
@@ -75,14 +77,20 @@ export class ContextEngine {
     // Stage 5: Fuse and rank results
     const fused = this.fuseAndRank(rawResults, intent, limit);
 
+    // Stage 5.5: Access control filtering
+    let accessible = fused;
+    if (this.deps.accessFilter) {
+      accessible = this.deps.accessFilter.filterResults(fused);
+    }
+
     // Stage 6: Detect conflicts and format context
-    const conflicts = detectConflicts(fused);
-    const context = formatContext(fused, conflicts, { maxTokens });
+    const conflicts = detectConflicts(accessible);
+    const context = formatContext(accessible, conflicts, { maxTokens });
 
     const totalMs = Date.now() - totalStart;
 
     return {
-      results: fused,
+      results: accessible,
       conflicts,
       context,
       intent,
