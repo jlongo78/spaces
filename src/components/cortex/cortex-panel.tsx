@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { X, Search } from 'lucide-react';
+import Link from 'next/link';
+import { X, Search, ExternalLink } from 'lucide-react';
 import { api } from '@/lib/api';
 import { KnowledgeCard } from './knowledge-card';
 
@@ -63,12 +64,19 @@ export function CortexPanel({ open, onClose }: CortexPanelProps) {
   return (
     <div className="fixed right-0 top-0 bottom-0 w-96 bg-gray-950 border-l border-white/10 z-[60] flex flex-col shadow-2xl">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-white/5">
+      <div className="flex items-center gap-2 p-4 border-b border-white/5">
         <h2 className="text-sm font-medium text-gray-200">
           Cortex
           <span className="ml-2 text-[9px] font-medium uppercase tracking-wider text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded">Beta</span>
         </h2>
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
+        <Link
+          href="/cortex"
+          className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
+          onClick={onClose}
+        >
+          Full view <ExternalLink className="w-2.5 h-2.5" />
+        </Link>
+        <button onClick={onClose} className="ml-auto text-gray-500 hover:text-gray-300">
           <X className="w-4 h-4" />
         </button>
       </div>
