@@ -75,6 +75,9 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
+      scrollback: 10000,           // Cap scrollback buffer (default is unlimited → OOM on heavy output)
+      fastScrollModifier: 'alt',   // Alt+scroll for fast scrolling
+      smoothScrollDuration: 0,     // Disable smooth scroll animation (prevents jank on rapid output)
       theme: {
         background: '#0a0a0a',
         foreground: '#e4e4e7',
