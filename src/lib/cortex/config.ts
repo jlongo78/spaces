@@ -1,4 +1,5 @@
 import fs from 'fs';
+import type { Policy } from './boundary/policy';
 
 export interface CortexConfig {
   enabled: boolean;
@@ -39,6 +40,7 @@ export interface CortexConfig {
     max_size_mb: number;
     warning_threshold_mb: number;
   };
+  policies?: Policy[];
 }
 
 export const DEFAULT_CORTEX_CONFIG: CortexConfig = {
@@ -55,6 +57,7 @@ export const DEFAULT_CORTEX_CONFIG: CortexConfig = {
   },
   federation: { sync_mode: 'query-only', sync_interval_minutes: 5, query_timeout_ms: 500 },
   storage: { max_size_mb: 2048, warning_threshold_mb: 500 },
+  policies: [],
 };
 
 /** Deep-merge defaults with partial config. */
