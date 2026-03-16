@@ -899,8 +899,31 @@ async function win32Uninstall() {
 }
 
 async function win32Start() {
-  execFileSync('schtasks', ['/Run', '/TN', TASK_NAME], { stdio: 'inherit' });
-  logOk('Task started');
+  // Try schtasks /Run first (works when running as admin or for user-level tasks)
+  try {
+    execFileSync('schtasks', ['/Run', '/TN', TASK_NAME], { stdio: 'pipe' });
+    logOk('Task started');
+    return;
+  } catch {}
+
+  // Fallback: launch the wrapper script directly as a detached process.
+  // This works for non-admin shells when the task is registered as SYSTEM.
+  // The service will run as the current user, not SYSTEM, but functionally
+  // equivalent for local development.
+  const wrapperPath = path.join(SPACES_DIR, 'spaces-service.cmd');
+  if (!fs.existsSync(wrapperPath)) {
+    logErr('Wrapper script not found — run "spaces service install" first');
+    process.exit(1);
+  }
+
+  const { spawn } = require('child_process');
+  const child = spawn('cmd.exe', ['/c', wrapperPath], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  child.unref();
+  logOk('Service started (direct launch)');
 }
 
 async function win32Stop() {
