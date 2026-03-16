@@ -15,6 +15,7 @@ import { EntityGraph } from './graph/entity-graph';
 import { ContextEngine } from './retrieval/context-engine';
 import { EntityResolver } from './graph/resolver';
 import { SignalPipeline } from './signals/pipeline';
+import { GravityScheduler } from './gravity/scheduler';
 import path from 'path';
 
 let _instance: CortexInstance | null = null;
@@ -28,6 +29,7 @@ export interface CortexInstance {
   graph: EntityGraph;
   contextEngine?: ContextEngine;
   signalPipeline?: SignalPipeline;
+  gravityScheduler?: GravityScheduler;
   sync?: FederationSync;
   distillQueue?: DistillationQueue;
   distillScheduler?: DistillationScheduler;
@@ -69,6 +71,14 @@ export async function getCortex(): Promise<CortexInstance | null> {
   });
 
   const signalPipeline = new SignalPipeline({ store, embedding, graph, resolver });
+
+  const gravityScheduler = new GravityScheduler({
+    runCycle: async () => {
+      // Placeholder — gravity cycle will be fully wired when
+      // the system has enough data. Individual functions
+      // (promotion, trickle, decay) are ready.
+    },
+  });
 
   // Initialize distillation if enabled and LLM provider available
   let distillQueue: DistillationQueue | undefined;
@@ -112,7 +122,7 @@ export async function getCortex(): Promise<CortexInstance | null> {
 
   const instance: CortexInstance = {
     config, store, search, pipeline, embedding, graph,
-    contextEngine, signalPipeline,
+    contextEngine, signalPipeline, gravityScheduler,
     distillQueue, distillScheduler,
   };
 
@@ -138,6 +148,9 @@ export function resetCortex(): void {
   }
   if (_instance?.distillScheduler) {
     _instance.distillScheduler.stop();
+  }
+  if (_instance?.gravityScheduler) {
+    _instance.gravityScheduler.stop();
   }
   if (_instance?.graph) {
     _instance.graph.close();
