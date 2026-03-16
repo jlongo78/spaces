@@ -11,9 +11,10 @@ Add a dedicated `/cortex` page to Spaces with four tabs (Graph, Knowledge, Conte
 ### Design Principles
 
 - Follow existing dark theme and Tailwind patterns (no component library)
-- All data from existing API endpoints — no new backend
+- Minimal backend changes — 3 small modifications to existing endpoints (documented below)
 - One new npm dependency: `force-graph` for canvas rendering
 - Progressive enhancement — v1 data renders fine, v2 fields show when present
+- Custom `nodeCanvasObject` callback for entity-type shapes (force-graph renders circles by default; diamonds/rectangles need manual Canvas 2D drawing)
 
 ## Component 1: Entity Graph Page
 
@@ -135,13 +136,15 @@ A query input at the top. User types a question and clicks "Analyze" (or presses
 
 Single API call: `GET /api/cortex/context/?q={query}&limit=5`
 
-Response contains everything needed:
+Response shape (requires backend modifications — see Backend Changes section):
 ```typescript
 {
   results: ScoredKnowledge[]
   context: string          // pre-formatted XML
   intent: { intent, confidence, biases }
-  conflicts: number
+  entities: ResolvedEntity[]  // NEW: resolved entity references
+  conflicts: ConflictPair[]   // CHANGED: full pairs, not just count
+  sourceWeights: Array<{ layerKey: string; scopeLevel: string; weight: number }>  // NEW
   timing: { intentMs, entityMs, searchMs, totalMs }
 }
 ```
@@ -165,20 +168,39 @@ Add a "Cortex" nav item to the sidebar:
 - Position: after existing nav items (Terminal, Sessions, etc.)
 - Route: `/cortex`
 - Gated by `useTier().hasCortex`
-- Active state: purple background when on `/cortex` route
+- Active state: indigo background (`bg-indigo-950 text-indigo-300`) consistent with other sidebar items
 
 The existing CortexIndicator (bottom of sidebar) remains — it shows the knowledge count badge and toggles the right panel.
 
-## New API Endpoint
+## Backend Changes (3 modifications)
 
-### `GET /api/cortex/graph/edges?all=true`
+### 1. `EntityGraph.listAllEdges()` + edges route `all=true`
 
-Modify the existing edges route to support an `all=true` parameter that returns all edges without requiring a `from` or `to` filter. This is needed for the graph canvas to render the full graph on mount.
+Add a `listAllEdges(): Edge[]` method to `EntityGraph` class:
+```typescript
+listAllEdges(): Edge[] {
+  return (this.db.prepare('SELECT * FROM edges').all() as any[]).map(r => this.rowToEdge(r));
+}
+```
 
-When `all=true`:
-- Query all edges from the entity graph
-- Return `{ edges: Edge[] }`
-- No pagination needed (graph is small)
+Modify `src/app/api/cortex/graph/edges/route.ts` GET handler: if `all=true` query param is present, call `cortex.graph.listAllEdges()` and return all edges (bypassing the `from`/`to` requirement). No pagination needed — graph is small.
+
+### 2. Context API response expansion
+
+Modify `src/app/api/cortex/context/route.ts` to include three additional fields from `AssemblyResult`:
+- `entities: result.entities` — resolved entity references (currently dropped)
+- `conflicts: result.conflicts` — full `ConflictPair[]` array (currently flattened to count)
+- `sourceWeights` — requires exposing the computed source weights from `ContextEngine`
+
+To expose source weights, add a `sourceWeights` field to `AssemblyResult` in `context-engine.ts` and populate it from the `computeSourceWeights()` output (currently private, just return the array of `{ layerKey, scopeLevel, weight }` objects).
+
+### 3. Sidebar active state
+
+Use the existing indigo active state pattern (`bg-indigo-950 text-indigo-300`) for the Cortex nav item, consistent with other sidebar items. The purple (#7c3aed) is used inside the Cortex page for graph elements, not for sidebar navigation.
+
+### Settings tab
+
+The Settings tab renders the existing `<CortexSettings />` component (`src/components/cortex/cortex-settings.tsx`). No new settings content needed.
 
 ## File Structure
 
@@ -194,7 +216,10 @@ Modified files:
 ├── src/components/cortex/knowledge-card.tsx    — Add v2 field display
 ├── src/components/cortex/cortex-panel.tsx      — Add "Open full view" link
 ├── src/components/layout/sidebar.tsx           — Add Cortex nav item
-├── src/app/api/cortex/graph/edges/route.ts    — Support all=true parameter
+├── src/app/api/cortex/graph/edges/route.ts    — Support all=true parameter + listAllEdges()
+├── src/lib/cortex/graph/entity-graph.ts       — Add listAllEdges() method
+├── src/app/api/cortex/context/route.ts        — Expand response (entities, conflicts, sourceWeights)
+├── src/lib/cortex/retrieval/context-engine.ts — Expose sourceWeights in AssemblyResult
 ```
 
 ## npm Dependency
@@ -203,7 +228,7 @@ Modified files:
 force-graph: ^1.44.0
 ```
 
-Canvas-based force-directed graph renderer. ~30KB gzipped. Wraps d3-force with a Canvas/WebGL renderer. Supports zoom, drag, click, hover out of the box. No SSR issues — component will use `dynamic()` import with `ssr: false`.
+Canvas-based force-directed graph renderer. ~30KB gzipped. Wraps d3-force with a Canvas/WebGL renderer. Supports zoom, drag, click, hover out of the box. The `entity-graph.tsx` component (not the backend `entity-graph.ts`) is the dynamic import target: `const ForceGraph = dynamic(() => import('./entity-graph'), { ssr: false })`. The parent page handles the loading state.
 
 ## Success Criteria
 
