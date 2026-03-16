@@ -13,7 +13,7 @@ const V2_COLUMNS: [string, string][] = [
 ];
 
 export async function migrateTableToV2(table: Table): Promise<void> {
-  const schema = await table.schema;
+  const schema = await table.schema();
   const existingFields = new Set(schema.fields.map((f: any) => f.name));
 
   for (const [colName, defaultExpr] of V2_COLUMNS) {
