@@ -15,6 +15,12 @@ export async function GET(request: NextRequest) {
     if (!cortex?.graph) return NextResponse.json({ edges: [] });
 
     const url = new URL(request.url);
+    const all = url.searchParams.get('all');
+    if (all === 'true') {
+      const edges = cortex.graph.listAllEdges();
+      return NextResponse.json({ edges });
+    }
+
     const from = url.searchParams.get('from') ?? undefined;
     const to = url.searchParams.get('to') ?? undefined;
     const relationParam = url.searchParams.get('relation') ?? undefined;

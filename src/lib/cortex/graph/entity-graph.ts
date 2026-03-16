@@ -191,6 +191,11 @@ export class EntityGraph {
     return rows.map(row => this.rowToEdge(row));
   }
 
+  listAllEdges(): Edge[] {
+    return (this.db.prepare('SELECT * FROM edges ORDER BY source_id').all() as any[])
+      .map(r => this.rowToEdge(r));
+  }
+
   deleteEdge(sourceId: string, targetId: string, relation: EdgeRelation): void {
     this.db
       .prepare('DELETE FROM edges WHERE source_id = ? AND target_id = ? AND relation = ?')
