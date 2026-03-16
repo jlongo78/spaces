@@ -55,30 +55,51 @@ export async function getCortex(): Promise<CortexInstance | null> {
   const embedding = await detectProvider(config.embedding.provider);
   await store.init(embedding.dimensions);
 
-  const graphPath = path.join(cortexDir, 'graph.db');
-  const graph = new EntityGraph(graphPath);
+  // Initialize entity graph (non-fatal — Cortex works without it, just no v2 features)
+  let graph: EntityGraph;
+  let contextEngine: ContextEngine | undefined;
+  let signalPipeline: SignalPipeline | undefined;
+  let gravityScheduler: GravityScheduler | undefined;
+
+  try {
+    const fs = await import('fs');
+    fs.mkdirSync(cortexDir, { recursive: true });
+    const graphPath = path.join(cortexDir, 'graph.db');
+    graph = new EntityGraph(graphPath);
+
+    const resolver = new EntityResolver(graph);
+    contextEngine = new ContextEngine({
+      store,
+      graph,
+      resolver,
+      embedding,
+      requesterId: 'person-default-user',
+    });
+
+    signalPipeline = new SignalPipeline({ store, embedding, graph, resolver });
+
+    gravityScheduler = new GravityScheduler({
+      runCycle: async () => {
+        // Placeholder — gravity cycle will be fully wired when
+        // the system has enough data.
+      },
+    });
+  } catch (err) {
+    console.error('[cortex] Failed to initialize entity graph (v2 features disabled):', err);
+    // Try again with just the graph — if even this fails, create a temp in-memory fallback
+    try {
+      const fs = await import('fs');
+      fs.mkdirSync(cortexDir, { recursive: true });
+      graph = new EntityGraph(path.join(cortexDir, 'graph.db'));
+    } catch {
+      // better-sqlite3 not available — use temp path as last resort
+      const os = await import('os');
+      graph = new EntityGraph(path.join(os.tmpdir(), `cortex-graph-${Date.now()}.db`));
+    }
+  }
 
   const search = new CortexSearch(store);
   const pipeline = new IngestionPipeline(embedding, store);
-
-  const resolver = new EntityResolver(graph);
-  const contextEngine = new ContextEngine({
-    store,
-    graph,
-    resolver,
-    embedding,
-    requesterId: 'person-default-user',
-  });
-
-  const signalPipeline = new SignalPipeline({ store, embedding, graph, resolver });
-
-  const gravityScheduler = new GravityScheduler({
-    runCycle: async () => {
-      // Placeholder — gravity cycle will be fully wired when
-      // the system has enough data. Individual functions
-      // (promotion, trickle, decay) are ready.
-    },
-  });
 
   // Initialize distillation if enabled and LLM provider available
   let distillQueue: DistillationQueue | undefined;
