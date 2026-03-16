@@ -46,7 +46,9 @@ export async function GET(request: NextRequest) {
       results: result.results.map(r => ({ ...r, vector: undefined })),
       context: result.context,
       intent: result.intent,
-      conflicts: result.conflicts.length,
+      conflicts: result.conflicts,
+      entities: result.entities,
+      sourceWeights: result.sourceWeights,
       timing: result.timing,
     });
   });

@@ -29,6 +29,7 @@ export interface AssemblyResult {
   context: string;
   intent: IntentResult;
   entities: ResolvedEntity[];
+  sourceWeights: Array<{ layerKey: string; scopeLevel: string; weight: number }>;
   timing: { intentMs: number; entityMs: number; searchMs: number; totalMs: number };
 }
 
@@ -95,6 +96,11 @@ export class ContextEngine {
       context,
       intent,
       entities,
+      sourceWeights: sources.map(s => ({
+        layerKey: s.layerKey,
+        scopeLevel: s.layerKey === 'personal' ? 'personal' : s.layerKey.startsWith('workspace') ? 'team' : 'organization',
+        weight: s.weight,
+      })),
       timing: { intentMs, entityMs, searchMs, totalMs },
     };
   }
