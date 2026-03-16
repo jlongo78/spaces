@@ -204,16 +204,18 @@ export function EntityGraphView() {
     if (nodes.length === 0) return;
 
     const el = containerRef.current;
-    const width = el.clientWidth;
-    const height = el.clientHeight;
+    const width = el.clientWidth || 800;
+    const height = el.clientHeight || 600;
+
+    if (width < 10 || height < 10) return; // container not laid out yet
 
     // Dynamically import to avoid SSR issues
     import('force-graph').then(({ default: ForceGraph2D }) => {
       if (!containerRef.current) return;
 
-      const graph = (ForceGraph2D as unknown as (el: HTMLElement) => GraphInstance)(
-        containerRef.current,
-      )
+      // force-graph uses Kapsule pattern: ForceGraph2D() returns a builder, then call with element
+      const builder = ForceGraph2D as unknown as () => (el: HTMLElement) => GraphInstance;
+      const graph = builder()(containerRef.current)
         .graphData({ nodes, links })
         .width(width)
         .height(height)
@@ -282,7 +284,7 @@ export function EntityGraphView() {
   }
 
   return (
-    <div className="flex-1 flex min-h-0 overflow-hidden">
+    <div className="flex-1 flex min-h-0 overflow-hidden h-full">
       {/* Graph canvas area */}
       <div className="relative flex-1 min-w-0">
         <div ref={containerRef} className="w-full h-full" />
