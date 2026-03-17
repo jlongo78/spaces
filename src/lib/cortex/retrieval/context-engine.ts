@@ -11,6 +11,7 @@ import type { ConflictPair } from './conflict';
 import { formatContext } from './formatter';
 import { computeRelevanceScore } from './scoring';
 import { AccessFilter } from '../boundary/access';
+import type { ResolvedLobe } from '../lobes/resolver';
 
 export type { IntentResult };
 
@@ -21,6 +22,7 @@ export interface ContextEngineDeps {
   embedding: EmbeddingProvider;
   requesterId: string;
   accessFilter?: AccessFilter;
+  resolvedLobes?: ResolvedLobe[];
 }
 
 export interface AssemblyResult {
@@ -117,6 +119,30 @@ export class ContextEngine {
     intent: IntentResult,
     workspaceId: number | null,
   ): SourceConfig[] {
+    if (this.deps.resolvedLobes && this.deps.resolvedLobes.length > 0) {
+      return this.deps.resolvedLobes.map(lobe => {
+        const scopeLevel = lobe.type === 'personal' ? 'personal'
+          : lobe.type === 'team' || lobe.type === 'department' ? 'team'
+          : lobe.type === 'organization' ? 'organization'
+          : 'team';
+
+        const weight = computeScopeWeight({
+          graphProximity: lobe.baseWeight,
+          scopeLevel,
+          intentBiases: intent.biases,
+          authorityFactor: 1.0,
+        });
+
+        return {
+          layerKey: lobe.layerKey,
+          scopeLevel,
+          layerEntity: lobe.layerKey,
+          slots: Math.max(3, Math.round(weight * 10)),
+          weight,
+        };
+      }).sort((a, b) => b.weight - a.weight);
+    }
+
     const layerDefs = [
       { layer: 'personal' as const, scopeLevel: 'personal', layerEntity: 'layer-personal', defaultProximity: 1.0 },
       { layer: 'workspace' as const, scopeLevel: 'team', layerEntity: 'layer-workspace', defaultProximity: 0.5 },
