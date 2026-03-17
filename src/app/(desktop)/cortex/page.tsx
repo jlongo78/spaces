@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { KnowledgeTab } from '@/components/cortex/knowledge-tab';
 import { ContextTab } from '@/components/cortex/context-tab';
 import { CortexSettings } from '@/components/cortex/cortex-settings';
+import { LobeSettings } from '@/components/cortex/lobe-settings';
 
 const EntityGraphView = dynamic(
   () => import('@/components/cortex/entity-graph').then(m => ({ default: m.EntityGraphView })),
@@ -17,11 +18,22 @@ type Tab = 'graph' | 'knowledge' | 'context' | 'settings';
 export default function CortexPage() {
   const [tab, setTab] = useState<Tab>('graph');
   const [stats, setStats] = useState<any>(null);
+  const [activeWorkspace, setActiveWorkspace] = useState<any>(null);
 
   useEffect(() => {
     fetch(api('/api/cortex/status'))
       .then(r => r.json())
       .then(setStats)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch(api('/api/workspaces'))
+      .then(r => r.json())
+      .then(data => {
+        const active = (data.workspaces || []).find((w: any) => w.isActive);
+        setActiveWorkspace(active);
+      })
       .catch(() => {});
   }, []);
 
@@ -63,7 +75,12 @@ export default function CortexPage() {
         {tab === 'knowledge' && <KnowledgeTab />}
         {tab === 'context' && <ContextTab />}
         {tab === 'settings' && (
-          <div className="p-6 max-w-2xl"><CortexSettings /></div>
+          <div className="p-6 max-w-2xl space-y-8">
+            <CortexSettings />
+            {activeWorkspace && (
+              <LobeSettings workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} />
+            )}
+          </div>
         )}
       </div>
     </div>
