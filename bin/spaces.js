@@ -201,6 +201,7 @@ function startServer() {
   // ─── Resolve optional packages once ─────────────────────────
   const proPath = resolveSpacesPro();
   const teamsPath = resolveSpacesTeams();
+  const cortexPath = resolveSpacesCortex();
 
   // Tier resolution: CLI > env > config > auto-detect
   let tier = cliFlags.tier
@@ -280,7 +281,7 @@ function startServer() {
   const appNodeModules = path.join(projectDir, 'node_modules');
   const nodePaths = [MANAGED_NODE_MODULES, appNodeModules];
   // Add each resolved package's own node_modules so its bundled deps are found
-  for (const pkgPath of [proPath, teamsPath]) {
+  for (const pkgPath of [proPath, teamsPath, cortexPath]) {
     if (pkgPath) {
       // pkgPath is the package root (symlink target or direct path)
       const realPath = fs.realpathSync(pkgPath);
@@ -319,6 +320,13 @@ function startServer() {
       console.error(`  Warning: Collaboration may not work — ${e.message}`);
       console.error('  Check that NODE_PATH includes the host app node_modules.');
     }
+  }
+
+  // ─── Detect @spaces/cortex ──────────────────────────────────
+  if (cortexPath) {
+    childEnv.SPACES_HAS_CORTEX = '1';
+    process.env.SPACES_HAS_CORTEX = '1';
+    console.log('  Cortex: @spaces/cortex detected');
   }
 
   console.log('');
@@ -617,5 +625,20 @@ function resolveSpacesTeams() {
     if (fs.existsSync(altPath)) return altPath;
   } catch {}
 
+  return null;
+}
+
+// ─── @spaces/cortex resolution ───────────────────────────────
+function resolveSpacesCortex() {
+  const managed = path.join(MANAGED_NODE_MODULES, '@spaces', 'cortex');
+  if (fs.existsSync(path.join(managed, 'dist', 'index.js'))) return managed;
+  try { return require.resolve('@spaces/cortex'); } catch {}
+  try {
+    const globalPrefix = execFileSync('npm', ['prefix', '-g'], { encoding: 'utf-8' }).trim();
+    const globalPath = path.join(globalPrefix, 'lib', 'node_modules', '@spaces', 'cortex');
+    if (fs.existsSync(globalPath)) return globalPath;
+    const altPath = path.join(globalPrefix, 'node_modules', '@spaces', 'cortex');
+    if (fs.existsSync(altPath)) return altPath;
+  } catch {}
   return null;
 }

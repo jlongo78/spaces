@@ -540,9 +540,16 @@ function writeCortexHookConfig(cwd) {
       try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')); } catch {}
     }
 
-    // Resolve absolute paths to hook scripts (Node.js — works everywhere)
-    const ragHook = path.resolve(__dirname, 'cortex-hook.js');
-    const learnHook = path.resolve(__dirname, 'cortex-learn-hook.js');
+    // Resolve hook paths from @spaces/cortex addon or legacy bin/
+    let ragHook, learnHook;
+    try {
+      const cortexDir = path.dirname(require.resolve('@spaces/cortex'));
+      ragHook = path.join(cortexDir, 'hooks', 'cortex-hook.js');
+      learnHook = path.join(cortexDir, 'hooks', 'cortex-learn-hook.js');
+    } catch {
+      ragHook = path.resolve(__dirname, 'cortex-hook.js');
+      learnHook = path.resolve(__dirname, 'cortex-learn-hook.js');
+    }
 
     // Merge — don't clobber existing hooks for other events
     if (!settings.hooks) settings.hooks = {};
