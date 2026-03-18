@@ -376,7 +376,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   return (
     <div className={cn(
       'flex flex-col border rounded-lg overflow-hidden',
-      isMaximized ? 'fixed inset-2 z-50' : '',
+      isMaximized ? 'absolute inset-0 z-40 !rounded-none' : '',
       'border-zinc-700'
     )} style={{ borderColor: `${pane.color}60` }}>
       {/* Title bar */}

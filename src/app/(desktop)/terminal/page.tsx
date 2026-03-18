@@ -1109,7 +1109,7 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
           </div>
         ) : (
           <div
-            className="flex-1 p-2 gap-2 overflow-auto h-full"
+            className="flex-1 p-2 gap-2 overflow-auto h-full relative"
             style={{
               display: 'grid',
               gridTemplateColumns: visiblePanes.length === 1 ? '1fr'
