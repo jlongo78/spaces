@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Folder, File, FileText, FileCode, FileJson, Image,
   ChevronRight, ChevronDown, X, ArrowUp, ExternalLink, ArrowLeftToLine,
+  Download, Upload,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -399,6 +400,40 @@ export function FileExplorer({ onClose, navigateTo }: Props) {
     }
   };
 
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const downloadFile = (filePath: string, fileName: string) => {
+    const a = document.createElement('a');
+    a.href = api(`/api/files?raw=${encodeURIComponent(filePath)}`);
+    a.download = fileName;
+    a.click();
+  };
+
+  const uploadFiles = async (files: FileList | File[]) => {
+    if (!currentPath || files.length === 0) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('dir', currentPath);
+      for (const f of Array.from(files)) {
+        formData.append('files', f);
+      }
+      await fetch(api('/api/files'), { method: 'POST', body: formData });
+      // Refresh directory listing
+      const data = await loadDir(currentPath);
+      setItems(data.items);
+    } catch { /* upload failed */ }
+    finally { setUploading(false); }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files.length > 0) uploadFiles(e.dataTransfer.files);
+  };
+
   const relativePath = rootPath ? currentPath.replace(rootPath, '').replace(/^[/\\]/, '') : '';
   const crumbs = relativePath ? relativePath.split(/[/\\]/) : [];
   const showInlineViewer = openFile && !poppedOut;
@@ -463,6 +498,14 @@ export function FileExplorer({ onClose, navigateTo }: Props) {
             <ArrowUp className="w-3 h-3" />
           </button>
         )}
+        <input ref={uploadRef} type="file" multiple className="hidden" onChange={e => { if (e.target.files) uploadFiles(e.target.files); e.target.value = ''; }} />
+        <button
+          onClick={() => uploadRef.current?.click()}
+          className="text-zinc-600 hover:text-zinc-300 flex-shrink-0 ml-auto"
+          title="Upload files to current directory"
+        >
+          <Upload className="w-3 h-3" />
+        </button>
         <button
           onClick={() => setCurrentPath(rootPath)}
           className="text-zinc-500 hover:text-zinc-300 truncate flex-shrink-0"
@@ -502,8 +545,15 @@ export function FileExplorer({ onClose, navigateTo }: Props) {
 
       {/* Tree + Viewer */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <div className={`overflow-y-auto ${showInlineViewer ? 'max-h-[40%] border-b border-zinc-800/30' : 'flex-1'}`}>
-          {loading ? (
+        <div
+          className={`overflow-y-auto ${showInlineViewer ? 'max-h-[40%] border-b border-zinc-800/30' : 'flex-1'} ${dragOver ? 'ring-2 ring-inset ring-amber-500/50 bg-amber-500/5' : ''}`}
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+        >
+          {uploading ? (
+            <div className="p-3 text-xs text-amber-400">Uploading...</div>
+          ) : loading ? (
             <div className="p-3 text-xs text-zinc-600">Loading...</div>
           ) : items.length === 0 ? (
             <div className="p-3 text-xs text-zinc-600">Empty directory</div>
@@ -536,6 +586,13 @@ export function FileExplorer({ onClose, navigateTo }: Props) {
                 {openFile.truncated && <span className="text-[9px] text-amber-500">(truncated)</span>}
               </div>
               <div className="flex items-center gap-1">
+                <button
+                  onClick={() => openFile && downloadFile(openFile.path, openFile.name)}
+                  className="p-0.5 text-zinc-600 hover:text-zinc-300 transition-colors"
+                  title="Download file"
+                >
+                  <Download className="w-3 h-3" />
+                </button>
                 <button
                   onClick={popoutViewer}
                   className="p-0.5 text-zinc-600 hover:text-zinc-300 transition-colors"
