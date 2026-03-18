@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     console.log(`[Cortex Context] q="${query.slice(0, 60)}" → ${result.results.length} results from [${lobeNames}] (${result.timing.totalMs}ms)`);
 
     return NextResponse.json({
-      results: result.results.map(r => ({ ...r, vector: undefined })),
+      results: result.results.map((r: any) => ({ ...r, vector: undefined })),
       context: result.context,
       intent: result.intent,
       conflicts: result.conflicts,

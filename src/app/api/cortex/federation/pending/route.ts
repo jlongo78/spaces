@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const dummyVector = new Array(cortex.embedding.dimensions).fill(0);
     const allTeam = await cortex.store.search('team', dummyVector, 100);
     const pending = allTeam.filter(
-      u => u.metadata?.status === 'pending_review'
+      (u: any) => u.metadata?.status === 'pending_review'
     );
 
     return NextResponse.json({ units: pending, count: pending.length });

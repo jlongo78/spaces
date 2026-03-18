@@ -22,15 +22,15 @@ export async function GET(request: NextRequest) {
     const dummyVector = new Array(cortex.embedding.dimensions).fill(0);
     let results = await cortex.store.search(layerKey, dummyVector, limit * 2);
 
-    results = results.filter(r =>
+    results = results.filter((r: any) =>
       ['decision', 'pattern', 'error_fix', 'summary'].includes(r.type)
     );
 
     if (projectPath) {
-      results = results.filter(r => r.project_path === projectPath);
+      results = results.filter((r: any) => r.project_path === projectPath);
     }
 
-    results.sort((a, b) =>
+    results.sort((a: any, b: any) =>
       new Date(b.source_timestamp).getTime() - new Date(a.source_timestamp).getTime()
     );
 
