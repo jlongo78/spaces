@@ -63,15 +63,15 @@ export async function GET(request: NextRequest) {
     });
 
     const lobeNames = resolvedLobes?.map(l => l.label).join(', ') || 'all';
-    console.log(`[Cortex Context] q="${query.slice(0, 60)}" → ${result.results.length} results from [${lobeNames}] (${result.timing.totalMs}ms)`);
+    console.log(`[Cortex Context] q="${query.slice(0, 60)}" → ${result.results?.length ?? 0} results from [${lobeNames}] (${result.timing?.totalMs ?? '?'}ms)`);
 
     return NextResponse.json({
-      results: result.results.map((r: any) => ({ ...r, vector: undefined })),
-      context: result.context,
-      intent: result.intent,
-      conflicts: result.conflicts,
-      entities: result.entities,
-      sourceWeights: result.sourceWeights,
+      results: (result.results ?? []).map((r: any) => ({ ...r, vector: undefined })),
+      context: result.context ?? '',
+      intent: result.intent ?? null,
+      conflicts: result.conflicts ?? [],
+      entities: result.entities ?? [],
+      sourceWeights: result.sourceWeights ?? [],
       timing: result.timing,
     });
   });
