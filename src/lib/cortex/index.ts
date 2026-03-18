@@ -21,6 +21,27 @@ function loadAddon(): any {
       } catch {}
     }
     _checked = true;
+
+    // Initialize the host adapter if the addon was found and hasn't been set up yet
+    if (_cortex && !_cortex.hasHostAdapter()) {
+      try {
+        const auth = require('../auth');
+        const config = require('../config');
+        const db = require('../db/schema');
+        const tier = require('../tier');
+        _cortex.setHostAdapter({
+          getAuthUser: (req: any) => auth.getAuthUser(req),
+          withUser: (user: string, fn: () => any) => auth.withUser(user, fn),
+          getCurrentUser: () => auth.getCurrentUser(),
+          getUserPaths: (user: string) => config.getUserPaths(user),
+          getDb: () => db.getDb(),
+          hasCortex: () => tier.HAS_CORTEX,
+          isFederation: () => tier.IS_FEDERATION,
+        });
+      } catch {
+        // Host modules not available yet — fallback adapter handles it
+      }
+    }
   }
   return _cortex;
 }
