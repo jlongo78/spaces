@@ -304,7 +304,6 @@ export function EntityGraphView() {
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [loading, setLoading] = useState(true);
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
-  const [zoomLevel, setZoomLevel] = useState(1);
   const selectedRef = useRef<GraphNode | null>(null);
   const zoomRef = useRef(1);
   const hiddenRef = useRef<Set<string>>(new Set());
@@ -329,14 +328,14 @@ export function EntityGraphView() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Rebuild graph when data/filters/zoom change
-  const updateGraph = useCallback(() => {
+  // Update graph data in-place (no destroy/recreate)
+  const refreshGraphData = useCallback(() => {
     if (!graphRef.current) return;
     const { nodes, links } = buildClusteredGraph(allNodes, allLinks, hiddenRef.current, zoomRef.current);
     graphRef.current.graphData({ nodes, links });
   }, [allNodes, allLinks]);
 
-  // Build the force-graph
+  // Build the force-graph ONCE when data loads
   useEffect(() => {
     if (loading || !containerRef.current) return;
     if (graphRef.current) { graphRef.current._destructor?.(); graphRef.current = null; }
@@ -350,7 +349,7 @@ export function EntityGraphView() {
     import('force-graph').then(({ default: ForceGraph2D }) => {
       if (!containerRef.current) return;
 
-      const { nodes, links } = buildClusteredGraph(allNodes, allLinks, hiddenTypes, zoomLevel);
+      const { nodes, links } = buildClusteredGraph(allNodes, allLinks, hiddenTypes, 1);
       const builder = ForceGraph2D as unknown as () => (el: HTMLElement) => GraphInstance;
       const graph = builder()(containerRef.current)
         .graphData({ nodes, links })
@@ -370,10 +369,9 @@ export function EntityGraphView() {
         .linkWidth((link) => Math.max(0.3, Math.min(3, Math.sqrt(link.weight ?? 1) * 0.6)))
         .onNodeClick((node) => {
           if (node._cluster) {
-            // Zoom into cluster — show its children
-            setHiddenTypes(new Set()); // clear filters
+            // Expand this cluster type by zooming past threshold
             zoomRef.current = CLUSTER_ZOOM_THRESHOLD + 0.1;
-            setZoomLevel(zoomRef.current);
+            refreshGraphData();
           } else {
             setSelected(node);
           }
@@ -382,12 +380,12 @@ export function EntityGraphView() {
         .onZoom(({ k }) => {
           const prev = zoomRef.current;
           zoomRef.current = k;
-          // Only rebuild when crossing the cluster threshold
+          // When crossing the cluster threshold, update data in-place (no re-render)
           const crossedThreshold =
             (prev < CLUSTER_ZOOM_THRESHOLD && k >= CLUSTER_ZOOM_THRESHOLD) ||
             (prev >= CLUSTER_ZOOM_THRESHOLD && k < CLUSTER_ZOOM_THRESHOLD);
           if (crossedThreshold) {
-            setZoomLevel(k);
+            refreshGraphData();
           }
         });
 
@@ -397,7 +395,7 @@ export function EntityGraphView() {
 
     return () => { if (graphRef.current) { graphRef.current._destructor?.(); graphRef.current = null; } };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, allNodes, allLinks, hiddenTypes, zoomLevel]);
+  }, [loading, allNodes, allLinks]);
 
   const handleRecenter = useCallback(() => graphRef.current?.zoomToFit(400, 40), []);
   const handleClose = useCallback(() => setSelected(null), []);
@@ -409,6 +407,9 @@ export function EntityGraphView() {
       for (const t of types) {
         if (allHidden) next.delete(t); else next.add(t);
       }
+      hiddenRef.current = next;
+      // Update in-place, no graph rebuild
+      setTimeout(() => refreshGraphData(), 0);
       return next;
     });
   };
