@@ -3,6 +3,7 @@ import type { CortexStore } from '../store';
 import type { EmbeddingProvider } from '../embeddings';
 import type { KnowledgeUnit } from '../knowledge/types';
 import { PROMPTS, type DistillationPrompt } from './prompts';
+import { cortexDebug } from '../debug';
 
 export interface DistillationResult {
   unitsCreated: number;
@@ -24,6 +25,8 @@ export class Distiller {
     const result: DistillationResult = { unitsCreated: 0, errors: [] };
     if (chunkTexts.length === 0) return result;
 
+    cortexDebug(`[Distill] Starting ${Object.keys(PROMPTS).length} passes on ${chunkTexts.length} chunks → ${layerKey}`);
+
     for (const [name, prompt] of Object.entries(PROMPTS)) {
       try {
         const userMessage = prompt.userTemplate(chunkTexts);
@@ -31,9 +34,14 @@ export class Distiller {
 
         let extracted: any[];
         try {
-          extracted = JSON.parse(response);
+          // Strip markdown code fences if Haiku wraps response
+          let json = response.trim();
+          const fenceMatch = json.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+          if (fenceMatch) json = fenceMatch[1].trim();
+          extracted = JSON.parse(json);
           if (!Array.isArray(extracted)) extracted = [];
         } catch {
+          console.warn(`[Cortex Distill] ${name}: failed to parse JSON — response: ${response.slice(0, 120)}`);
           result.errors.push(`Failed to parse ${name} response as JSON`);
           continue;
         }
@@ -66,11 +74,15 @@ export class Distiller {
           await this.store.add(layerKey, unit);
           result.unitsCreated++;
         }
+
+        cortexDebug(`[Distill] ${name}: extracted ${extracted.length} items (${result.unitsCreated} stored)`);
       } catch (err) {
+        console.error(`[Cortex Distill] ${name}: error — ${err}`);
         result.errors.push(`Distillation ${name} failed: ${err}`);
       }
     }
 
+    console.log(`[Cortex Distill] Done: ${result.unitsCreated} units created, ${result.errors.length} errors`);
     return result;
   }
 }

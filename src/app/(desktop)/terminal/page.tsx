@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Loader2, Terminal, Search, MessageSquare, FolderOpen,
   Clock, ChevronDown, ChevronRight, Save, FolderInput, Trash2, Pencil, Check, X,
-  Layers, Copy, Home, XCircle, ArrowLeftToLine, Globe, AlertCircle, Users,
+  Layers, Copy, Home, XCircle, ArrowLeftToLine, Globe, AlertCircle, Users, Brain,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { TerminalPane } from '@/components/terminal/terminal-pane';
@@ -20,6 +20,8 @@ import { ActivityPanel } from '@/components/bus/activity-panel';
 import { useSSEBusEvents } from '@/hooks/use-sse';
 import { api } from '@/lib/api';
 import { track } from '@/lib/telemetry';
+import { LobeSettings } from '@/components/cortex/lobe-settings';
+import { FileExplorer } from '@/components/files/file-explorer';
 import { useTier } from '@/hooks/use-tier';
 
 export default function TerminalPage() {
@@ -32,7 +34,7 @@ export default function TerminalPage() {
 
 function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   const router = useRouter();
-  const { basePath, hasNetwork, hasCollaboration } = useTier();
+  const { basePath, hasNetwork, hasCollaboration, hasCortex } = useTier();
   const [panes, setPanes] = useState<PaneData[]>([]);
   const [loading, setLoading] = useState(true);
   const [wsLoading, setWsLoading] = useState(true);
@@ -54,6 +56,14 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   const [saveAsColor, setSaveAsColor] = useState('#6366f1');
   const [editingWs, setEditingWs] = useState<number | null>(null);
   const [editWsName, setEditWsName] = useState('');
+  const [lobeOpenWs, setLobeOpenWs] = useState<number | null>(null);
+  const [showFiles, setShowFiles] = useState(false);
+  const [browseTarget, setBrowseTarget] = useState<string | null>(null);
+
+  const handleBrowse = useCallback((cwd: string) => {
+    setBrowseTarget(cwd);
+    setShowFiles(true);
+  }, []);
 
   // New pane form state
   const [newTitle, setNewTitle] = useState('');
@@ -442,24 +452,46 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
               <>
                 <div className="grid grid-cols-2 gap-3 mb-6">
                   {workspaces.map((ws) => (
-                    <button
+                    <div
                       key={ws.id}
-                      onClick={() => switchWorkspace(ws.id)}
-                      className="flex items-center gap-3 p-4 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-zinc-600 hover:bg-zinc-800/50 transition-colors text-left group"
+                      className={`relative bg-zinc-900 border rounded-lg transition-all ${
+                        lobeOpenWs === ws.id ? 'border-zinc-600' : 'border-zinc-800 hover:border-zinc-600 hover:bg-zinc-800/50'
+                      }`}
                     >
-                      <span
-                        className="w-3.5 h-3.5 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: ws.color }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-white truncate">{ws.name}</div>
-                        <div className="text-xs text-zinc-500 mt-0.5">
-                          {ws.paneCount || 0} pane{(ws.paneCount || 0) !== 1 ? 's' : ''}
-                          {ws.isActive && <span className="text-indigo-400 ml-2">last active</span>}
+                      <button
+                        onClick={() => switchWorkspace(ws.id)}
+                        className="flex items-center gap-3 p-4 text-left w-full group"
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: ws.color }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-white truncate">{ws.name}</div>
+                          <div className="text-xs text-zinc-500 mt-0.5">
+                            {ws.paneCount || 0} pane{(ws.paneCount || 0) !== 1 ? 's' : ''}
+                            {ws.isActive && <span className="text-indigo-400 ml-2">last active</span>}
+                          </div>
                         </div>
-                      </div>
-                      <Terminal className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-                    </button>
+                        <Terminal className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                      </button>
+                      {hasCortex && (
+                        <button
+                          onClick={() => setLobeOpenWs(lobeOpenWs === ws.id ? null : ws.id)}
+                          className={`absolute top-2 right-2 p-1 rounded transition-colors ${
+                            lobeOpenWs === ws.id ? 'text-purple-400 bg-purple-500/10' : 'text-zinc-700 hover:text-zinc-400'
+                          }`}
+                          title="Knowledge lobe settings"
+                        >
+                          <Brain className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {lobeOpenWs === ws.id && (
+                        <div className="px-4 pb-4 border-t border-zinc-800/50 pt-3">
+                          <LobeSettings workspaceId={ws.id} workspaceName={ws.name} />
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
 
@@ -680,6 +712,18 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowFiles(!showFiles)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border transition-colors ${
+              showFiles
+                ? 'border-amber-500/50 bg-amber-600/20 text-amber-400'
+                : 'border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
+            }`}
+            title={showFiles ? 'Hide file explorer' : 'Show file explorer'}
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            Files
+          </button>
           {hasCollaboration && activeWorkspace && (
             <button
               onClick={async () => {
@@ -1024,8 +1068,16 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
         </div>
       )}
 
-      {/* Terminal grid + Activity Panel */}
+      {/* File Explorer + Terminal grid + Activity Panel */}
       <div className="flex-1 flex overflow-hidden min-h-0">
+        {showFiles && (
+          <div className="w-64 flex-shrink-0">
+            <FileExplorer
+              onClose={() => setShowFiles(false)}
+              navigateTo={browseTarget}
+            />
+          </div>
+        )}
         {visiblePanes.length === 0 && poppedOut.size === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center space-y-3">
@@ -1077,6 +1129,7 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
                   isMaximized={maximized === pane.id}
                   onToggleMaximize={toggleMaximize}
                   onPopout={handlePopout}
+                  onBrowse={handleBrowse}
                   terminalToken={terminalToken}
                   workspaceCollaboration={activeWorkspace?.collaboration}
                 />

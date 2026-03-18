@@ -11,6 +11,7 @@ export interface TierFlags {
   hasNetwork: boolean;
   hasMultiuser: boolean;
   hasCortex: boolean;
+  cortexTierEnabled: boolean;
   isDesktop: boolean;
   basePath: string;
   loading: boolean;
@@ -25,6 +26,7 @@ const defaults: TierFlags = {
   hasNetwork: false,
   hasMultiuser: false,
   hasCortex: false,
+  cortexTierEnabled: false,
   isDesktop: true,
   basePath: '',
   loading: false,

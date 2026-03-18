@@ -6,7 +6,7 @@ export interface DistillationPrompt {
   outputType: KnowledgeType;
 }
 
-const EXTRACTION_SYSTEM = `You are a knowledge extraction system. Analyze conversation chunks and extract structured knowledge units. Return JSON arrays only.`;
+const EXTRACTION_SYSTEM = `You are a knowledge extraction system. Analyze conversation chunks and extract structured knowledge units. You MUST respond with ONLY a raw JSON array — no markdown, no code fences, no explanation. If nothing is found, respond with exactly: []`;
 
 export const PROMPTS: Record<string, DistillationPrompt> = {
   decisions: {

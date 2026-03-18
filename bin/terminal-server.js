@@ -14,6 +14,24 @@ const SPACES_TIER = process.env.SPACES_TIER || 'community';
 // In attached mode, createTerminalServer() updates this to the parent server's port.
 let API_PORT = parseInt(process.env.SPACES_PORT || '3457', 10);
 
+// Track whether the Next.js API is ready — avoids timeout spam during startup
+let _apiReady = false;
+function setApiReady() { _apiReady = true; }
+function isApiReady() { return _apiReady; }
+// Poll until the API responds, then mark ready
+function waitForApi() {
+  const check = () => {
+    const req = http.get(`http://localhost:${API_PORT}/api/tier`, { timeout: 1000 }, (res) => {
+      res.resume(); // consume body to free socket
+      if (res.statusCode < 500) { setApiReady(); return; }
+      setTimeout(check, 2000);
+    });
+    req.on('error', () => setTimeout(check, 2000));
+    req.on('timeout', () => { req.destroy(); setTimeout(check, 2000); });
+  };
+  setTimeout(check, 1000);
+}
+
 // ─── Terminal token verification ──────────────────────────
 
 const SECRET_PATH = path.join(os.homedir(), '.spaces', 'terminal_secret');
@@ -465,6 +483,49 @@ const AGENTS = {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+// ─── Remove Cortex hooks from Claude Code config ─────────
+function removeCortexHookConfig(cwd) {
+  try {
+    const settingsPath = path.join(cwd, '.claude', 'settings.local.json');
+    if (!fs.existsSync(settingsPath)) return;
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    let changed = false;
+
+    // Remove cortex hooks from UserPromptSubmit and Stop
+    if (settings.hooks?.UserPromptSubmit) {
+      settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
+        (g) => !g.hooks?.some((h) => h.command?.includes('cortex-hook'))
+      );
+      if (settings.hooks.UserPromptSubmit.length === 0) delete settings.hooks.UserPromptSubmit;
+      changed = true;
+    }
+    if (settings.hooks?.Stop) {
+      settings.hooks.Stop = settings.hooks.Stop.filter(
+        (g) => !g.hooks?.some((h) => h.command?.includes('cortex-learn-hook'))
+      );
+      if (settings.hooks.Stop.length === 0) delete settings.hooks.Stop;
+      changed = true;
+    }
+
+    // Remove cortex MCP server
+    if (settings.mcpServers?.cortex) {
+      delete settings.mcpServers.cortex;
+      changed = true;
+    }
+
+    if (changed) {
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+      console.log(`[Cortex] Removed hooks and MCP server from ${settingsPath}`);
+    }
+
+    // Remove spaces-env.json
+    const envFile = path.join(cwd, '.claude', 'spaces-env.json');
+    if (fs.existsSync(envFile)) fs.unlinkSync(envFile);
+  } catch (err) {
+    console.error(`[Cortex] Failed to remove hook config:`, err.message);
+  }
+}
+
 // ─── Cortex Claude Code hook config ──────────────────────
 // Write a UserPromptSubmit hook into .claude/settings.local.json
 // so every prompt gets a RAG search before Claude sees it.
@@ -486,14 +547,18 @@ function writeCortexHookConfig(cwd) {
     // Merge — don't clobber existing hooks for other events
     if (!settings.hooks) settings.hooks = {};
 
+    // Bake env vars into hook commands so they're always available
+    // (Claude Code hook subprocesses may not inherit the PTY env)
+    const hookEnv = `SPACES_PORT=${API_PORT} SPACES_SESSION_SECRET="${process.env.SPACES_SESSION_SECRET || ''}"`;
+
     // RAG search: runs on every prompt, injects relevant context
     settings.hooks.UserPromptSubmit = [
       {
         hooks: [
           {
             type: 'command',
-            command: `node "${ragHook}"`,
-            timeout: 10,
+            command: `${hookEnv} node "${ragHook}"`,
+            timeout: 5,
           },
         ],
       },
@@ -505,8 +570,8 @@ function writeCortexHookConfig(cwd) {
         hooks: [
           {
             type: 'command',
-            command: `node "${learnHook}"`,
-            timeout: 15,
+            command: `${hookEnv} node "${learnHook}"`,
+            timeout: 10,
           },
         ],
       },
@@ -535,7 +600,18 @@ function writeCortexHookConfig(cwd) {
 // Fetch relevant knowledge from Cortex API and write a context file
 // in the workspace before the agent launches.
 async function injectCortexContext(cwd, workspaceId, ws) {
+  if (!isApiReady()) return 0;
   if (SPACES_TIER !== 'team' && SPACES_TIER !== 'federation') return 0;
+  // Check if Cortex is actually enabled in user config
+  try {
+    const configPath = path.join(os.homedir(), '.spaces', 'config.json');
+    if (fs.existsSync(configPath)) {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (!cfg.cortex?.enabled) return 0;
+    } else {
+      return 0;
+    }
+  } catch { return 0; }
   try {
     const projectName = path.basename(cwd);
     const query = encodeURIComponent(`${projectName} workspace context`);
@@ -864,10 +940,8 @@ function handleConnection(wss, ws, req) {
 
     ws.send(JSON.stringify({ type: 'ready', paneId, reattached: true }));
 
-    // Send Cortex injection data on reattach so badge updates
-    if (existing.agentType !== 'shell') {
-      injectCortexContext(existing.cwd, existing.workspaceId, ws).catch(() => {});
-    }
+    // Skip Cortex injection on reattach — context was already injected at spawn.
+    // The badge polls /api/cortex/status independently.
 
     ws.on('message', (raw) => {
       try {
@@ -943,6 +1017,8 @@ function handleConnection(wss, ws, req) {
 
   const env = { ...process.env };
   delete env.CLAUDECODE;
+  // Enable prompt suggestions in spawned Claude Code sessions
+  env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION = 'true';
   // Tell Claude Code where git-bash is so it doesn't fail the bash detection
   if (isWindows && shell && shell.endsWith('bash.exe') && !env.CLAUDE_CODE_GIT_BASH_PATH) {
     env.CLAUDE_CODE_GIT_BASH_PATH = shell;
@@ -988,7 +1064,31 @@ function handleConnection(wss, ws, req) {
         const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         cortexEnabled = cfg.cortex?.enabled === true;
       }
-      if (cortexEnabled) writeCortexHookConfig(safeCwd);
+      if (!cortexEnabled) {
+        removeCortexHookConfig(safeCwd);
+      } else {
+        writeCortexHookConfig(safeCwd);
+        // Resolve workspace ID: from collab config, or look up from pane DB
+        let wsId = env.SPACES_WORKSPACE_ID || null;
+        if (!wsId) {
+          try {
+            const Database = require('better-sqlite3');
+            const spacesDb = new Database(path.join(getUserHome(username), '.spaces', 'spaces.db'), { readonly: true });
+            const row = spacesDb.prepare('SELECT workspace_id FROM panes WHERE id = ?').get(paneId);
+            if (row && row.workspace_id) wsId = String(row.workspace_id);
+            spacesDb.close();
+          } catch { /* non-fatal */ }
+        }
+        if (wsId) env.SPACES_WORKSPACE_ID = wsId;
+        // Write workspace ID for hooks to read (they can't inherit PTY env)
+        try {
+          const envFile = path.join(safeCwd, '.claude', 'spaces-env.json');
+          fs.writeFileSync(envFile, JSON.stringify({
+            workspaceId: wsId,
+            port: API_PORT,
+          }), 'utf-8');
+        } catch { /* non-fatal */ }
+      }
     } catch (e) {
       console.error('[Cortex] Config check failed (non-fatal):', e.message);
     }
@@ -1471,8 +1571,9 @@ function createTerminalServer(httpServer) {
   // In attached mode, the API is served by the parent HTTP server, not on PORT (3458).
   if (httpServer.listening) {
     API_PORT = httpServer.address().port;
+    waitForApi();
   } else {
-    httpServer.on('listening', () => { API_PORT = httpServer.address().port; });
+    httpServer.on('listening', () => { API_PORT = httpServer.address().port; waitForApi(); });
   }
 
   const wss = new WebSocketServer({ noServer: true });

@@ -12,23 +12,19 @@ export function layerToScope(layer: Layer, workspaceId?: number | null, userId?:
 }
 
 export function scopeToLayer(scope: Scope): Layer {
-  switch (scope.level) {
-    case 'personal': return 'personal';
-    case 'team': return 'workspace';
-    case 'department':
-    case 'organization': return 'team';
-  }
+  const level = scope.level as string;
+  if (level === 'personal') return 'personal';
+  if (level === 'workspace' || level === 'team') return 'workspace';
+  if (level === 'department' || level === 'organization') return 'team';
+  return 'personal';
 }
 
 export function scopeToLayerKey(scope: Scope, workspaceId?: number | null): string {
-  switch (scope.level) {
-    case 'personal': return 'personal';
-    case 'team':
-      return workspaceId ? `workspace/${workspaceId}` : 'team';
-    case 'department':
-    case 'organization':
-      return 'team';
-  }
+  const level = scope.level as string;
+  if (level === 'personal') return 'personal';
+  if (level === 'workspace' || level === 'team') return workspaceId ? `workspace/${workspaceId}` : 'workspace';
+  if (level === 'department' || level === 'organization') return 'team';
+  return workspaceId ? `workspace/${workspaceId}` : 'personal';
 }
 
 export function layerKeyToScope(layerKey: string, userId?: string): Scope {

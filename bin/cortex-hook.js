@@ -5,6 +5,25 @@
 'use strict';
 
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+function readSpacesEnv() {
+  const candidates = [
+    path.join(process.cwd(), '.claude', 'spaces-env.json'),
+  ];
+  if (process.env.CLAUDE_PROJECT_DIR) {
+    candidates.unshift(path.join(process.env.CLAUDE_PROJECT_DIR, '.claude', 'spaces-env.json'));
+  }
+  for (const envFile of candidates) {
+    try {
+      if (fs.existsSync(envFile)) {
+        return JSON.parse(fs.readFileSync(envFile, 'utf-8'));
+      }
+    } catch { /* */ }
+  }
+  return {};
+}
 
 async function main() {
   // Read stdin
@@ -14,18 +33,22 @@ async function main() {
 
   const prompt = input.prompt || '';
   if (prompt.length < 10) process.exit(0);
-
+  const spacesEnv = readSpacesEnv();
   const apiPort = process.env.SPACES_PORT || '3457';
   const secret = process.env.SPACES_SESSION_SECRET || '';
   const internalToken = secret.slice(0, 16);
+  const workspaceId = process.env.SPACES_WORKSPACE_ID || spacesEnv.workspaceId || '';
+  process.stderr.write(`[Cortex RAG] Query: ${prompt.slice(0, 80)}...\n`);
+  process.stderr.write(`[Cortex RAG] env: port=${apiPort} ws=${workspaceId || 'NONE'} token=${internalToken ? internalToken.slice(0,4) + '...' : 'EMPTY'}\n`);
   const query = encodeURIComponent(prompt);
-  const url = `http://localhost:${apiPort}/api/cortex/context/?q=${query}&limit=5`;
+  const wsParam = workspaceId ? `&workspace_id=${workspaceId}` : '';
+  const url = `http://localhost:${apiPort}/api/cortex/context/?q=${query}&limit=5${wsParam}`;
 
   let body;
   try {
     body = await new Promise((resolve, reject) => {
       const options = {
-        timeout: 5000,
+        timeout: 3000,
         headers: { 'x-spaces-internal': internalToken },
       };
       const req = http.get(url, options, (res) => {
@@ -48,7 +71,8 @@ async function main() {
       req.on('error', reject);
       req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
     });
-  } catch {
+  } catch (err) {
+    process.stderr.write(`[Cortex RAG] Failed: ${err.message || err}\n`);
     process.exit(0); // Cortex unavailable, don't block the prompt
   }
 
@@ -56,6 +80,13 @@ async function main() {
 
   // New primary path: context assembly endpoint returns pre-formatted context
   if (parsed.context) {
+    const ctxLines = parsed.context.split('\n').filter(l => l.trim()).length;
+    process.stderr.write(`[Cortex RAG] Retrieved ${parsed.results?.length || 0} results, ${ctxLines} context lines (${parsed.timing?.totalMs || '?'}ms)\n`);
+    if (parsed.results) {
+      for (const r of parsed.results.slice(0, 3)) {
+        process.stderr.write(`[Cortex RAG]   → [${r.type}] ${r.text.slice(0, 60)}...\n`);
+      }
+    }
     const output = JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'UserPromptSubmit',
@@ -68,7 +99,11 @@ async function main() {
 
   // Fallback: old-style formatting from parsed.results (backward compat)
   const results = parsed.results;
-  if (!results || results.length === 0) process.exit(0);
+  if (!results || results.length === 0) {
+    process.stderr.write(`[Cortex RAG] No results found\n`);
+    process.exit(0);
+  }
+  process.stderr.write(`[Cortex RAG] Retrieved ${results.length} results (fallback path)\n`);
 
   // Format results
   const TYPE_LABELS = {

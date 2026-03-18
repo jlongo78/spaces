@@ -7,6 +7,29 @@
 const http = require('http');
 const fs = require('fs');
 const readline = require('readline');
+const path = require('path');
+
+function readSpacesEnv() {
+  // Try multiple locations — CWD, home dir, and common project paths
+  const candidates = [
+    path.join(process.cwd(), '.claude', 'spaces-env.json'),
+  ];
+  // Also check CLAUDE_PROJECT_DIR if set
+  if (process.env.CLAUDE_PROJECT_DIR) {
+    candidates.unshift(path.join(process.env.CLAUDE_PROJECT_DIR, '.claude', 'spaces-env.json'));
+  }
+  for (const envFile of candidates) {
+    try {
+      if (fs.existsSync(envFile)) {
+        const data = JSON.parse(fs.readFileSync(envFile, 'utf-8'));
+        process.stderr.write(`[Cortex Learn] Read env from ${envFile}: ws=${data.workspaceId}\n`);
+        return data;
+      }
+    } catch { /* */ }
+  }
+  process.stderr.write(`[Cortex Learn] No spaces-env.json found (cwd=${process.cwd()})\n`);
+  return {};
+}
 
 async function main() {
   // Read stdin for hook input
@@ -14,11 +37,19 @@ async function main() {
   for await (const chunk of process.stdin) chunks.push(chunk);
   const input = JSON.parse(Buffer.concat(chunks).toString());
 
-  const transcriptPath = input.transcript_path;
-  if (!transcriptPath || !fs.existsSync(transcriptPath)) process.exit(0);
+  process.stderr.write(`[Cortex Learn] Hook fired. stdin keys: ${Object.keys(input).join(', ')}\n`);
+
+  const transcriptPath = input.transcript_path || input.transcriptPath;
+  if (!transcriptPath) {
+    process.stderr.write(`[Cortex Learn] No transcript_path in input: ${JSON.stringify(input).slice(0, 200)}\n`);
+    process.exit(0);
+  }
+  if (!fs.existsSync(transcriptPath)) {
+    process.stderr.write(`[Cortex Learn] Transcript not found: ${transcriptPath}\n`);
+    process.exit(0);
+  }
 
   // Derive a session ID from the transcript filename (strip directory and extension)
-  const path = require('path');
   const sessionId = path.basename(transcriptPath, path.extname(transcriptPath));
 
   // Read the last few lines of the transcript to find the last Q&A exchange
@@ -28,7 +59,8 @@ async function main() {
     process.exit(0);
   }
 
-  process.stderr.write(`[Cortex Learn] Q: ${lastExchange.question.slice(0, 60)} | A: ${lastExchange.answer.length} chars\n`);
+  process.stderr.write(`[Cortex Learn] Q: ${lastExchange.question.slice(0, 80)}\n`);
+  process.stderr.write(`[Cortex Learn] A: ${lastExchange.answer.length} chars\n`);
 
   // Skip trivial exchanges (very short answers aren't worth learning)
   if (lastExchange.answer.length < 100) {
@@ -36,8 +68,16 @@ async function main() {
     process.exit(0);
   }
 
+  // Env vars for API access and workspace scoping
+  const spacesEnv = readSpacesEnv();
+  const apiPort = process.env.SPACES_PORT || '3457';
+  const secret = process.env.SPACES_SESSION_SECRET || '';
+  const internalToken = secret.slice(0, 16);
+  const workspaceId = process.env.SPACES_WORKSPACE_ID || spacesEnv.workspaceId || '';
+
   // Classify the exchange type with simple heuristics
   const knowledgeType = classifyExchange(lastExchange.question, lastExchange.answer);
+  process.stderr.write(`[Cortex Learn] Type: ${knowledgeType} | Layer: ${workspaceId ? 'workspace:' + workspaceId : 'personal'}\n`);
 
   // Condense the answer: take the first ~500 chars which usually contain
   // the key insight, plus the question for context
@@ -45,26 +85,27 @@ async function main() {
     ? lastExchange.answer.slice(0, 500) + '...'
     : lastExchange.answer;
 
-  // Store TWO entries for better search matching:
-  // 1. Short question-focused entry (embeds well for similarity search)
-  // 2. Full Q&A entry with the substantive answer
-  const apiPort = process.env.SPACES_PORT || '3457';
-  const secret = process.env.SPACES_SESSION_SECRET || '';
-  const internalToken = secret.slice(0, 16);
+  // Store in workspace layer if we know the workspace, otherwise personal
+  const layer = workspaceId ? 'workspace' : 'personal';
+  const scope = workspaceId
+    ? { level: 'workspace', entity_id: `workspace-${workspaceId}` }
+    : { level: 'personal', entity_id: 'person-default-user' };
 
   const questionEntry = JSON.stringify({
     text: lastExchange.question,
     type: 'context',
-    layer: 'personal',
-    scope: { level: 'personal', entity_id: 'person-default-user' },
+    layer,
+    scope,
+    workspace_id: workspaceId || undefined,
     origin: { source_type: 'conversation', source_ref: sessionId, creator_entity_id: 'person-default-user' },
   });
 
   const answerEntry = JSON.stringify({
     text: `${lastExchange.question}\n\n${condensedAnswer}`,
     type: knowledgeType,
-    layer: 'personal',
-    scope: { level: 'personal', entity_id: 'person-default-user' },
+    layer,
+    scope,
+    workspace_id: workspaceId || undefined,
     origin: { source_type: 'conversation', source_ref: sessionId, creator_entity_id: 'person-default-user' },
   });
 
@@ -73,7 +114,7 @@ async function main() {
       postToApi(apiPort, internalToken, '/api/cortex/knowledge/', questionEntry),
       postToApi(apiPort, internalToken, '/api/cortex/knowledge/', answerEntry),
     ]);
-    process.stderr.write(`[Cortex Learn] Ingested ${knowledgeType}: ${lastExchange.question.slice(0, 60)}\n`);
+    process.stderr.write(`[Cortex Learn] ✓ Stored 2 entries (question + answer) as ${knowledgeType}\n`);
   } catch (err) {
     process.stderr.write(`[Cortex Learn] Failed: ${err.message}\n`);
   }
@@ -219,4 +260,7 @@ function postToApi(port, token, apiPath, body) {
   });
 }
 
-main().catch(() => process.exit(0));
+main().catch((err) => {
+  process.stderr.write(`[Cortex Learn] FATAL: ${err.message || err}\n`);
+  process.exit(0);
+});

@@ -3,6 +3,7 @@ import * as arrow from 'apache-arrow';
 import path from 'path';
 import fs from 'fs';
 import type { KnowledgeUnit, Layer } from './knowledge/types';
+import { cortexDebug } from './debug';
 
 const TABLE_NAME = 'knowledge';
 
@@ -46,7 +47,9 @@ function buildSchema(dimensions: number): arrow.Schema {
 export class CortexStore {
   private baseDir: string;
   private connections = new Map<string, lancedb.Connection>();
+  private tables = new Map<string, any>();
   private dimensions: number = 384;
+  private opCount = 0;
 
   constructor(baseDir: string) {
     this.baseDir = baseDir;
@@ -73,6 +76,17 @@ export class CortexStore {
       this.connections.set(layerPath, conn);
     }
     return this.connections.get(layerPath)!;
+  }
+
+  private async getTable(layerKey: string): Promise<any | null> {
+    const cacheKey = layerKey + '/' + TABLE_NAME;
+    if (this.tables.has(cacheKey)) return this.tables.get(cacheKey)!;
+    const conn = await this.getConnection(layerKey);
+    const tableNames = await conn.tableNames();
+    if (!tableNames.includes(TABLE_NAME)) return null;
+    const table = await conn.openTable(TABLE_NAME);
+    this.tables.set(cacheKey, table);
+    return table;
   }
 
   /** Resolve layer path: 'personal' or 'workspace/123' or 'team'. */
@@ -117,16 +131,33 @@ export class CortexStore {
 
   async add(layerKey: string, unit: KnowledgeUnit): Promise<void> {
     const conn = await this.getConnection(layerKey);
-    const tableNames = await conn.tableNames();
     const record = this.unitToRecord(unit);
 
-    if (tableNames.includes(TABLE_NAME)) {
-      const table = await conn.openTable(TABLE_NAME);
-      await table.add([record]);
+    let table = await this.getTable(layerKey);
+    if (table) {
+      try {
+        await table.add([record]);
+      } catch (err: unknown) {
+        // If table has old schema missing v2 fields, strip them and retry
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('not in schema')) {
+          const tableSchema = typeof table.schema === 'function' ? await table.schema() : await table.schema;
+          const fieldNames = new Set((tableSchema as any).fields.map((f: { name: string }) => f.name));
+          const filtered = Object.fromEntries(
+            Object.entries(record).filter(([k]) => fieldNames.has(k))
+          );
+          await table.add([filtered]);
+        } else {
+          throw err;
+        }
+      }
     } else {
       const schema = buildSchema(this.dimensions);
       const arrowTable = lancedb.makeArrowTable([record], { schema });
       await conn.createTable(TABLE_NAME, arrowTable);
+      // Cache the newly created table
+      const cacheKey = layerKey + '/' + TABLE_NAME;
+      this.tables.set(cacheKey, await conn.openTable(TABLE_NAME));
     }
   }
 
@@ -136,16 +167,21 @@ export class CortexStore {
     limit: number,
     filter?: string,
   ): Promise<KnowledgeUnit[]> {
-    const conn = await this.getConnection(layerKey);
-    const tableNames = await conn.tableNames();
-    if (!tableNames.includes(TABLE_NAME)) return [];
-
-    const table = await conn.openTable(TABLE_NAME);
+    const before = process.memoryUsage();
+    const table = await this.getTable(layerKey);
+    if (!table) return [];
     let query = table.vectorSearch(queryVector).limit(limit);
     if (filter) {
       query = query.where(filter);
     }
     const rows = await query.toArray();
+    this.opCount++;
+    const after = process.memoryUsage();
+    const deltaHeap = Math.round((after.heapUsed - before.heapUsed) / 1048576);
+    const deltaExt = Math.round(((after.external || 0) - (before.external || 0)) / 1048576);
+    if (deltaHeap > 10 || deltaExt > 10 || this.opCount % 100 === 0) {
+      cortexDebug(`[LanceDB] search ${layerKey} (op#${this.opCount}): heap=${deltaHeap > 0 ? '+' : ''}${deltaHeap}MB ext=${deltaExt > 0 ? '+' : ''}${deltaExt}MB conns=${this.connections.size}`);
+    }
 
     return rows.map((row: any) => ({
       ...row,
@@ -166,11 +202,8 @@ export class CortexStore {
   }
 
   async browse(layerKey: string, limit: number): Promise<KnowledgeUnit[]> {
-    const conn = await this.getConnection(layerKey);
-    const tableNames = await conn.tableNames();
-    if (!tableNames.includes(TABLE_NAME)) return [];
-
-    const table = await conn.openTable(TABLE_NAME);
+    const table = await this.getTable(layerKey);
+    if (!table) return [];
     const rows = await table.query().limit(limit).toArray();
 
     return rows.map((row: any) => ({
@@ -192,22 +225,16 @@ export class CortexStore {
   }
 
   async delete(layerKey: string, id: string): Promise<void> {
-    const conn = await this.getConnection(layerKey);
-    const tableNames = await conn.tableNames();
-    if (!tableNames.includes(TABLE_NAME)) return;
-
-    const table = await conn.openTable(TABLE_NAME);
+    const table = await this.getTable(layerKey);
+    if (!table) return;
     // Sanitize id to prevent filter injection (LanceDB uses string filters)
     const safeId = id.replace(/'/g, "''");
     await table.delete(`id = '${safeId}'`);
   }
 
   async updateAccessCount(layerKey: string, id: string): Promise<void> {
-    const conn = await this.getConnection(layerKey);
-    const tableNames = await conn.tableNames();
-    if (!tableNames.includes(TABLE_NAME)) return;
-
-    const table = await conn.openTable(TABLE_NAME);
+    const table = await this.getTable(layerKey);
+    if (!table) return;
     const safeId = id.replace(/'/g, "''");
     // LanceDB doesn't support UPDATE; delete + re-add with bumped count
     // Use query().where() instead of vectorSearch to avoid dimension dependency
@@ -275,5 +302,6 @@ export class CortexStore {
     // clearing the map releases our references so GC can collect them.
     // If lancedb adds an explicit close() in future, call it here.
     this.connections.clear();
+    this.tables.clear();
   }
 }

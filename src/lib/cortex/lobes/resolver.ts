@@ -37,7 +37,7 @@ export function resolveLobes(input: ResolveInput): ResolvedLobe[] {
   const own = allWorkspaces.find((w) => w.id === workspaceId);
   if (own) {
     add({
-      layerKey: `workspace:${workspaceId}`,
+      layerKey: `workspace/${workspaceId}`,
       label: own.name,
       type: 'own',
       id: String(workspaceId),
@@ -46,13 +46,12 @@ export function resolveLobes(input: ResolveInput): ResolvedLobe[] {
     });
   }
 
-  // 2. Personal lobe (weight 0.9)
-  const personalId = userId ?? 'personal';
+  // 2. Personal lobe (weight 0.9) — include legacy 'personal' key for backward compat
   add({
-    layerKey: `user:${personalId}`,
+    layerKey: 'personal',
     label: 'Personal',
     type: 'personal',
-    id: personalId,
+    id: userId ?? 'personal',
     baseWeight: 0.9,
     inherited: false,
   });
@@ -63,7 +62,7 @@ export function resolveLobes(input: ResolveInput): ResolvedLobe[] {
     if (ws.lobeConfig.isPrivate) continue;
     if (ws.lobeConfig.excludedFrom.includes(workspaceId)) continue;
     add({
-      layerKey: `workspace:${ws.id}`,
+      layerKey: `workspace/${ws.id}`,
       label: ws.name,
       type: 'workspace',
       id: String(ws.id),
@@ -72,9 +71,19 @@ export function resolveLobes(input: ResolveInput): ResolvedLobe[] {
     });
   }
 
+  // 3b. Legacy 'workspace' layer (pre-lobe data from bootstrap, weight 0.5)
+  add({
+    layerKey: 'workspace',
+    label: 'Workspace (legacy)',
+    type: 'workspace',
+    id: 'legacy',
+    baseWeight: 0.5,
+    inherited: true,
+  });
+
   // 4. Team lobe (weight 0.5)
   add({
-    layerKey: 'team:default',
+    layerKey: 'team/default',
     label: 'Team',
     type: 'team',
     id: 'default',
@@ -85,7 +94,7 @@ export function resolveLobes(input: ResolveInput): ResolvedLobe[] {
   // 5. Explicit subscriptions from config (weight 0.4)
   if (own) {
     for (const sub of own.lobeConfig.subscriptions) {
-      const layerKey = `${sub.type}:${sub.id}`;
+      const layerKey = `${sub.type}/${sub.id}`;
       add({
         layerKey,
         label: sub.label,

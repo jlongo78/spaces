@@ -11,6 +11,8 @@ import { Distiller } from './distillation/distiller';
 import { DistillationScheduler } from './distillation/scheduler';
 import { DistillationQueue } from './distillation/queue';
 import { createCallLLM } from './distillation/llm';
+import { recordUsage } from './distillation/usage-store';
+import { setCortexDebug, cortexDebug } from './debug';
 import { EntityGraph } from './graph/entity-graph';
 import { ContextEngine } from './retrieval/context-engine';
 import { EntityResolver } from './graph/resolver';
@@ -36,7 +38,18 @@ export interface CortexInstance {
 }
 
 export function isCortexAvailable(): boolean {
-  return HAS_CORTEX;
+  if (!HAS_CORTEX) return false;
+  // If already initialized, it's available
+  if (_instance) return true;
+  // Check the config
+  try {
+    const username = getCurrentUser();
+    const { configPath } = getUserPaths(username);
+    const config = readCortexConfig(configPath);
+    return config.enabled === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function getCortex(): Promise<CortexInstance | null> {
@@ -47,6 +60,7 @@ export async function getCortex(): Promise<CortexInstance | null> {
   const username = getCurrentUser();
   const { spacesDir, configPath } = getUserPaths(username);
   const config = readCortexConfig(configPath);
+  setCortexDebug(config.debug ?? false);
 
   if (!config.enabled) return null;
 
@@ -106,12 +120,19 @@ export async function getCortex(): Promise<CortexInstance | null> {
   let distillScheduler: DistillationScheduler | undefined;
 
   if (config.ingestion.distillation) {
-    const callLLM = createCallLLM();
+    const usagePath = path.join(cortexDir, 'usage.json');
+    const llmKeys = {
+      anthropic: config.anthropic_api_key,
+      openai: config.openai_api_key,
+    };
+    const callLLM = createCallLLM((usage) => recordUsage(usagePath, usage), llmKeys);
     if (callLLM) {
       distillQueue = new DistillationQueue(cortexDir);
       const distiller = new Distiller(store, embedding, callLLM);
 
+      console.log('[Cortex] Distillation pipeline ready (Haiku)');
       distillScheduler = new DistillationScheduler(async (chunkIds) => {
+        cortexDebug(`[Distill] Scheduler firing: ${chunkIds.length} chunk(s) queued`);
         const entries = distillQueue!.getEntries(chunkIds);
         if (entries.length === 0) return;
 
@@ -175,6 +196,9 @@ export function resetCortex(): void {
   }
   if (_instance?.graph) {
     _instance.graph.close();
+  }
+  if (_instance?.store) {
+    _instance.store.close();
   }
   _instance = null;
 }

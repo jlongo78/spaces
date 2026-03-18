@@ -3,6 +3,9 @@ import type { Policy } from './boundary/policy';
 
 export interface CortexConfig {
   enabled: boolean;
+  debug: boolean;
+  anthropic_api_key?: string;
+  openai_api_key?: string;
   embedding: {
     provider: 'auto' | 'voyage' | 'openai' | 'local';
     model: string | null;
@@ -45,8 +48,11 @@ export interface CortexConfig {
 
 export const DEFAULT_CORTEX_CONFIG: CortexConfig = {
   enabled: false,
+  debug: false,
+  anthropic_api_key: '',
+  openai_api_key: '',
   embedding: { provider: 'auto', model: null, fallback: 'local', dimensions: null },
-  injection: { enabled: true, max_tokens: 2000, max_results: 5, min_confidence: 0.3 },
+  injection: { enabled: true, max_tokens: 5000, max_results: 10, min_confidence: 0.3 },
   ingestion: { auto_ingest: true, distillation: true, distillation_model: 'auto' },
   layers: { personal: true, workspace: true, team: true },
   staleness: {

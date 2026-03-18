@@ -185,16 +185,23 @@ export class ContextEngine {
     const searches = sources.map(source =>
       Promise.race([
         this.deps.store.search(source.layerKey, queryVector, source.slots),
-        timeout(100),
+        timeout(2000),
       ])
-        .then(units =>
-          (units as KnowledgeUnit[]).map(unit => ({
+        .then(units => {
+          const results = (units as KnowledgeUnit[]).map(unit => ({
             unit,
             similarity: 1 - ((unit as any)._distance ?? 0),
             sourceWeight: source.weight,
-          })),
-        )
-        .catch(() => [] as Array<{ unit: KnowledgeUnit; similarity: number; sourceWeight: number }>),
+          }));
+          if (results.length > 0) {
+            console.log(`[Cortex Search] ${source.layerKey}: ${results.length} hits`);
+          }
+          return results;
+        })
+        .catch((err) => {
+          console.log(`[Cortex Search] ${source.layerKey}: failed — ${err.message}`);
+          return [] as Array<{ unit: KnowledgeUnit; similarity: number; sourceWeight: number }>;
+        }),
     );
 
     const settled = await Promise.allSettled(searches);
