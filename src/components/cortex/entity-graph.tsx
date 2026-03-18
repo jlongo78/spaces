@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { EntityDetail } from './entity-detail';
 
@@ -177,10 +177,10 @@ export function EntityGraphView() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Filter nodes/links by hidden types
-  const visibleNodes = nodes.filter(n => !hiddenTypes.has(n.type));
-  const visibleIds = new Set(visibleNodes.map(n => n.id));
-  const visibleLinks = links.filter(l => visibleIds.has(l.source) && visibleIds.has(l.target));
+  // Filter nodes/links by hidden types (memoized to avoid graph rebuild on unrelated re-renders)
+  const visibleNodes = useMemo(() => nodes.filter(n => !hiddenTypes.has(n.type)), [nodes, hiddenTypes]);
+  const visibleIds = useMemo(() => new Set(visibleNodes.map(n => n.id)), [visibleNodes]);
+  const visibleLinks = useMemo(() => links.filter(l => visibleIds.has(l.source) && visibleIds.has(l.target)), [links, visibleIds]);
 
   // Build/update the graph
   useEffect(() => {
