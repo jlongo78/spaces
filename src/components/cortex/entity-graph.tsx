@@ -21,11 +21,6 @@ interface GraphEdge {
 interface GraphNode extends GraphEntity {
   x?: number;
   y?: number;
-  // Cluster fields
-  _cluster?: boolean;
-  _clusterType?: string;
-  _clusterCount?: number;
-  _clusterNodes?: string[];
 }
 
 interface GraphLink {
@@ -41,16 +36,12 @@ type GraphInstance = {
   nodePointerAreaPaint: (cb: (node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => void) => GraphInstance;
   linkColor: (cb: (link: GraphLink) => string) => GraphInstance;
   linkWidth: (cb: (link: GraphLink) => number) => GraphInstance;
-  linkVisibility: (cb: (link: GraphLink) => boolean) => GraphInstance;
-  nodeVisibility: (cb: (node: GraphNode) => boolean) => GraphInstance;
   onNodeClick: (cb: (node: GraphNode) => void) => GraphInstance;
   onBackgroundClick: (cb: () => void) => GraphInstance;
-  onZoom: (cb: (zoom: { k: number }) => void) => GraphInstance;
   width: (w: number) => GraphInstance;
   height: (h: number) => GraphInstance;
   zoom: () => number;
   zoomToFit: (ms?: number, px?: number) => GraphInstance;
-  d3Force: (name: string, force?: any) => any;
   _destructor: () => void;
 };
 
@@ -69,100 +60,6 @@ function getNodeColor(type: string): string {
   return NODE_COLORS[type] ?? '#6b7280';
 }
 
-// ─── Clustering logic ────────────────────────────────────────
-
-const CLUSTER_ZOOM_THRESHOLD = 1.2; // below this zoom level, cluster nodes
-
-function buildClusteredGraph(
-  allNodes: GraphNode[],
-  allLinks: GraphLink[],
-  hiddenTypes: Set<string>,
-  zoomLevel: number,
-): { nodes: GraphNode[]; links: GraphLink[] } {
-  // Filter by hidden types
-  const visibleNodes = allNodes.filter(n => !hiddenTypes.has(n.type));
-  const visibleIds = new Set(visibleNodes.map(n => n.id));
-  const visibleLinks = allLinks.filter(l => visibleIds.has(l.source) && visibleIds.has(l.target));
-
-  if (zoomLevel >= CLUSTER_ZOOM_THRESHOLD || visibleNodes.length <= 20) {
-    return { nodes: visibleNodes, links: visibleLinks };
-  }
-
-  // Group by type for clustering
-  const typeGroups = new Map<string, GraphNode[]>();
-  const important = new Set<string>(); // nodes with many connections stay unclustered
-
-  // Count connections per node
-  const connectionCount = new Map<string, number>();
-  for (const link of visibleLinks) {
-    connectionCount.set(link.source, (connectionCount.get(link.source) ?? 0) + 1);
-    connectionCount.set(link.target, (connectionCount.get(link.target) ?? 0) + 1);
-  }
-
-  // Nodes with 3+ connections or type person/project stay individual
-  for (const node of visibleNodes) {
-    const conns = connectionCount.get(node.id) ?? 0;
-    if (conns >= 3 || node.type === 'person' || node.type === 'project') {
-      important.add(node.id);
-    } else {
-      const group = typeGroups.get(node.type) ?? [];
-      group.push(node);
-      typeGroups.set(node.type, group);
-    }
-  }
-
-  const clusteredNodes: GraphNode[] = [];
-  const clusteredLinks: GraphLink[] = [];
-  const nodeToCluster = new Map<string, string>();
-
-  // Add important nodes as-is
-  for (const node of visibleNodes) {
-    if (important.has(node.id)) {
-      clusteredNodes.push(node);
-    }
-  }
-
-  // Create cluster nodes for each type group
-  for (const [type, group] of typeGroups) {
-    if (group.length <= 2) {
-      // Too few to cluster — keep individual
-      clusteredNodes.push(...group);
-    } else {
-      const clusterId = `_cluster_${type}`;
-      const clusterNode: GraphNode = {
-        id: clusterId,
-        name: `${group.length} ${type}s`,
-        type,
-        metadata: {},
-        _cluster: true,
-        _clusterType: type,
-        _clusterCount: group.length,
-        _clusterNodes: group.map(n => n.id),
-      };
-      clusteredNodes.push(clusterNode);
-      for (const n of group) {
-        nodeToCluster.set(n.id, clusterId);
-      }
-    }
-  }
-
-  // Remap links: if source or target is clustered, point to cluster node
-  const linkSet = new Set<string>();
-  for (const link of visibleLinks) {
-    const src = nodeToCluster.get(link.source) ?? link.source;
-    const tgt = nodeToCluster.get(link.target) ?? link.target;
-    if (src === tgt) continue; // skip self-links within cluster
-    const key = `${src}→${tgt}`;
-    if (linkSet.has(key)) continue;
-    linkSet.add(key);
-    clusteredLinks.push({ ...link, source: src, target: tgt });
-  }
-
-  return { nodes: clusteredNodes, links: clusteredLinks };
-}
-
-// ─── Node rendering ──────────────────────────────────────────
-
 function drawNode(
   node: GraphNode,
   ctx: CanvasRenderingContext2D,
@@ -170,6 +67,8 @@ function drawNode(
   selected: boolean,
 ) {
   const color = getNodeColor(node.type);
+  const type = node.type;
+  const r = Math.max(4, 8 / Math.sqrt(globalScale));
   const x = node.x ?? 0;
   const y = node.y ?? 0;
 
@@ -179,50 +78,6 @@ function drawNode(
     ctx.shadowColor = color;
     ctx.shadowBlur = 12;
   }
-
-  // Cluster bubble
-  if (node._cluster) {
-    const count = node._clusterCount ?? 0;
-    const r = Math.max(10, Math.sqrt(count) * 4) / Math.sqrt(globalScale);
-
-    // Outer glow
-    ctx.beginPath();
-    ctx.arc(x, y, r * 1.3, 0, Math.PI * 2);
-    ctx.fillStyle = color + '10';
-    ctx.fill();
-
-    // Main bubble
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = color + '25';
-    ctx.fill();
-    ctx.strokeStyle = color + '60';
-    ctx.lineWidth = 1.5 / globalScale;
-    ctx.setLineDash([3 / globalScale, 3 / globalScale]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Count label
-    const fontSize = Math.max(3, 11 / globalScale);
-    ctx.font = `bold ${fontSize}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = color + 'cc';
-    ctx.fillText(String(count), x, y);
-
-    // Type label below
-    const smallFont = Math.max(2, 8 / globalScale);
-    ctx.font = `${smallFont}px sans-serif`;
-    ctx.fillStyle = color + '88';
-    ctx.textBaseline = 'top';
-    ctx.fillText(node._clusterType + 's', x, y + r + 2 / globalScale);
-
-    ctx.restore();
-    return;
-  }
-
-  const type = node.type;
-  const r = Math.max(4, 8 / Math.sqrt(globalScale));
 
   if (type === 'person' || type === 'topic') {
     const radius = type === 'topic' ? r * 0.7 : r;
@@ -277,14 +132,13 @@ function drawNode(
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#e5e7eb';
-    const label = node.name.length > 16 ? node.name.slice(0, 15) + '\u2026' : node.name;
+    const label =
+      node.name.length > 16 ? node.name.slice(0, 15) + '\u2026' : node.name;
     ctx.fillText(label, x, y + r * 1.4);
   }
 
   ctx.restore();
 }
-
-// ─── Legend / filter items ───────────────────────────────────
 
 const LEGEND_ITEMS = [
   { label: 'Person', color: '#7c3aed', shape: 'circle', types: ['person'] },
@@ -294,22 +148,17 @@ const LEGEND_ITEMS = [
   { label: 'Dept / Org', color: '#3b82f6', shape: 'rect', types: ['department', 'organization'] },
 ];
 
-// ─── Main component ─────────────────────────────────────────
-
 export function EntityGraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<GraphInstance | null>(null);
-  const [allNodes, setAllNodes] = useState<GraphNode[]>([]);
-  const [allLinks, setAllLinks] = useState<GraphLink[]>([]);
+  const [nodes, setNodes] = useState<GraphNode[]>([]);
+  const [links, setLinks] = useState<GraphLink[]>([]);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [loading, setLoading] = useState(true);
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const selectedRef = useRef<GraphNode | null>(null);
-  const zoomRef = useRef(1);
-  const hiddenRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { selectedRef.current = selected; }, [selected]);
-  useEffect(() => { hiddenRef.current = hiddenTypes; }, [hiddenTypes]);
 
   // Fetch graph data
   useEffect(() => {
@@ -319,27 +168,25 @@ export function EntityGraphView() {
       fetch(api('/api/cortex/graph/edges?all=true')).then(r => r.json()),
     ])
       .then(([entityData, edgeData]) => {
-        setAllNodes((entityData.entities ?? []).map((e: GraphEntity) => ({ ...e })));
-        setAllLinks((edgeData.edges ?? []).map((e: GraphEdge) => ({
+        setNodes((entityData.entities ?? []).map((e: GraphEntity) => ({ ...e })));
+        setLinks((edgeData.edges ?? []).map((e: GraphEdge) => ({
           source: e.source_id, target: e.target_id, relation: e.relation, weight: e.weight ?? 1,
         })));
       })
-      .catch(() => { setAllNodes([]); setAllLinks([]); })
+      .catch(() => { setNodes([]); setLinks([]); })
       .finally(() => setLoading(false));
   }, []);
 
-  // Update graph data in-place (no destroy/recreate)
-  const refreshGraphData = useCallback(() => {
-    if (!graphRef.current) return;
-    const { nodes, links } = buildClusteredGraph(allNodes, allLinks, hiddenRef.current, zoomRef.current);
-    graphRef.current.graphData({ nodes, links });
-  }, [allNodes, allLinks]);
+  // Filter nodes/links by hidden types
+  const visibleNodes = nodes.filter(n => !hiddenTypes.has(n.type));
+  const visibleIds = new Set(visibleNodes.map(n => n.id));
+  const visibleLinks = links.filter(l => visibleIds.has(l.source) && visibleIds.has(l.target));
 
-  // Build the force-graph ONCE when data loads
+  // Build/update the graph
   useEffect(() => {
     if (loading || !containerRef.current) return;
     if (graphRef.current) { graphRef.current._destructor?.(); graphRef.current = null; }
-    if (allNodes.length === 0) return;
+    if (visibleNodes.length === 0) return;
 
     const el = containerRef.current;
     const width = el.clientWidth || 800;
@@ -349,45 +196,27 @@ export function EntityGraphView() {
     import('force-graph').then(({ default: ForceGraph2D }) => {
       if (!containerRef.current) return;
 
-      const { nodes, links } = buildClusteredGraph(allNodes, allLinks, hiddenTypes, 1);
       const builder = ForceGraph2D as unknown as () => (el: HTMLElement) => GraphInstance;
       const graph = builder()(containerRef.current)
-        .graphData({ nodes, links })
+        .graphData({ nodes: visibleNodes, links: visibleLinks })
         .width(width)
         .height(height)
         .nodeCanvasObject((node, ctx, globalScale) => {
           drawNode(node, ctx, globalScale, selectedRef.current?.id === node.id);
         })
         .nodePointerAreaPaint((node, color, ctx) => {
-          const r = node._cluster ? Math.max(14, Math.sqrt(node._clusterCount ?? 1) * 5) : 12;
+          const r = 12;
+          const x = node.x ?? 0;
+          const y = node.y ?? 0;
           ctx.beginPath();
-          ctx.arc(node.x ?? 0, node.y ?? 0, r, 0, Math.PI * 2);
+          ctx.arc(x, y, r, 0, Math.PI * 2);
           ctx.fillStyle = color;
           ctx.fill();
         })
-        .linkColor(() => 'rgba(124, 58, 237, 0.15)')
-        .linkWidth((link) => Math.max(0.3, Math.min(3, Math.sqrt(link.weight ?? 1) * 0.6)))
-        .onNodeClick((node) => {
-          if (node._cluster) {
-            // Expand this cluster type by zooming past threshold
-            zoomRef.current = CLUSTER_ZOOM_THRESHOLD + 0.1;
-            refreshGraphData();
-          } else {
-            setSelected(node);
-          }
-        })
-        .onBackgroundClick(() => setSelected(null))
-        .onZoom(({ k }) => {
-          const prev = zoomRef.current;
-          zoomRef.current = k;
-          // When crossing the cluster threshold, update data in-place (no re-render)
-          const crossedThreshold =
-            (prev < CLUSTER_ZOOM_THRESHOLD && k >= CLUSTER_ZOOM_THRESHOLD) ||
-            (prev >= CLUSTER_ZOOM_THRESHOLD && k < CLUSTER_ZOOM_THRESHOLD);
-          if (crossedThreshold) {
-            refreshGraphData();
-          }
-        });
+        .linkColor(() => 'rgba(124, 58, 237, 0.2)')
+        .linkWidth((link) => Math.max(0.5, Math.min(4, Math.sqrt(link.weight ?? 1) * 0.8)))
+        .onNodeClick((node) => setSelected(node))
+        .onBackgroundClick(() => setSelected(null));
 
       graphRef.current = graph;
       setTimeout(() => graph.zoomToFit(400, 40), 300);
@@ -395,7 +224,7 @@ export function EntityGraphView() {
 
     return () => { if (graphRef.current) { graphRef.current._destructor?.(); graphRef.current = null; } };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, allNodes, allLinks]);
+  }, [loading, visibleNodes, visibleLinks]);
 
   const handleRecenter = useCallback(() => graphRef.current?.zoomToFit(400, 40), []);
   const handleClose = useCallback(() => setSelected(null), []);
@@ -407,21 +236,15 @@ export function EntityGraphView() {
       for (const t of types) {
         if (allHidden) next.delete(t); else next.add(t);
       }
-      hiddenRef.current = next;
-      // Update in-place, no graph rebuild
-      setTimeout(() => refreshGraphData(), 0);
       return next;
     });
   };
 
-  const nodeCount = allNodes.length;
-  const visibleCount = allNodes.filter(n => !hiddenTypes.has(n.type)).length;
-
   if (loading) {
-    return <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">Loading graph\u2026</div>;
+    return <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">Loading graph&hellip;</div>;
   }
 
-  if (allNodes.length === 0) {
+  if (nodes.length === 0) {
     const handlePopulate = async () => {
       setLoading(true);
       try {
@@ -430,8 +253,8 @@ export function EntityGraphView() {
           fetch(api('/api/cortex/graph/entities')).then(r => r.json()),
           fetch(api('/api/cortex/graph/edges?all=true')).then(r => r.json()),
         ]);
-        setAllNodes((entityData.entities ?? []).map((e: GraphEntity) => ({ ...e })));
-        setAllLinks((edgeData.edges ?? []).map((e: GraphEdge) => ({
+        setNodes((entityData.entities ?? []).map((e: GraphEntity) => ({ ...e })));
+        setLinks((edgeData.edges ?? []).map((e: GraphEdge) => ({
           source: e.source_id, target: e.target_id, relation: e.relation, weight: e.weight ?? 1,
         })));
       } catch { /* */ }
@@ -440,7 +263,7 @@ export function EntityGraphView() {
 
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-3">
-        <div className="text-4xl opacity-20">{'\u25C8'}</div>
+        <div className="text-4xl opacity-20">&#x25C8;</div>
         <div className="text-sm">No entities in the graph yet.</div>
         <div className="text-xs text-gray-600 text-center max-w-xs">
           Build the graph from your workspaces, projects, and sessions.
@@ -466,7 +289,7 @@ export function EntityGraphView() {
             Filter
             {hiddenTypes.size > 0 && (
               <span className="ml-1.5 text-gray-600 normal-case">
-                {visibleCount}/{nodeCount}
+                {visibleNodes.length}/{nodes.length}
               </span>
             )}
           </div>
@@ -482,7 +305,7 @@ export function EntityGraphView() {
                 <span className="text-gray-300">{item.label}</span>
                 {!isHidden && (
                   <span className="ml-auto text-gray-600">
-                    {allNodes.filter(n => item.types.includes(n.type)).length}
+                    {nodes.filter(n => item.types.includes(n.type)).length}
                   </span>
                 )}
               </button>
@@ -498,13 +321,6 @@ export function EntityGraphView() {
           )}
         </div>
 
-        {/* Cluster hint */}
-        {zoomRef.current < CLUSTER_ZOOM_THRESHOLD && allNodes.length > 20 && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm border border-white/10 rounded-full px-3 py-1 text-[10px] text-gray-400">
-            Zoom in to expand clusters
-          </div>
-        )}
-
         {/* Bottom buttons */}
         <div className="absolute bottom-4 left-4 flex items-center gap-2">
           <button
@@ -512,7 +328,7 @@ export function EntityGraphView() {
             className="bg-black/60 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-gray-300 hover:text-white hover:border-white/20 transition-colors"
             title="Recenter graph"
           >
-            {'\u2295'} Recenter
+            &oplus; Recenter
           </button>
           <button
             onClick={async () => {
@@ -523,8 +339,8 @@ export function EntityGraphView() {
                   fetch(api('/api/cortex/graph/entities')).then(r => r.json()),
                   fetch(api('/api/cortex/graph/edges?all=true')).then(r => r.json()),
                 ]);
-                setAllNodes((entityData.entities ?? []).map((e: GraphEntity) => ({ ...e })));
-                setAllLinks((edgeData.edges ?? []).map((e: GraphEdge) => ({
+                setNodes((entityData.entities ?? []).map((e: GraphEntity) => ({ ...e })));
+                setLinks((edgeData.edges ?? []).map((e: GraphEdge) => ({
                   source: e.source_id, target: e.target_id, relation: e.relation, weight: e.weight ?? 1,
                 })));
               } catch { /* */ }
@@ -533,7 +349,7 @@ export function EntityGraphView() {
             className="bg-black/60 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-gray-300 hover:text-white hover:border-white/20 transition-colors"
             title="Re-scan workspaces, projects, branches, and topics"
           >
-            {'\u21BB'} Rebuild
+            &#x21BB; Rebuild
           </button>
         </div>
       </div>
