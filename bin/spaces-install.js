@@ -50,6 +50,14 @@ const PACKAGES = {
     verify: (dir) => fs.existsSync(path.join(dir, 'dist', 'index.js')),
     verifyLabel: 'dist/index.js',
   },
+  cortex: {
+    name: '@spaces/cortex',
+    dir: path.join(PACKAGES_DIR, 'cortex'),
+    repo: 'jlongo78/spaces-cortex',
+    private: true,
+    verify: (dir) => fs.existsSync(path.join(dir, 'dist', 'index.js')),
+    verifyLabel: 'dist/index.js',
+  },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────

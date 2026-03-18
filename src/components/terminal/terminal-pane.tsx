@@ -19,17 +19,43 @@ interface TerminalPaneProps {
   isMaximized: boolean;
   onToggleMaximize: (id: string) => void;
   onPopout?: (id: string) => void;
+  onBrowse?: (cwd: string) => void;
   isPopout?: boolean;
   terminalToken?: string;
   workspaceCollaboration?: boolean;
 }
 
-export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMaximize, onPopout, isPopout, terminalToken, workspaceCollaboration }: TerminalPaneProps) {
+export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMaximize, onPopout, onBrowse, isPopout, terminalToken, workspaceCollaboration }: TerminalPaneProps) {
   const { hasCortex } = useTier();
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<any>(null);
+
+  // Track whether user is scrolled up (reading scrollback)
+  const userScrolledUpRef = useRef(false);
+  const savedScrollLineRef = useRef(0);
+
+  // Scroll-safe fit: preserves viewport position when user is scrolled up
+  const safeFit = () => {
+    const term = xtermRef.current;
+    const fit = fitRef.current;
+    if (!term || !fit) return;
+
+    // Capture position BEFORE fit changes anything
+    const buf = term.buffer?.active;
+    const wasScrolledUp = buf ? buf.viewportY < buf.baseY : false;
+    const savedLine = buf ? buf.viewportY : 0;
+
+    try { fit.fit(); } catch { /* ignore */ }
+
+    // Restore position if user was in scrollback
+    if (wasScrolledUp) {
+      requestAnimationFrame(() => {
+        term.scrollToLine(savedLine);
+      });
+    }
+  };
   const [connected, setConnected] = useState(false);
   const [editing, setEditing] = useState(false);
   const [titleValue, setTitleValue] = useState(pane.title);
@@ -136,15 +162,23 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       return true;
     });
 
+    // Track user scroll position — detect when user is reading scrollback
+    term.onScroll(() => {
+      const buf = term.buffer?.active;
+      if (buf) {
+        userScrolledUpRef.current = buf.viewportY < buf.baseY;
+        savedScrollLineRef.current = buf.viewportY;
+      }
+    });
+
     xtermRef.current = term;
     fitRef.current = fitAddon;
 
     // The initial fit() above kicks xterm's canvas renderer into life but the
     // CSS grid may not have settled yet, giving wrong cols/rows.  A double-rAF
     // waits for a full layout+paint cycle; the 300ms fallback catches slow grids.
-    const stableFit = () => { try { fitAddon.fit(); } catch {} };
-    requestAnimationFrame(() => requestAnimationFrame(stableFit));
-    setTimeout(stableFit, 300);
+    requestAnimationFrame(() => requestAnimationFrame(safeFit));
+    setTimeout(safeFit, 300);
 
     // Build WebSocket URL from current pane state
     const buildWsUrl = () => {
@@ -188,18 +222,22 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         // Re-fit after connection — the CSS grid layout may not have been
         // stable when the terminal first opened, so cols/rows in the URL
         // can be wrong.  A delayed fit + resize message corrects this.
-        setTimeout(() => {
-          if (fitRef.current) {
-            try { fitRef.current.fit(); } catch { /* ignore */ }
-          }
-        }, 150);
+        setTimeout(safeFit, 150);
       };
 
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'data') {
-            term.write(msg.data);
+            // Preserve scroll position if user is reading scrollback
+            if (userScrolledUpRef.current) {
+              const savedLine = savedScrollLineRef.current;
+              term.write(msg.data);
+              // write() auto-scrolls to bottom — restore user's position
+              requestAnimationFrame(() => term.scrollToLine(savedLine));
+            } else {
+              term.write(msg.data);
+            }
           } else if (msg.type === 'exit') {
             setExited(true);
             exitedRef.current = true;
@@ -240,6 +278,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
 
     // Wire terminal input/resize to current WebSocket via ref
     term.onData((data: string) => {
+      // User is typing — they want to follow output again
+      userScrolledUpRef.current = false;
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: 'data', data }));
       }
@@ -272,11 +312,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     let rafId: number;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        if (fitRef.current) {
-          try { fitRef.current.fit(); } catch { /* ignore */ }
-        }
-      });
+      rafId = requestAnimationFrame(safeFit);
     });
     if (termRef.current) {
       observer.observe(termRef.current);
@@ -286,11 +322,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
 
   // Resize when maximized changes
   useEffect(() => {
-    setTimeout(() => {
-      if (fitRef.current) {
-        try { fitRef.current.fit(); } catch { /* ignore */ }
-      }
-    }, 50);
+    setTimeout(safeFit, 50);
   }, [isMaximized]);
 
   const saveTitle = () => {
@@ -423,9 +455,13 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
           </div>
         )}
 
-        <span className="text-[10px] text-zinc-500 truncate max-w-[120px]" title={pane.cwd}>
+        <button
+          onClick={() => onBrowse?.(pane.cwd)}
+          className="text-[10px] text-zinc-500 truncate max-w-[120px] hover:text-amber-400 transition-colors"
+          title={`Browse ${pane.cwd}`}
+        >
           {pane.cwd.split(/[/\\]/).pop()}
-        </span>
+        </button>
 
         {pane.agentType && pane.agentType !== 'shell' && (
           <span

@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     const existing = await cortex.store.search('team', vector, 5);
     const isDuplicate = existing.some(
-      e => cosineSimilarity(vector, e.vector) > DEDUP_THRESHOLD
+      (e: any) => cosineSimilarity(vector, e.vector) > DEDUP_THRESHOLD
     );
     if (isDuplicate) {
       return NextResponse.json({ status: 'skipped', reason: 'duplicate' });

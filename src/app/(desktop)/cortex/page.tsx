@@ -17,7 +17,6 @@ type Tab = 'graph' | 'knowledge' | 'context' | 'settings';
 export default function CortexPage() {
   const [tab, setTab] = useState<Tab>('graph');
   const [stats, setStats] = useState<any>(null);
-
   useEffect(() => {
     fetch(api('/api/cortex/status'))
       .then(r => r.json())
@@ -58,12 +57,14 @@ export default function CortexPage() {
           {totalKnowledge} knowledge units
         </div>
       </div>
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto">
         {tab === 'graph' && <EntityGraphView />}
         {tab === 'knowledge' && <KnowledgeTab />}
         {tab === 'context' && <ContextTab />}
         {tab === 'settings' && (
-          <div className="p-6 max-w-2xl"><CortexSettings /></div>
+          <div className="p-6 max-w-2xl space-y-8">
+            <CortexSettings />
+          </div>
         )}
       </div>
     </div>

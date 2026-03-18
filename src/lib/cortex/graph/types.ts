@@ -1,58 +1,22 @@
-export const ENTITY_TYPES = [
-  'person', 'team', 'department', 'organization',
-  'project', 'system', 'module', 'topic',
-] as const;
+/** Stub — type definitions for build-time compatibility */
+export const ENTITY_TYPES = ['person', 'team', 'project', 'system', 'module', 'topic', 'department', 'organization'] as const;
 export type EntityType = typeof ENTITY_TYPES[number];
 
-export const EDGE_RELATIONS = [
-  'member_of', 'belongs_to', 'part_of',
-  'works_on', 'expert_in', 'touches', 'owns', 'contains', 'depends_on', 'relates_to',
-  'created_by', 'about', 'scoped_to', 'derived_from',
-] as const;
+export const EDGE_RELATIONS = ['owns', 'works_on', 'part_of', 'contains', 'depends_on', 'relates_to', 'expert_in'] as const;
 export type EdgeRelation = typeof EDGE_RELATIONS[number];
 
-export interface Entity {
-  id: string;
-  type: EntityType;
-  name: string;
-  metadata: Record<string, unknown>;
-  created: string;
-  updated: string;
+export function isValidEntityType(t: string): t is EntityType {
+  return ENTITY_TYPES.includes(t as any);
 }
 
-export interface Edge {
-  source_id: string;
-  target_id: string;
-  relation: EdgeRelation;
-  weight: number;
-  metadata: Record<string, unknown>;
-  created: string;
+export function isValidEdgeRelation(r: string): r is EdgeRelation {
+  return EDGE_RELATIONS.includes(r as any);
 }
 
-export interface EntityAlias {
-  entity_id: string;
-  alias: string;
-}
-
-export interface AccessGrant {
-  knowledge_id: string;
-  grantee_entity_id: string;
-  granted_by: string;
-  created: string;
+export function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
 export function entityId(type: EntityType, slug: string): string {
   return `${type}-${slug}`;
-}
-
-export function slugify(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
-
-export function isValidEntityType(s: string): s is EntityType {
-  return ENTITY_TYPES.includes(s as EntityType);
-}
-
-export function isValidEdgeRelation(s: string): s is EdgeRelation {
-  return EDGE_RELATIONS.includes(s as EdgeRelation);
 }

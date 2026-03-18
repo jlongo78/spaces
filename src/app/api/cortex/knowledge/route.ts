@@ -76,6 +76,18 @@ export async function POST(request: NextRequest) {
       propagation_path: [],
     });
 
+    // Enqueue for distillation if pipeline has it wired
+    if (cortex.pipeline?.distillQueue && cortex.pipeline?.distillScheduler) {
+      cortex.pipeline.distillQueue.enqueue(id, {
+        text,
+        layerKey,
+        workspaceId: workspace_id || null,
+        agentType: 'claude',
+      });
+      cortex.pipeline.distillScheduler.enqueue([id]);
+    }
+
+    console.log(`[Cortex Store] +${type} in ${layerKey}: "${text.slice(0, 60)}..."`);
     return NextResponse.json({ id, success: true });
   });
 }

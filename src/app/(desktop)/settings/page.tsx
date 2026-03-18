@@ -9,7 +9,7 @@ import { useTier } from '@/hooks/use-tier';
 import { CortexSettings } from '@/components/cortex/cortex-settings';
 
 export default function SettingsPage() {
-  const { hasAuth, tier, version, hasCortex } = useTier();
+  const { hasAuth, tier, version, hasCortex, cortexTierEnabled } = useTier();
   const hasSelfContainedAuth = typeof document !== 'undefined' && document.cookie.includes('spaces-session=');
   const sync = useSync();
   const [syncResult, setSyncResult] = useState<string>('');
@@ -419,8 +419,8 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* Cortex */}
-        {hasCortex && <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
+        {/* Cortex - show when tier supports it, even if disabled (so user can re-enable) */}
+        {cortexTierEnabled && <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
           <CortexSettings />
         </div>}
 

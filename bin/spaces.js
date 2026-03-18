@@ -1,11 +1,47 @@
 #!/usr/bin/env node
 
+// Re-exec with higher heap if needed (embedding models + LanceDB leak memory over time)
+if (!process.execArgv.some(a => a.includes('max-old-space-size')) && !process.env.__SPACES_HEAP) {
+  process.env.__SPACES_HEAP = '1';
+  require('child_process').spawn(
+    process.execPath,
+    ['--max-old-space-size=8192', ...process.argv.slice(1)],
+    { stdio: 'inherit', env: process.env }
+  ).on('exit', (code) => process.exit(code ?? 1));
+  // Stop the outer process from continuing
+  return;
+}
+
+const net = require('net');
 const http = require('http');
+const https = require('https');
 const { execFileSync, spawn } = require('child_process');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
 // terminal-server is loaded lazily (after SPACES_TIER is set in process.env)
+
+// ─── Memory monitoring (only when SPACES_DEBUG or cortex.debug) ──
+let _lastHeapMB = 0;
+function logMemory(label) {
+  if (!process.env.SPACES_DEBUG && !_spacesDebug) return;
+  const mem = process.memoryUsage();
+  const heapMB = Math.round(mem.heapUsed / 1048576);
+  const rssMB = Math.round(mem.rss / 1048576);
+  const extMB = Math.round((mem.external || 0) / 1048576);
+  const abMB = Math.round((mem.arrayBuffers || 0) / 1048576);
+  const delta = heapMB - _lastHeapMB;
+  if (label || Math.abs(delta) > 20) {
+    console.log(`[Memory] ${label || 'periodic'}: heap=${heapMB}MB rss=${rssMB}MB external=${extMB}MB arrayBuffers=${abMB}MB ${delta > 0 ? '+' : ''}${delta}MB`);
+  }
+  _lastHeapMB = heapMB;
+}
+let _spacesDebug = false;
+try {
+  const cfgPath = path.join(os.homedir(), '.spaces', 'config.json');
+  if (fs.existsSync(cfgPath)) _spacesDebug = !!JSON.parse(fs.readFileSync(cfgPath, 'utf-8')).cortex?.debug;
+} catch { /* ignore */ }
+setInterval(() => logMemory(), 60000);
 
 const SPACES_DIR = path.join(os.homedir(), '.spaces');
 const CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
@@ -103,6 +139,40 @@ if (cliFlags.setup) {
   startServer();
 }
 
+// ─── Self-signed TLS certificate ────────────────────────────
+// Generates a self-signed cert on first run (valid 365 days) so mobile
+// browsers that force HTTPS-first can still connect.  The cert/key are
+// persisted under ~/.spaces/ so they survive restarts.
+function ensureSelfSignedCert() {
+  const certPath = path.join(SPACES_DIR, 'tls-cert.pem');
+  const keyPath  = path.join(SPACES_DIR, 'tls-key.pem');
+
+  // Re-use existing cert if present
+  if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+    try {
+      return { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) };
+    } catch {}
+  }
+
+  // Generate via openssl CLI (available on all platforms)
+  try {
+    fs.mkdirSync(SPACES_DIR, { recursive: true });
+    execFileSync('openssl', [
+      'req', '-x509', '-newkey', 'rsa:2048',
+      '-keyout', keyPath, '-out', certPath,
+      '-sha256', '-days', '365', '-nodes',
+      '-subj', '/CN=spaces-local',
+      '-addext', 'subjectAltName=DNS:localhost,DNS:*.local,DNS:*.robindale.com,IP:127.0.0.1',
+    ], { stdio: 'pipe', timeout: 15000 });
+    console.log('  Generated self-signed TLS certificate');
+    return { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) };
+  } catch (e) {
+    console.log(`  Warning: Could not generate TLS cert (${e.message})`);
+    console.log('  HTTPS will not be available. Install OpenSSL to enable it.');
+    return null;
+  }
+}
+
 function startServer() {
   // ─── Load saved config ────────────────────────────────────
   let savedConfig = {};
@@ -131,6 +201,7 @@ function startServer() {
   // ─── Resolve optional packages once ─────────────────────────
   const proPath = resolveSpacesPro();
   const teamsPath = resolveSpacesTeams();
+  const cortexPath = resolveSpacesCortex();
 
   // Tier resolution: CLI > env > config > auto-detect
   let tier = cliFlags.tier
@@ -210,7 +281,7 @@ function startServer() {
   const appNodeModules = path.join(projectDir, 'node_modules');
   const nodePaths = [MANAGED_NODE_MODULES, appNodeModules];
   // Add each resolved package's own node_modules so its bundled deps are found
-  for (const pkgPath of [proPath, teamsPath]) {
+  for (const pkgPath of [proPath, teamsPath, cortexPath]) {
     if (pkgPath) {
       // pkgPath is the package root (symlink target or direct path)
       const realPath = fs.realpathSync(pkgPath);
@@ -249,6 +320,13 @@ function startServer() {
       console.error(`  Warning: Collaboration may not work — ${e.message}`);
       console.error('  Check that NODE_PATH includes the host app node_modules.');
     }
+  }
+
+  // ─── Detect @spaces/cortex ──────────────────────────────────
+  if (cortexPath) {
+    childEnv.SPACES_HAS_CORTEX = '1';
+    process.env.SPACES_HAS_CORTEX = '1';
+    console.log('  Cortex: @spaces/cortex detected');
   }
 
   console.log('');
@@ -312,7 +390,9 @@ function startServer() {
     process.stdout.write(msg);
     if (!nextReady && (msg.includes('Ready') || msg.includes('started server') || msg.includes('Listening') || msg.includes('localhost'))) {
       nextReady = true;
-      console.log(`\n  Ready at http://localhost:${PORT}\n`);
+      console.log(`\n  Ready at http://localhost:${PORT}`);
+      if (tlsCreds) console.log(`  Also at  https://localhost:${PORT}  (self-signed)`);
+      console.log('');
 
       const url = `http://localhost:${PORT}`;
       const isService = process.env.SPACES_SERVICE === '1';
@@ -346,8 +426,8 @@ function startServer() {
     cleanup();
   });
 
-  // ─── HTTP proxy server ────────────────────────────────────
-  const server = http.createServer((req, res) => {
+  // ─── Proxy request handler (shared by HTTP and HTTPS) ────
+  function proxyHandler(req, res) {
     // WebSocket paths are handled by the 'upgrade' event, but a plain
     // HTTP request to /ws (e.g. health check) should not be proxied to
     // Next.js which would 308-redirect it due to trailingSlash.
@@ -378,19 +458,57 @@ function startServer() {
       }
     });
     req.pipe(proxyReq);
-  });
+  }
+
+  // ─── HTTP + HTTPS on a single port ─────────────────────────
+  // Peek at the first byte of each connection: 0x16 = TLS ClientHello,
+  // anything else = plain HTTP.  This lets mobile browsers that force
+  // HTTPS-first connect to the same port without a separate listener.
+  const httpServer = http.createServer(proxyHandler);
+  const tlsCreds = ensureSelfSignedCert();
+  const httpsServer = tlsCreds ? https.createServer(tlsCreds, proxyHandler) : null;
 
   const { createTerminalServer } = require('./terminal-server');
-  createTerminalServer(server);
+  createTerminalServer(httpServer);
+  if (httpsServer) createTerminalServer(httpsServer);
 
-  server.listen(PORT, () => {
-    console.log(`  Starting server on http://localhost:${PORT}`);
+  // Wire up 'address()' on the inner servers so terminal-server can
+  // discover the port, then emit 'listening' so its event handler fires.
+  const patchAddress = (srv) => { srv.address = () => ({ port: PORT }); };
+  patchAddress(httpServer);
+  if (httpsServer) patchAddress(httpsServer);
+
+  const dualServer = net.createServer((socket) => {
+    socket.once('data', (buf) => {
+      // Pause the socket until the right server handles it, then
+      // unshift the peeked data so nothing is lost.
+      socket.pause();
+      const target = (buf[0] === 0x16 && httpsServer) ? httpsServer : httpServer;
+      target.emit('connection', socket);
+      socket.unshift(buf);
+      socket.resume();
+    });
+    // If client connects but sends nothing for 5s, destroy
+    socket.setTimeout(5000, () => socket.destroy());
+  });
+
+  dualServer.listen(PORT, () => {
+    // Now that the port is bound, tell the inner servers they're "listening"
+    // so terminal-server's mDNS and message watcher start up.
+    httpServer.emit('listening');
+    if (httpsServer) httpsServer.emit('listening');
+
+    if (httpsServer) {
+      console.log(`  Starting server on port ${PORT}  (HTTP + HTTPS)`);
+    } else {
+      console.log(`  Starting server on http://localhost:${PORT}`);
+    }
     console.log('');
   });
 
   function cleanup() {
     next.kill();
-    server.close();
+    dualServer.close();
     process.exit(0);
   }
 
@@ -507,5 +625,20 @@ function resolveSpacesTeams() {
     if (fs.existsSync(altPath)) return altPath;
   } catch {}
 
+  return null;
+}
+
+// ─── @spaces/cortex resolution ───────────────────────────────
+function resolveSpacesCortex() {
+  const managed = path.join(MANAGED_NODE_MODULES, '@spaces', 'cortex');
+  if (fs.existsSync(path.join(managed, 'dist', 'index.js'))) return managed;
+  try { return require.resolve('@spaces/cortex'); } catch {}
+  try {
+    const globalPrefix = execFileSync('npm', ['prefix', '-g'], { encoding: 'utf-8' }).trim();
+    const globalPath = path.join(globalPrefix, 'lib', 'node_modules', '@spaces', 'cortex');
+    if (fs.existsSync(globalPath)) return globalPath;
+    const altPath = path.join(globalPrefix, 'node_modules', '@spaces', 'cortex');
+    if (fs.existsSync(altPath)) return altPath;
+  } catch {}
   return null;
 }

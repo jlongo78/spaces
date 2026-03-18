@@ -29,7 +29,7 @@ export async function GET(
       limit,
     );
 
-    results.sort((a, b) => b.confidence - a.confidence);
+    results.sort((a: any, b: any) => b.confidence - a.confidence);
 
     return NextResponse.json({
       workspace_id: workspaceId,

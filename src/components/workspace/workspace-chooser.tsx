@@ -4,11 +4,12 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import {
   Plus, Loader2, Terminal, Search, ChevronDown, ChevronRight,
   Layers, Home, Globe, AlertCircle, LayoutGrid, List, Monitor,
-  Users, Zap, Clock, Filter, X, Orbit,
+  Users, Zap, Clock, Filter, X, Orbit, Settings2,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import type { Workspace } from '@/types/claude';
 import { api } from '@/lib/api';
+import { LobeSettings } from '@/components/cortex/lobe-settings';
 import type { RemoteNode, RemoteError, Template } from './universe-types';
 import { matchesSearch } from './universe-utils';
 
@@ -37,6 +38,7 @@ interface WorkspaceChooserProps {
   wsLoading: boolean;
   templates: Template[];
   hasNetwork: boolean;
+  hasCortex?: boolean;
   remoteNodes: RemoteNode[];
   remoteErrors: RemoteError[];
   remoteLoading: boolean;
@@ -75,6 +77,7 @@ export function WorkspaceChooser({
   wsLoading,
   templates,
   hasNetwork,
+  hasCortex,
   remoteNodes,
   remoteErrors,
   remoteLoading,
@@ -294,7 +297,7 @@ export function WorkspaceChooser({
                   ) : viewMode === 'grid' ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                       {filteredLocal.map(ws => (
-                        <WorkspaceCard key={ws.id} ws={ws} onClick={() => onSwitchWorkspace(ws.id)} />
+                        <WorkspaceCard key={ws.id} ws={ws} hasCortex={hasCortex} onClick={() => onSwitchWorkspace(ws.id)} />
                       ))}
                     </div>
                   ) : (
@@ -488,56 +491,78 @@ function WorkspaceCard({
   ws,
   remote,
   nodeName,
+  hasCortex,
   onClick,
 }: {
   ws: Workspace;
   remote?: boolean;
   nodeName?: string;
+  hasCortex?: boolean;
   onClick: () => void;
 }) {
+  const [showLobe, setShowLobe] = useState(false);
+
   return (
-    <button
-      onClick={onClick}
+    <div
       className={`
-        relative flex flex-col gap-2 p-3.5 rounded-lg border text-left transition-all group
+        relative flex flex-col rounded-lg border text-left transition-all group
         ${remote
           ? 'bg-zinc-900/30 border-zinc-800/40 hover:border-emerald-500/30 hover:bg-zinc-800/20'
           : 'bg-zinc-900 border-zinc-800 hover:border-zinc-600 hover:bg-zinc-800/50'
         }
+        ${showLobe ? 'border-zinc-600' : ''}
       `}
     >
-      <div className="flex items-start gap-2.5">
-        <span
-          className="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 ring-1 ring-white/5"
-          style={{ backgroundColor: ws.color }}
-        />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-white truncate leading-tight">{ws.name}</div>
-          <div className="flex items-center gap-2 mt-1.5 text-[10px] text-zinc-500">
-            <span className="flex items-center gap-1">
-              <Terminal className="w-2.5 h-2.5" />
-              {ws.paneCount || 0}
-            </span>
-            {ws.collaboration && (
-              <span className="flex items-center gap-0.5 text-blue-400/60">
-                <Users className="w-2.5 h-2.5" />
+      <button onClick={onClick} className="p-3.5 text-left">
+        <div className="flex items-start gap-2.5">
+          <span
+            className="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 ring-1 ring-white/5"
+            style={{ backgroundColor: ws.color }}
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-white truncate leading-tight">{ws.name}</div>
+            <div className="flex items-center gap-2 mt-1.5 text-[10px] text-zinc-500">
+              <span className="flex items-center gap-1">
+                <Terminal className="w-2.5 h-2.5" />
+                {ws.paneCount || 0}
               </span>
-            )}
-            {ws.isActive && (
-              <span className="flex items-center gap-1 text-indigo-400/80">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                active
-              </span>
-            )}
+              {ws.collaboration && (
+                <span className="flex items-center gap-0.5 text-blue-400/60">
+                  <Users className="w-2.5 h-2.5" />
+                </span>
+              )}
+              {ws.isActive && (
+                <span className="flex items-center gap-1 text-indigo-400/80">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                  active
+                </span>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </button>
       {remote && (
         <div className="absolute top-2 right-2">
           <Globe className="w-3 h-3 text-zinc-700 group-hover:text-emerald-500/50 transition-colors" />
         </div>
       )}
-    </button>
+      {!remote && hasCortex && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowLobe(!showLobe); }}
+          className={`absolute top-2 right-2 p-1 rounded transition-colors ${
+            showLobe ? 'text-purple-400 bg-purple-500/10' : 'text-zinc-700 hover:text-zinc-400'
+          }`}
+          title="Knowledge lobe settings"
+        >
+          <Settings2 className="w-3 h-3" />
+        </button>
+      )}
+      {showLobe && (
+        <div className="px-3.5 pb-3.5 border-t border-zinc-800/50 pt-3">
+          <LobeSettings workspaceId={ws.id} workspaceName={ws.name} />
+        </div>
+      )}
+    </div>
   );
 }
 

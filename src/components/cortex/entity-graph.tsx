@@ -232,7 +232,7 @@ export function EntityGraphView() {
           ctx.fill();
         })
         .linkColor(() => 'rgba(124, 58, 237, 0.2)')
-        .linkWidth((link) => Math.max(0.5, (link.weight ?? 1) * 1.5))
+        .linkWidth((link) => Math.max(0.5, Math.min(4, Math.sqrt(link.weight ?? 1) * 0.8)))
         .onNodeClick((node) => {
           setSelected(node);
         })
@@ -272,13 +272,35 @@ export function EntityGraphView() {
   }
 
   if (nodes.length === 0) {
+    const handlePopulate = async () => {
+      setLoading(true);
+      try {
+        await fetch(api('/api/cortex/graph/populate'), { method: 'POST' });
+        const [entityData, edgeData] = await Promise.all([
+          fetch(api('/api/cortex/graph/entities')).then(r => r.json()),
+          fetch(api('/api/cortex/graph/edges?all=true')).then(r => r.json()),
+        ]);
+        setNodes((entityData.entities ?? []).map((e: GraphEntity) => ({ ...e })));
+        setLinks((edgeData.edges ?? []).map((e: GraphEdge) => ({
+          source: e.source_id, target: e.target_id, relation: e.relation, weight: e.weight ?? 1,
+        })));
+      } catch { /* */ }
+      finally { setLoading(false); }
+    };
+
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-2">
+      <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-3">
         <div className="text-4xl opacity-20">◈</div>
-        <div className="text-sm">No entities in the knowledge graph yet.</div>
-        <div className="text-xs text-gray-600">
-          Create entities via the API or let Cortex ingest them automatically.
+        <div className="text-sm">No entities in the graph yet.</div>
+        <div className="text-xs text-gray-600 text-center max-w-xs">
+          Build the graph from your workspaces, projects, and sessions.
         </div>
+        <button
+          onClick={handlePopulate}
+          className="mt-1 px-3 py-1.5 text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-md hover:bg-purple-500/30 transition-colors"
+        >
+          Populate graph
+        </button>
       </div>
     );
   }
@@ -300,14 +322,37 @@ export function EntityGraphView() {
           ))}
         </div>
 
-        {/* Recenter button — bottom-left */}
-        <button
-          onClick={handleRecenter}
-          className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-gray-300 hover:text-white hover:border-white/20 transition-colors"
-          title="Recenter graph"
-        >
-          ⊕ Recenter
-        </button>
+        {/* Bottom buttons */}
+        <div className="absolute bottom-4 left-4 flex items-center gap-2">
+          <button
+            onClick={handleRecenter}
+            className="bg-black/60 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-gray-300 hover:text-white hover:border-white/20 transition-colors"
+            title="Recenter graph"
+          >
+            ⊕ Recenter
+          </button>
+          <button
+            onClick={async () => {
+              setLoading(true);
+              try {
+                await fetch(api('/api/cortex/graph/populate'), { method: 'POST' });
+                const [entityData, edgeData] = await Promise.all([
+                  fetch(api('/api/cortex/graph/entities')).then(r => r.json()),
+                  fetch(api('/api/cortex/graph/edges?all=true')).then(r => r.json()),
+                ]);
+                setNodes((entityData.entities ?? []).map((e: GraphEntity) => ({ ...e })));
+                setLinks((edgeData.edges ?? []).map((e: GraphEdge) => ({
+                  source: e.source_id, target: e.target_id, relation: e.relation, weight: e.weight ?? 1,
+                })));
+              } catch { /* */ }
+              finally { setLoading(false); }
+            }}
+            className="bg-black/60 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-gray-300 hover:text-white hover:border-white/20 transition-colors"
+            title="Re-scan workspaces, projects, branches, and topics"
+          >
+            ↻ Rebuild
+          </button>
+        </div>
       </div>
 
       {/* Detail panel */}

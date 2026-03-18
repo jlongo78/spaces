@@ -123,6 +123,7 @@ function initSchema(db: Database.Database) {
   // Workspaces: add active tracking
   addCol('workspaces', 'is_active', 'INTEGER DEFAULT 0');
   addCol('workspaces', 'updated', 'TEXT');
+  addCol('workspaces', 'lobe_config', "TEXT DEFAULT '{}'")
 
   // Panes: add workspace ownership, popout tracking, and agent type
   addCol('panes', 'workspace_id', 'INTEGER');
