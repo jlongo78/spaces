@@ -5,13 +5,49 @@ import os from 'os';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const updateCheckPath = path.join(os.homedir(), '.spaces', 'update-check.json');
+const UPDATE_CHECK_PATH = path.join(os.homedir(), '.spaces', 'update-check.json');
+const CACHE_TTL = 4 * 3600_000; // 4 hours
+
+async function freshCheck(): Promise<any> {
   try {
-    if (fs.existsSync(updateCheckPath)) {
-      const data = JSON.parse(fs.readFileSync(updateCheckPath, 'utf-8'));
-      return NextResponse.json(data);
+    let version = '0.0.0';
+    let name = '@jlongo78/agent-spaces';
+    try {
+      const pkg = require(path.join(process.cwd(), 'package.json'));
+      version = pkg.version;
+      name = pkg.name || name;
+    } catch { /* */ }
+
+    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}/latest`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    const result = {
+      current: version,
+      latest: data.version,
+      available: data.version !== version && data.version > version,
+      checkedAt: Date.now(),
+      name,
+    };
+    try { fs.writeFileSync(UPDATE_CHECK_PATH, JSON.stringify(result, null, 2)); } catch { /* */ }
+    return result;
+  } catch { return null; }
+}
+
+export async function GET() {
+  // Return cached data if fresh enough
+  try {
+    if (fs.existsSync(UPDATE_CHECK_PATH)) {
+      const cached = JSON.parse(fs.readFileSync(UPDATE_CHECK_PATH, 'utf-8'));
+      if (Date.now() - (cached.checkedAt || 0) < CACHE_TTL) {
+        return NextResponse.json(cached);
+      }
     }
-  } catch { /* */ }
-  return NextResponse.json({ available: false });
+  } catch { /* stale or missing */ }
+
+  // Cache is stale or missing — do a live check
+  const result = await freshCheck();
+  return NextResponse.json(result ?? { available: false });
 }

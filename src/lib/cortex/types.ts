@@ -27,6 +27,7 @@ export interface LobeConfig {
   subscriptions: string[];
   private: boolean;
   isPrivate?: boolean;
+  domain_context?: string;
 }
 
 export const DEFAULT_LOBE_CONFIG: LobeConfig = {

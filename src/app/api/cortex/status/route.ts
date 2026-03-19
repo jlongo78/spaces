@@ -113,6 +113,45 @@ export async function GET(request: NextRequest) {
       }
     } catch { /* */ }
 
+    // Quality assessment (aggregate across all lobes)
+    let quality = null;
+    try {
+      // Compute type distribution and sensitivity counts from browse data
+      const allUnits: any[] = [];
+      for (const layerKey of Object.keys(lobes)) {
+        try {
+          const items = await cortex.store.browse(layerKey, 100);
+          allUnits.push(...items);
+        } catch { /* skip */ }
+      }
+      if (allUnits.length > 0) {
+        const typeDist: Record<string, number> = {};
+        const sensCounts: Record<string, number> = {};
+        let confSum = 0;
+        let staleCount = 0;
+        for (const u of allUnits) {
+          typeDist[u.type] = (typeDist[u.type] || 0) + 1;
+          const sens = u.sensitivity || 'internal';
+          sensCounts[sens] = (sensCounts[sens] || 0) + 1;
+          confSum += u.confidence ?? 0;
+          if ((u.stale_score ?? 0) > 0.5) staleCount++;
+        }
+        const distilled = (typeDist.decision || 0) + (typeDist.pattern || 0) + (typeDist.preference || 0) + (typeDist.error_fix || 0);
+        quality = {
+          coverage_score: allUnits.length > 0 ? distilled / allUnits.length : 0,
+          type_distribution: typeDist,
+          avg_confidence: allUnits.length > 0 ? confSum / allUnits.length : 0,
+          stale_count: staleCount,
+          sensitivity_counts: sensCounts,
+          top_accessed: allUnits
+            .filter(u => (u.access_count ?? 0) > 0)
+            .sort((a, b) => (b.access_count ?? 0) - (a.access_count ?? 0))
+            .slice(0, 3)
+            .map(u => ({ text: u.text?.slice(0, 120), type: u.type, access_count: u.access_count })),
+        };
+      }
+    } catch { /* quality data not available */ }
+
     return NextResponse.json({
       enabled: true,
       status: 'healthy',
@@ -124,6 +163,7 @@ export async function GET(request: NextRequest) {
       totalSizeBytes,
       usage,
       graph: graphStats,
+      quality,
     });
   });
 }

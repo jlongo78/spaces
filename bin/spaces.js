@@ -351,28 +351,15 @@ function startServer() {
 
   console.log('');
 
-  // ─── Background update check (non-blocking) ───────────────
+  // ─── Background update check (non-blocking, repeats every 4h) ──
   // Compare installed version against npm registry. Writes result to
   // ~/.spaces/update-check.json so the UI can show a banner.
   const updateCheckPath = path.join(SPACES_DIR, 'update-check.json');
-  (async () => {
+  const checkForUpdates = async (logIfAvailable = true) => {
     try {
       const pkg = require(path.join(projectDir, 'package.json'));
       const currentVersion = pkg.version;
       const npmName = pkg.name || '@jlongo78/agent-spaces';
-
-      // Skip if checked within the last hour
-      try {
-        if (fs.existsSync(updateCheckPath)) {
-          const cached = JSON.parse(fs.readFileSync(updateCheckPath, 'utf-8'));
-          if (Date.now() - (cached.checkedAt || 0) < 3600_000) {
-            if (cached.available) {
-              console.log(`  Update available: ${currentVersion} → ${cached.latest} (run: npm i -g ${npmName})`);
-            }
-            return;
-          }
-        }
-      } catch { /* check fresh */ }
 
       const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(npmName)}/latest`, {
         signal: AbortSignal.timeout(5000),
@@ -391,11 +378,13 @@ function startServer() {
 
       fs.writeFileSync(updateCheckPath, JSON.stringify(result, null, 2));
 
-      if (result.available) {
+      if (result.available && logIfAvailable) {
         console.log(`  Update available: ${currentVersion} → ${latest} (run: npm i -g ${npmName})`);
       }
     } catch { /* network error — skip silently */ }
-  })();
+  };
+  checkForUpdates(true);
+  setInterval(() => checkForUpdates(false), 4 * 3600_000); // re-check every 4 hours
 
   // Also check addon updates (git-based packages)
   const gitSafe = ['-c', 'safe.directory=*'];
