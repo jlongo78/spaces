@@ -26,15 +26,16 @@ interface AssessResult {
   type_distribution: Record<string, number>;
 }
 
-interface ReviewUnit {
-  id: string;
-  type: string;
+interface ReviewItem {
   text: string;
-  source_ref?: string;
+  confidence: number;
+  similarity: number;
 }
 
 interface ReviewResult {
-  results: ReviewUnit[];
+  topic: string;
+  total_matches: number;
+  by_type: Record<string, ReviewItem[]>;
 }
 
 interface RefineResult {
@@ -69,15 +70,6 @@ const TYPE_HEX: Record<string, string> = {
   summary: '#8b5cf6',
 };
 
-function groupByType(items: ReviewUnit[]): Record<string, ReviewUnit[]> {
-  return items.reduce(
-    (acc, item) => {
-      (acc[item.type] = acc[item.type] || []).push(item);
-      return acc;
-    },
-    {} as Record<string, ReviewUnit[]>,
-  );
-}
 
 export function CurationTab() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -578,11 +570,11 @@ export function CurationTab() {
               {reviewResult && (
                 <div className="space-y-2">
                   <div className="text-[11px] text-gray-500">
-                    {reviewResult.results.length} unit
-                    {reviewResult.results.length !== 1 ? 's' : ''} found
+                    {reviewResult.total_matches} match
+                    {reviewResult.total_matches !== 1 ? 'es' : ''} for &ldquo;{reviewResult.topic}&rdquo;
                   </div>
-                  {Object.entries(groupByType(reviewResult.results)).map(([type, items]) => (
-                    <details key={type} className={resultPanelClass}>
+                  {Object.entries(reviewResult.by_type).map(([type, items]) => (
+                    <details key={type} open className={resultPanelClass}>
                       <summary className="flex items-center gap-2 cursor-pointer list-none">
                         <span
                           className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
@@ -596,15 +588,15 @@ export function CurationTab() {
                         </span>
                       </summary>
                       <div className="mt-3 space-y-2">
-                        {items.map(item => (
+                        {items.map((item, i) => (
                           <div
-                            key={item.id}
+                            key={i}
                             className="bg-white/[0.02] border border-white/[0.04] rounded px-3 py-2"
                           >
                             <div className="text-xs text-gray-300 leading-relaxed">{item.text}</div>
-                            {item.source_ref && (
-                              <div className="mt-1 text-[10px] text-gray-600">{item.source_ref}</div>
-                            )}
+                            <div className="mt-1 text-[10px] text-gray-600">
+                              confidence: {item.confidence?.toFixed(2)} · similarity: {item.similarity?.toFixed(3)}
+                            </div>
                           </div>
                         ))}
                       </div>
