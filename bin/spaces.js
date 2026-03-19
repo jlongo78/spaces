@@ -563,17 +563,17 @@ function startServer() {
   if (httpsServer) patchAddress(httpsServer);
 
   const dualServer = net.createServer((socket) => {
+    // If client connects but sends nothing for 5s, destroy.
+    // Once routed, clear the timeout so long-lived connections (WebSocket) aren't killed.
+    socket.setTimeout(5000, () => socket.destroy());
     socket.once('data', (buf) => {
-      // Pause the socket until the right server handles it, then
-      // unshift the peeked data so nothing is lost.
+      socket.setTimeout(0);
       socket.pause();
       const target = (buf[0] === 0x16 && httpsServer) ? httpsServer : httpServer;
       target.emit('connection', socket);
       socket.unshift(buf);
       socket.resume();
     });
-    // If client connects but sends nothing for 5s, destroy
-    socket.setTimeout(5000, () => socket.destroy());
   });
 
   dualServer.listen(PORT, () => {
