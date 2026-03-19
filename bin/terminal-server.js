@@ -1278,8 +1278,11 @@ function handleConnection(wss, ws, req) {
   // Confirm actual collaboration state so browser syncs with backend
   ws.send(JSON.stringify({ type: 'collab-updated', isCollaborating }));
 
-  // ─── Session ID detection for new Claude sessions ────────
-  if (agentType === 'claude' && (!agentSession || agentSession === 'new')) {
+  // ─── Session ID detection for Claude sessions ────────────
+  // Always run detection for Claude panes — even when resuming, because
+  // the resume may fail (stale/expired session) and Claude will start fresh,
+  // creating a new session ID that we need to capture.
+  if (agentType === 'claude') {
     detectNewClaudeSession(paneId, cwd, ws, session, username);
   }
 }
