@@ -10,12 +10,12 @@ const CACHE_TTL = 4 * 3600_000; // 4 hours
 
 async function freshCheck(): Promise<any> {
   try {
-    let version = '0.0.0';
-    let name = '@jlongo78/agent-spaces';
+    let version = process.env.npm_package_version || '0.0.0';
+    const name = '@jlongo78/agent-spaces';
+    // The launcher writes current version to the cache — use it if available
     try {
-      const pkg = require(path.join(process.cwd(), 'package.json'));
-      version = pkg.version;
-      name = pkg.name || name;
+      const cached = JSON.parse(fs.readFileSync(UPDATE_CHECK_PATH, 'utf-8'));
+      if (cached.current) version = cached.current;
     } catch { /* */ }
 
     const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}/latest`, {
