@@ -21,8 +21,6 @@ import { cn } from '@/lib/utils';
 import { trackPageView } from '@/lib/telemetry';
 import { api } from '@/lib/api';
 import { useTier } from '@/hooks/use-tier';
-import { CortexIndicator } from '@/components/cortex/cortex-indicator';
-import { CortexPanel } from '@/components/cortex/cortex-panel';
 
 const nav = [
   { href: '/terminal', label: 'Spaces', icon: Layers },
@@ -53,7 +51,6 @@ export function Sidebar() {
   const router = useRouter();
   const { hasAuth, hasAdmin, hasNetwork, hasCortex, basePath } = useTier();
   const [userRole, setUserRole] = useState<string | null>(null);
-  const [cortexOpen, setCortexOpen] = useState(false);
 
   useEffect(() => {
     const page = routeNames[pathname]
@@ -147,13 +144,6 @@ export function Sidebar() {
       </nav>
 
       <div className="p-3 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
-        {hasCortex && (
-          <div className="flex justify-center py-1">
-            <CortexIndicator onClick={() => setCortexOpen(v => !v)} />
-          </div>
-        )}
-        {hasCortex && <CortexPanel open={cortexOpen} onClose={() => setCortexOpen(false)} />}
-
         <Link
           href="/sessions?search=true"
           className="flex items-center gap-2 px-3 py-2 text-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-md"
