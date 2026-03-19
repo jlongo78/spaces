@@ -418,14 +418,14 @@ function startServer() {
           execFileSync('git', [...gitSafe, 'fetch', '--quiet'], { cwd: realDir, stdio: 'ignore', timeout: 5000 });
           const local = execFileSync('git', [...gitSafe, 'rev-parse', 'HEAD'], { cwd: realDir, encoding: 'utf-8' }).trim();
           const remote = execFileSync('git', [...gitSafe, 'rev-parse', '@{u}'], { cwd: realDir, encoding: 'utf-8' }).trim();
-          const behind = local !== remote;
           let commitsBehind = 0;
-          if (behind) {
+          if (local !== remote) {
             try {
               const count = execFileSync('git', [...gitSafe, 'rev-list', '--count', `HEAD..@{u}`], { cwd: realDir, encoding: 'utf-8' }).trim();
               commitsBehind = parseInt(count, 10) || 0;
             } catch { /* */ }
           }
+          const behind = commitsBehind > 0;
           addons[key] = { installed: true, behind, commitsBehind, localHead: local.slice(0, 7) };
           if (behind && logIfAvailable) {
             console.log(`  Update available for @spaces/${key}: ${commitsBehind} commit(s) behind (run: spaces upgrade ${key})`);
