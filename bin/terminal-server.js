@@ -529,7 +529,7 @@ function removeCortexHookConfig(cwd) {
 // ─── Cortex Claude Code hook config ──────────────────────
 // Write a UserPromptSubmit hook into .claude/settings.local.json
 // so every prompt gets a RAG search before Claude sees it.
-function writeCortexHookConfig(cwd) {
+function writeCortexHookConfig(cwd, paneId) {
   try {
     const claudeDir = path.join(cwd, '.claude');
     if (!fs.existsSync(claudeDir)) fs.mkdirSync(claudeDir, { recursive: true });
@@ -583,6 +583,26 @@ function writeCortexHookConfig(cwd) {
         ],
       },
     ];
+
+    // Refresh SessionStart hook with current pane ID (prevents stale ID errors)
+    if (paneId) {
+      try {
+        const teamsHook = path.join(os.homedir(), '.spaces', 'packages', 'teams', 'bin', 'spaces-hook.js');
+        if (fs.existsSync(teamsHook)) {
+          settings.hooks.SessionStart = [
+            {
+              hooks: [
+                {
+                  type: 'command',
+                  command: `node "${teamsHook}" ${paneId}`,
+                  timeout: 10000,
+                },
+              ],
+            },
+          ];
+        }
+      } catch { /* teams not installed */ }
+    }
 
     // Register Cortex MCP server
     const mcpServer = path.resolve(__dirname, 'cortex-mcp.js');
@@ -1080,7 +1100,7 @@ function handleConnection(wss, ws, req) {
       if (!cortexEnabled) {
         removeCortexHookConfig(safeCwd);
       } else {
-        writeCortexHookConfig(safeCwd);
+        writeCortexHookConfig(safeCwd, paneId);
         // Resolve workspace ID: from collab config, or look up from pane DB
         let wsId = env.SPACES_WORKSPACE_ID || null;
         if (!wsId) {
