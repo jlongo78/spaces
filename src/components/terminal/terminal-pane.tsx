@@ -42,9 +42,13 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     if (writeRafRef.current === null) {
       writeRafRef.current = requestAnimationFrame(() => {
         writeRafRef.current = null;
-        const queued = writeQueueRef.current;
+        let queued = writeQueueRef.current;
         writeQueueRef.current = '';
         if (queued && xtermRef.current) {
+          // Strip \x1b[3J (clear scrollback) — Claude Code sends this when re-rendering
+          // its UI, which teleports the viewport to the top. Preserving scrollback is
+          // more important for our use case.
+          queued = queued.replace(/\x1b\[3J/g, '');
           xtermRef.current.write(queued);
         }
       });
