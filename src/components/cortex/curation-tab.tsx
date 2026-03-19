@@ -203,13 +203,12 @@ export function CurationTab() {
 
   // --- Review ---
   const handleReview = async () => {
-    if (!workspaceId) return;
+    if (!workspaceId || !reviewTopic.trim()) return;
     setReviewLoading(true);
     setError('');
     setReviewResult(null);
     try {
-      const params = new URLSearchParams({ workspace_id: workspaceId, limit: reviewLimit });
-      if (reviewTopic.trim()) params.set('topic', reviewTopic.trim());
+      const params = new URLSearchParams({ workspace_id: workspaceId, topic: reviewTopic.trim(), limit: reviewLimit });
       const res = await fetch(api(`/api/cortex/curation/review?${params}`));
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message || 'Review failed');
@@ -565,7 +564,7 @@ export function CurationTab() {
               </div>
               <button
                 onClick={handleReview}
-                disabled={reviewLoading || !workspaceId}
+                disabled={reviewLoading || !workspaceId || !reviewTopic.trim()}
                 className="flex items-center gap-2 px-4 py-2 text-sm bg-purple-600 hover:bg-purple-500 text-white rounded-lg disabled:opacity-50 transition-colors"
               >
                 {reviewLoading ? (
