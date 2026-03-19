@@ -156,10 +156,10 @@ export async function POST(request: NextRequest) {
 
     // ── 7. Cross-link projects to workspaces via sessions ────
     const wsProjectLinks = db.prepare(`
-      SELECT DISTINCT pa.workspace_id, s.project_id
+      SELECT DISTINCT ws.workspace_id, s.project_id
       FROM sessions s
-      JOIN panes pa ON pa.id = s.pane_id
-      WHERE pa.workspace_id IS NOT NULL AND s.project_id IS NOT NULL
+      JOIN workspace_sessions ws ON ws.session_id = s.id
+      WHERE ws.workspace_id IS NOT NULL AND s.project_id IS NOT NULL
     `).all() as { workspace_id: number; project_id: string }[];
 
     for (const wpl of wsProjectLinks) {

@@ -440,11 +440,15 @@ function linuxSystemctl(level, ...args) {
   if (level === 'system') {
     execFileSync('sudo', ['systemctl', ...args], { stdio: 'inherit' });
   } else {
-    // User-level systemctl needs XDG_RUNTIME_DIR to connect to the user bus
-    const env = { ...process.env };
-    if (!env.XDG_RUNTIME_DIR) {
-      env.XDG_RUNTIME_DIR = `/run/user/${process.getuid()}`;
-    }
+    // User-level systemctl needs XDG_RUNTIME_DIR to connect to the user bus.
+    // Always set it from the real UID — inherited env may have a stale value
+    // (e.g. from a prior session with a different UID mapping).
+    const uid = process.getuid();
+    const env = {
+      ...process.env,
+      XDG_RUNTIME_DIR: `/run/user/${uid}`,
+      DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${uid}/bus`,
+    };
     execFileSync('systemctl', ['--user', ...args], { stdio: 'inherit', env });
   }
 }
@@ -482,8 +486,12 @@ async function linuxInstall() {
 
   if (level === 'user') {
     try {
-      const env = { ...process.env };
-      if (!env.XDG_RUNTIME_DIR) env.XDG_RUNTIME_DIR = `/run/user/${process.getuid()}`;
+      const uid = process.getuid();
+      const env = {
+        ...process.env,
+        XDG_RUNTIME_DIR: `/run/user/${uid}`,
+        DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${uid}/bus`,
+      };
       execFileSync('loginctl', ['enable-linger', os.userInfo().username], { stdio: 'inherit', env });
       logOk('Enabled login lingering for user service');
     } catch {
@@ -570,8 +578,12 @@ async function linuxStatus() {
 async function linuxLogs() {
   const level = loadLevel() || 'user';
   if (level === 'user') {
-    const env = { ...process.env };
-    if (!env.XDG_RUNTIME_DIR) env.XDG_RUNTIME_DIR = `/run/user/${process.getuid()}`;
+    const uid = process.getuid();
+    const env = {
+      ...process.env,
+      XDG_RUNTIME_DIR: `/run/user/${uid}`,
+      DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${uid}/bus`,
+    };
     spawnSync('journalctl', ['--user', '-u', SERVICE_NAME, '-f', '--no-pager'], { stdio: 'inherit', env });
   } else {
     spawnSync('sudo', ['journalctl', '-u', SERVICE_NAME, '-f', '--no-pager'], { stdio: 'inherit' });

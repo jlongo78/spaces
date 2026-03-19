@@ -936,6 +936,7 @@ function handleConnection(wss, ws, req) {
   // Check for existing session to reattach
   const existing = sessions.get(paneId);
   if (existing && existing.pty && !existing.exited) {
+    console.log(`[WS] Reattach pane=${paneId.slice(0,8)} buffer=${existing.buffer.length} chunks`);
     existing.ws = ws;
 
     // Replay buffered output so user sees context
@@ -965,8 +966,13 @@ function handleConnection(wss, ws, req) {
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
+      console.log(`[WS] Close pane=${paneId.slice(0,8)} code=${code} reason=${reason || 'none'}`);
       if (existing.ws === ws) existing.ws = null;
+    });
+
+    ws.on('error', (err) => {
+      console.log(`[WS] Error pane=${paneId.slice(0,8)} err=${err.message}`);
     });
 
     return;
@@ -1258,8 +1264,13 @@ function handleConnection(wss, ws, req) {
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
+    console.log(`[WS] Close pane=${paneId.slice(0,8)} code=${code} reason=${reason || 'none'}`);
     if (session.ws === ws) session.ws = null;
+  });
+
+  ws.on('error', (err) => {
+    console.log(`[WS] Error pane=${paneId.slice(0,8)} err=${err.message}`);
   });
 
   ws.send(JSON.stringify({ type: 'ready', paneId }));
