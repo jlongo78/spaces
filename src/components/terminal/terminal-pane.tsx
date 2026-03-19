@@ -371,7 +371,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       {/* Title bar */}
       <div
         className="flex items-center gap-2 px-3 py-1.5 text-xs select-none flex-shrink-0"
-        style={{ backgroundColor: `${pane.color}60` }}
+        style={{ backgroundColor: `${pane.color}30`, borderBottom: `1px solid ${pane.color}40` }}
       >
         <div ref={colorPickerRef} className="flex-shrink-0">
           <button
@@ -495,7 +495,6 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
           <span className="text-[10px] text-yellow-500">connecting...</span>
         )}
 
-        {hasCortex && <InjectionBadge count={injectionCount} items={injectionItems} />}
 
         {exited && (
           <button onClick={reconnect} className="text-zinc-400 hover:text-white" title="Restart">
@@ -506,7 +505,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         {!isPopout && onPopout && (
           <button
             onClick={handlePopout}
-            className="text-zinc-400 hover:text-white"
+            className="text-zinc-300 hover:text-white"
             title="Pop out to new window"
           >
             <ExternalLink className="w-3 h-3" />
@@ -515,7 +514,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
 
         <button
           onClick={() => onToggleMaximize(pane.id)}
-          className="text-zinc-400 hover:text-white"
+          className="text-zinc-300 hover:text-white"
           title={isMaximized ? 'Restore' : 'Maximize'}
         >
           {isMaximized ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
@@ -525,7 +524,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
           onClick={() => {
             if (confirm('Close this terminal?')) onClose(pane.id);
           }}
-          className="text-zinc-400 hover:text-red-400"
+          className="text-zinc-300 hover:text-red-400"
           title="Close"
         >
           <X className="w-3 h-3" />
