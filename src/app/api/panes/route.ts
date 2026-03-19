@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, withUser } from '@/lib/auth';
 import { ensureInitialized } from '@/lib/db/init';
-import { getActivePanes, createPane } from '@/lib/db/queries';
+import { getActivePanes, getPanesByWorkspace, createPane } from '@/lib/db/queries';
 
 export async function GET(request: NextRequest) {
   const user = getAuthUser(request);
   return withUser(user, async () => {
     await ensureInitialized();
+    const url = new URL(request.url);
+    const workspaceId = url.searchParams.get('workspace_id');
+    if (workspaceId) {
+      return NextResponse.json(getPanesByWorkspace(parseInt(workspaceId, 10)));
+    }
     return NextResponse.json(getActivePanes());
   });
 }
