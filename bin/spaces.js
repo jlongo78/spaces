@@ -139,22 +139,42 @@ if (cliFlags.setup) {
   startServer();
 }
 
-// ─── Self-signed TLS certificate ────────────────────────────
-// Generates a self-signed cert on first run (valid 365 days) so mobile
-// browsers that force HTTPS-first can still connect.  The cert/key are
-// persisted under ~/.spaces/ so they survive restarts.
-function ensureSelfSignedCert() {
+// ─── TLS certificate ────────────────────────────────────────
+// Uses a real cert if configured in server.json (tlsCert, tlsKey, optional
+// tlsCa for the full chain), otherwise generates a self-signed cert so
+// mobile browsers that force HTTPS-first can still connect.
+function ensureTlsCert() {
+  // Check for configured real cert in server.json
+  try {
+    const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    if (config.tlsCert && config.tlsKey) {
+      if (fs.existsSync(config.tlsCert) && fs.existsSync(config.tlsKey)) {
+        // Read cert + key, and optionally the CA bundle for full chain
+        const certPem = fs.readFileSync(config.tlsCert, 'utf-8').trim();
+        const caPem = (config.tlsCa && fs.existsSync(config.tlsCa))
+          ? fs.readFileSync(config.tlsCa, 'utf-8').trim()
+          : null;
+        const creds = {
+          cert: caPem ? certPem + '\n' + caPem : certPem,
+          key: fs.readFileSync(config.tlsKey, 'utf-8'),
+        };
+        console.log('  Using TLS certificate: ' + config.tlsCert);
+        return creds;
+      }
+      console.log('  Warning: tlsCert/tlsKey configured but files not found, falling back to self-signed');
+    }
+  } catch {}
+
+  // Fall back to self-signed
   const certPath = path.join(SPACES_DIR, 'tls-cert.pem');
   const keyPath  = path.join(SPACES_DIR, 'tls-key.pem');
 
-  // Re-use existing cert if present
   if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
     try {
       return { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) };
     } catch {}
   }
 
-  // Generate via openssl CLI (available on all platforms)
   try {
     fs.mkdirSync(SPACES_DIR, { recursive: true });
     execFileSync('openssl', [
@@ -529,7 +549,7 @@ function startServer() {
   // anything else = plain HTTP.  This lets mobile browsers that force
   // HTTPS-first connect to the same port without a separate listener.
   const httpServer = http.createServer(proxyHandler);
-  const tlsCreds = ensureSelfSignedCert();
+  const tlsCreds = ensureTlsCert();
   const httpsServer = tlsCreds ? https.createServer(tlsCreds, proxyHandler) : null;
 
   const { createTerminalServer } = require('./terminal-server');
