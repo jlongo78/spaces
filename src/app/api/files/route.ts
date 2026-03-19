@@ -3,6 +3,8 @@ import { getAuthUser, withUser } from '@/lib/auth';
 import fs from 'fs';
 import path from 'path';
 
+export const dynamic = 'force-dynamic';
+
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.ico', '.bmp', '.webp', '.svg']);
 
 const BINARY_EXTS = new Set([
@@ -145,6 +147,41 @@ export async function GET(request: NextRequest) {
       });
     } catch {
       return NextResponse.json({ error: 'Cannot read directory' }, { status: 404 });
+    }
+  });
+}
+
+export async function POST(request: NextRequest) {
+  const user = getAuthUser(request);
+  return withUser(user, async () => {
+    try {
+      const formData = await request.formData();
+      const dir = formData.get('dir') as string;
+      if (!dir) return NextResponse.json({ error: 'dir required' }, { status: 400 });
+
+      const resolved = path.resolve(dir);
+      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+        return NextResponse.json({ error: 'Directory not found' }, { status: 404 });
+      }
+
+      const files = formData.getAll('files') as File[];
+      if (files.length === 0) return NextResponse.json({ error: 'No files provided' }, { status: 400 });
+
+      const saved: string[] = [];
+      for (const file of files) {
+        // Sanitize filename — strip path separators to prevent traversal
+        const safeName = file.name.replace(/[/\\]/g, '_');
+        if (!safeName || safeName === '.' || safeName === '..') continue;
+
+        const destPath = path.join(resolved, safeName);
+        const buffer = Buffer.from(await file.arrayBuffer());
+        fs.writeFileSync(destPath, buffer);
+        saved.push(safeName);
+      }
+
+      return NextResponse.json({ uploaded: saved.length, files: saved });
+    } catch (err) {
+      return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
     }
   });
 }

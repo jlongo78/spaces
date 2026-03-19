@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { EntityDetail } from './entity-detail';
 
@@ -40,6 +40,7 @@ type GraphInstance = {
   onBackgroundClick: (cb: () => void) => GraphInstance;
   width: (w: number) => GraphInstance;
   height: (h: number) => GraphInstance;
+  zoom: () => number;
   zoomToFit: (ms?: number, px?: number) => GraphInstance;
   _destructor: () => void;
 };
@@ -79,7 +80,6 @@ function drawNode(
   }
 
   if (type === 'person' || type === 'topic') {
-    // Circle
     const radius = type === 'topic' ? r * 0.7 : r;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -89,7 +89,6 @@ function drawNode(
     ctx.lineWidth = selected ? 2 / globalScale : 1.5 / globalScale;
     ctx.stroke();
   } else if (type === 'system' || type === 'module') {
-    // Diamond
     const size = r * 1.1;
     ctx.beginPath();
     ctx.moveTo(x, y - size);
@@ -103,7 +102,6 @@ function drawNode(
     ctx.lineWidth = selected ? 2 / globalScale : 1.5 / globalScale;
     ctx.stroke();
   } else {
-    // Rounded rect for team, project, department, organization
     const w = r * 2.2;
     const h = r * 1.5;
     const rx = 3 / globalScale;
@@ -127,25 +125,27 @@ function drawNode(
     ctx.stroke();
   }
 
-  // Label
-  const fontSize = Math.max(2, 10 / globalScale);
-  ctx.font = `${fontSize}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = '#e5e7eb';
-  const label =
-    node.name.length > 16 ? node.name.slice(0, 15) + '…' : node.name;
-  ctx.fillText(label, x, y + r * 1.4);
+  // Label — hide at very low zoom to reduce clutter
+  if (globalScale > 0.4) {
+    const fontSize = Math.max(2, 10 / globalScale);
+    ctx.font = `${fontSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#e5e7eb';
+    const label =
+      node.name.length > 16 ? node.name.slice(0, 15) + '\u2026' : node.name;
+    ctx.fillText(label, x, y + r * 1.4);
+  }
 
   ctx.restore();
 }
 
 const LEGEND_ITEMS = [
-  { label: 'Person', color: '#7c3aed', shape: 'circle' },
-  { label: 'Team / Project', color: '#10b981', shape: 'rect' },
-  { label: 'System / Module', color: '#f59e0b', shape: 'diamond' },
-  { label: 'Topic', color: '#06b6d4', shape: 'circle-sm' },
-  { label: 'Dept / Org', color: '#3b82f6', shape: 'rect' },
+  { label: 'Person', color: '#7c3aed', shape: 'circle', types: ['person'] },
+  { label: 'Team / Project', color: '#10b981', shape: 'rect', types: ['team', 'project'] },
+  { label: 'System / Module', color: '#f59e0b', shape: 'diamond', types: ['system', 'module'] },
+  { label: 'Topic', color: '#06b6d4', shape: 'circle-sm', types: ['topic'] },
+  { label: 'Dept / Org', color: '#3b82f6', shape: 'rect', types: ['department', 'organization'] },
 ];
 
 export function EntityGraphView() {
@@ -155,12 +155,10 @@ export function EntityGraphView() {
   const [links, setLinks] = useState<GraphLink[]>([]);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const selectedRef = useRef<GraphNode | null>(null);
 
-  // Keep ref in sync so nodeCanvasObject closure can read it
-  useEffect(() => {
-    selectedRef.current = selected;
-  }, [selected]);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
 
   // Fetch graph data
   useEffect(() => {
@@ -170,53 +168,37 @@ export function EntityGraphView() {
       fetch(api('/api/cortex/graph/edges?all=true')).then(r => r.json()),
     ])
       .then(([entityData, edgeData]) => {
-        const entityNodes: GraphNode[] = (entityData.entities ?? []).map(
-          (e: GraphEntity) => ({ ...e }),
-        );
-        const graphLinks: GraphLink[] = (edgeData.edges ?? []).map(
-          (e: GraphEdge) => ({
-            source: e.source_id,
-            target: e.target_id,
-            relation: e.relation,
-            weight: e.weight ?? 1,
-          }),
-        );
-        setNodes(entityNodes);
-        setLinks(graphLinks);
+        setNodes((entityData.entities ?? []).map((e: GraphEntity) => ({ ...e })));
+        setLinks((edgeData.edges ?? []).map((e: GraphEdge) => ({
+          source: e.source_id, target: e.target_id, relation: e.relation, weight: e.weight ?? 1,
+        })));
       })
-      .catch(() => {
-        setNodes([]);
-        setLinks([]);
-      })
+      .catch(() => { setNodes([]); setLinks([]); })
       .finally(() => setLoading(false));
   }, []);
+
+  // Filter nodes/links by hidden types (memoized to avoid graph rebuild on unrelated re-renders)
+  const visibleNodes = useMemo(() => nodes.filter(n => !hiddenTypes.has(n.type)), [nodes, hiddenTypes]);
+  const visibleIds = useMemo(() => new Set(visibleNodes.map(n => n.id)), [visibleNodes]);
+  const visibleLinks = useMemo(() => links.filter(l => visibleIds.has(l.source) && visibleIds.has(l.target)), [links, visibleIds]);
 
   // Build/update the graph
   useEffect(() => {
     if (loading || !containerRef.current) return;
-
-    // Destroy previous instance
-    if (graphRef.current) {
-      graphRef.current._destructor?.();
-      graphRef.current = null;
-    }
-
-    if (nodes.length === 0) return;
+    if (graphRef.current) { graphRef.current._destructor?.(); graphRef.current = null; }
+    if (visibleNodes.length === 0) return;
 
     const el = containerRef.current;
     const width = el.clientWidth || 800;
     const height = el.clientHeight || 600;
+    if (width < 10 || height < 10) return;
 
-    if (width < 10 || height < 10) return; // container not laid out yet
-
-    // Dynamically import to avoid SSR issues
     import('force-graph').then(({ default: ForceGraph2D }) => {
       if (!containerRef.current) return;
 
-      // force-graph uses Kapsule pattern: ForceGraph2D() returns a builder, then call with element
       const builder = ForceGraph2D as unknown as () => (el: HTMLElement) => GraphInstance;
       const graph = builder()(containerRef.current)
-        .graphData({ nodes, links })
+        .graphData({ nodes: visibleNodes, links: visibleLinks })
         .width(width)
         .height(height)
         .nodeCanvasObject((node, ctx, globalScale) => {
@@ -233,42 +215,33 @@ export function EntityGraphView() {
         })
         .linkColor(() => 'rgba(124, 58, 237, 0.2)')
         .linkWidth((link) => Math.max(0.5, Math.min(4, Math.sqrt(link.weight ?? 1) * 0.8)))
-        .onNodeClick((node) => {
-          setSelected(node);
-        })
-        .onBackgroundClick(() => {
-          setSelected(null);
-        });
+        .onNodeClick((node) => setSelected(node))
+        .onBackgroundClick(() => setSelected(null));
 
       graphRef.current = graph;
-
-      // Fit to view after a short settle time
-      setTimeout(() => {
-        graph.zoomToFit(400, 40);
-      }, 300);
+      setTimeout(() => graph.zoomToFit(400, 40), 300);
     });
 
-    return () => {
-      if (graphRef.current) {
-        graphRef.current._destructor?.();
-        graphRef.current = null;
-      }
-    };
+    return () => { if (graphRef.current) { graphRef.current._destructor?.(); graphRef.current = null; } };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, nodes, links]);
+  }, [loading, visibleNodes, visibleLinks]);
 
-  const handleRecenter = useCallback(() => {
-    graphRef.current?.zoomToFit(400, 40);
-  }, []);
-
+  const handleRecenter = useCallback(() => graphRef.current?.zoomToFit(400, 40), []);
   const handleClose = useCallback(() => setSelected(null), []);
 
+  const toggleType = (types: string[]) => {
+    setHiddenTypes(prev => {
+      const next = new Set(prev);
+      const allHidden = types.every(t => next.has(t));
+      for (const t of types) {
+        if (allHidden) next.delete(t); else next.add(t);
+      }
+      return next;
+    });
+  };
+
   if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
-        Loading graph…
-      </div>
-    );
+    return <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">Loading graph&hellip;</div>;
   }
 
   if (nodes.length === 0) {
@@ -290,7 +263,7 @@ export function EntityGraphView() {
 
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-3">
-        <div className="text-4xl opacity-20">◈</div>
+        <div className="text-4xl opacity-20">&#x25C8;</div>
         <div className="text-sm">No entities in the graph yet.</div>
         <div className="text-xs text-gray-600 text-center max-w-xs">
           Build the graph from your workspaces, projects, and sessions.
@@ -307,19 +280,45 @@ export function EntityGraphView() {
 
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden h-full">
-      {/* Graph canvas area */}
       <div className="relative flex-1 min-w-0">
         <div ref={containerRef} className="w-full h-full" />
 
-        {/* Legend — top-right */}
+        {/* Legend + filter — top-right */}
         <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-sm border border-white/10 rounded-lg p-2.5 text-[10px]">
-          <div className="text-gray-400 uppercase tracking-wider mb-1.5 font-medium">Legend</div>
-          {LEGEND_ITEMS.map((item) => (
-            <div key={item.label} className="flex items-center gap-1.5 mb-1">
-              <LegendShape shape={item.shape} color={item.color} />
-              <span className="text-gray-300">{item.label}</span>
-            </div>
-          ))}
+          <div className="text-gray-400 uppercase tracking-wider mb-1.5 font-medium">
+            Filter
+            {hiddenTypes.size > 0 && (
+              <span className="ml-1.5 text-gray-600 normal-case">
+                {visibleNodes.length}/{nodes.length}
+              </span>
+            )}
+          </div>
+          {LEGEND_ITEMS.map((item) => {
+            const isHidden = item.types.every(t => hiddenTypes.has(t));
+            return (
+              <button
+                key={item.label}
+                onClick={() => toggleType(item.types)}
+                className={`flex items-center gap-1.5 mb-1 w-full text-left transition-opacity ${isHidden ? 'opacity-30' : 'opacity-100'} hover:opacity-100`}
+              >
+                <LegendShape shape={item.shape} color={item.color} />
+                <span className="text-gray-300">{item.label}</span>
+                {!isHidden && (
+                  <span className="ml-auto text-gray-600">
+                    {nodes.filter(n => item.types.includes(n.type)).length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {hiddenTypes.size > 0 && (
+            <button
+              onClick={() => setHiddenTypes(new Set())}
+              className="mt-1 text-[9px] text-gray-500 hover:text-gray-300 w-full text-center"
+            >
+              Show all
+            </button>
+          )}
         </div>
 
         {/* Bottom buttons */}
@@ -329,7 +328,7 @@ export function EntityGraphView() {
             className="bg-black/60 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-gray-300 hover:text-white hover:border-white/20 transition-colors"
             title="Recenter graph"
           >
-            ⊕ Recenter
+            &oplus; Recenter
           </button>
           <button
             onClick={async () => {
@@ -350,7 +349,7 @@ export function EntityGraphView() {
             className="bg-black/60 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-gray-300 hover:text-white hover:border-white/20 transition-colors"
             title="Re-scan workspaces, projects, branches, and topics"
           >
-            ↻ Rebuild
+            &#x21BB; Rebuild
           </button>
         </div>
       </div>

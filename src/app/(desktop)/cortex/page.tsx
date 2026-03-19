@@ -6,16 +6,17 @@ import { api } from '@/lib/api';
 import { KnowledgeTab } from '@/components/cortex/knowledge-tab';
 import { ContextTab } from '@/components/cortex/context-tab';
 import { CortexSettings } from '@/components/cortex/cortex-settings';
+import { CortexDashboard } from '@/components/cortex/cortex-dashboard';
 
 const EntityGraphView = dynamic(
   () => import('@/components/cortex/entity-graph').then(m => ({ default: m.EntityGraphView })),
   { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">Loading graph...</div> }
 );
 
-type Tab = 'graph' | 'knowledge' | 'context' | 'settings';
+type Tab = 'dashboard' | 'graph' | 'knowledge' | 'context' | 'settings';
 
 export default function CortexPage() {
-  const [tab, setTab] = useState<Tab>('graph');
+  const [tab, setTab] = useState<Tab>('dashboard');
   const [stats, setStats] = useState<any>(null);
   useEffect(() => {
     fetch(api('/api/cortex/status'))
@@ -25,6 +26,7 @@ export default function CortexPage() {
   }, []);
 
   const tabs: { key: Tab; label: string }[] = [
+    { key: 'dashboard', label: 'Dashboard' },
     { key: 'graph', label: 'Graph' },
     { key: 'knowledge', label: 'Knowledge' },
     { key: 'context', label: 'Context' },
@@ -58,6 +60,7 @@ export default function CortexPage() {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
+        {tab === 'dashboard' && <CortexDashboard />}
         {tab === 'graph' && <EntityGraphView />}
         {tab === 'knowledge' && <KnowledgeTab />}
         {tab === 'context' && <ContextTab />}

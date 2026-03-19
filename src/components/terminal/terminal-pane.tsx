@@ -32,29 +32,33 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<any>(null);
 
-  // Track whether user is scrolled up (reading scrollback)
-  const userScrolledUpRef = useRef(false);
-  const savedScrollLineRef = useRef(0);
+  // RAF-batched write queue — coalesces rapid WebSocket messages into single frame updates
+  // to prevent scroll jitter from hundreds of write() calls per second
+  const writeQueueRef = useRef('');
+  const writeRafRef = useRef<number | null>(null);
 
-  // Scroll-safe fit: preserves viewport position when user is scrolled up
-  const safeFit = () => {
-    const term = xtermRef.current;
-    const fit = fitRef.current;
-    if (!term || !fit) return;
-
-    // Capture position BEFORE fit changes anything
-    const buf = term.buffer?.active;
-    const wasScrolledUp = buf ? buf.viewportY < buf.baseY : false;
-    const savedLine = buf ? buf.viewportY : 0;
-
-    try { fit.fit(); } catch { /* ignore */ }
-
-    // Restore position if user was in scrollback
-    if (wasScrolledUp) {
-      requestAnimationFrame(() => {
-        term.scrollToLine(savedLine);
+  const queueWrite = (data: string) => {
+    writeQueueRef.current += data;
+    if (writeRafRef.current === null) {
+      writeRafRef.current = requestAnimationFrame(() => {
+        writeRafRef.current = null;
+        let queued = writeQueueRef.current;
+        writeQueueRef.current = '';
+        if (queued && xtermRef.current) {
+          // Strip \x1b[3J (clear scrollback) — Claude Code sends this when re-rendering
+          // its UI, which teleports the viewport to the top. Preserving scrollback is
+          // more important for our use case.
+          queued = queued.replace(/\x1b\[3J/g, '');
+          xtermRef.current.write(queued);
+        }
       });
     }
+  };
+
+  // Simple fit — xterm.js internally handles scroll preservation via
+  // _suppressOnScrollHandler in Viewport._sync() and isUserScrolling in BufferService
+  const safeFit = () => {
+    try { fitRef.current?.fit(); } catch { /* ignore */ }
   };
   const [connected, setConnected] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -162,14 +166,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       return true;
     });
 
-    // Track user scroll position — detect when user is reading scrollback
-    term.onScroll(() => {
-      const buf = term.buffer?.active;
-      if (buf) {
-        userScrolledUpRef.current = buf.viewportY < buf.baseY;
-        savedScrollLineRef.current = buf.viewportY;
-      }
-    });
+    // xterm.js tracks scroll state internally (isUserScrolling flag in BufferService)
+    // — no manual tracking needed. write() won't auto-scroll when user is scrolled up.
 
     xtermRef.current = term;
     fitRef.current = fitAddon;
@@ -229,15 +227,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'data') {
-            // Preserve scroll position if user is reading scrollback
-            if (userScrolledUpRef.current) {
-              const savedLine = savedScrollLineRef.current;
-              term.write(msg.data);
-              // write() auto-scrolls to bottom — restore user's position
-              requestAnimationFrame(() => term.scrollToLine(savedLine));
-            } else {
-              term.write(msg.data);
-            }
+            queueWrite(msg.data);
           } else if (msg.type === 'exit') {
             setExited(true);
             exitedRef.current = true;
@@ -278,8 +268,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
 
     // Wire terminal input/resize to current WebSocket via ref
     term.onData((data: string) => {
-      // User is typing — they want to follow output again
-      userScrolledUpRef.current = false;
+      // xterm.js auto-scrolls to bottom on user input (scrollOnUserInput option)
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: 'data', data }));
       }
@@ -376,7 +365,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   return (
     <div className={cn(
       'flex flex-col border rounded-lg overflow-hidden',
-      isMaximized ? 'fixed inset-2 z-50' : '',
+      isMaximized ? 'absolute inset-0 z-40 !rounded-none' : '',
       'border-zinc-700'
     )} style={{ borderColor: `${pane.color}60` }}>
       {/* Title bar */}
