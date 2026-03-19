@@ -154,6 +154,22 @@ export function LobeSettings({ workspaceId, workspaceName }: Props) {
         </div>
       </div>
 
+      {/* Domain context */}
+      <div className="space-y-1.5">
+        <div className="text-[10px] text-zinc-500">
+          Domain Context
+          <span className="text-zinc-700 ml-1">— injected into distillation prompts for better extraction</span>
+        </div>
+        <textarea
+          value={config.domain_context || ''}
+          onChange={e => save({ domain_context: e.target.value })}
+          placeholder="Describe the domain expertise this lobe should focus on. E.g. 'This workspace covers CFB power plant engineering.'"
+          rows={3}
+          disabled={saving}
+          className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-purple-500/50 resize-y disabled:opacity-50"
+        />
+      </div>
+
       {/* Sibling workspace access — toggle which workspaces can see this lobe */}
       {allLobes.length > 0 && !config.isPrivate && (
         <div className="space-y-1.5">
