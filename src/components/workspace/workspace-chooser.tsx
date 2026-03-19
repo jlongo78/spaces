@@ -95,6 +95,14 @@ export function WorkspaceChooser({
   const searchRef = useRef<HTMLInputElement>(null);
   const [universeError, setUniverseError] = useState(false);
   const [universeToast, setUniverseToast] = useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{ available: boolean; current?: string; latest?: string; name?: string } | null>(null);
+
+  // Check for updates
+  useEffect(() => {
+    fetch(api('/api/updates')).then(r => r.json()).then(d => {
+      if (d.available) setUpdateInfo(d);
+    }).catch(() => {});
+  }, []);
 
   // Keyboard shortcut: Ctrl+K or / to focus search
   useEffect(() => {
@@ -149,6 +157,25 @@ export function WorkspaceChooser({
 
   return (
     <div className="h-screen flex flex-col bg-zinc-950 text-zinc-100">
+      {/* Update banner */}
+      {updateInfo?.available && (
+        <div className="flex items-center justify-between px-4 py-2 bg-indigo-500/10 border-b border-indigo-500/20 text-xs">
+          <span className="text-indigo-300">
+            Update available: <span className="font-mono">{updateInfo.current}</span> → <span className="font-mono font-medium text-indigo-200">{updateInfo.latest}</span>
+          </span>
+          <div className="flex items-center gap-3">
+            <code className="text-[10px] text-indigo-400/70 bg-indigo-500/10 px-2 py-0.5 rounded">
+              npm i -g {updateInfo.name}
+            </code>
+            <button
+              onClick={() => setUpdateInfo(null)}
+              className="text-indigo-500/50 hover:text-indigo-300"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      )}
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/50 flex-shrink-0">
         <button

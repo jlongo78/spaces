@@ -331,6 +331,70 @@ function startServer() {
 
   console.log('');
 
+  // ─── Background update check (non-blocking) ───────────────
+  // Compare installed version against npm registry. Writes result to
+  // ~/.spaces/update-check.json so the UI can show a banner.
+  const updateCheckPath = path.join(SPACES_DIR, 'update-check.json');
+  (async () => {
+    try {
+      const pkg = require(path.join(projectDir, 'package.json'));
+      const currentVersion = pkg.version;
+      const npmName = pkg.name || '@jlongo78/agent-spaces';
+
+      // Skip if checked within the last hour
+      try {
+        if (fs.existsSync(updateCheckPath)) {
+          const cached = JSON.parse(fs.readFileSync(updateCheckPath, 'utf-8'));
+          if (Date.now() - (cached.checkedAt || 0) < 3600_000) {
+            if (cached.available) {
+              console.log(`  Update available: ${currentVersion} → ${cached.latest} (run: npm i -g ${npmName})`);
+            }
+            return;
+          }
+        }
+      } catch { /* check fresh */ }
+
+      const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(npmName)}/latest`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const latest = data.version;
+
+      const result = {
+        current: currentVersion,
+        latest,
+        available: latest !== currentVersion && latest > currentVersion,
+        checkedAt: Date.now(),
+        name: npmName,
+      };
+
+      fs.writeFileSync(updateCheckPath, JSON.stringify(result, null, 2));
+
+      if (result.available) {
+        console.log(`  Update available: ${currentVersion} → ${latest} (run: npm i -g ${npmName})`);
+      }
+    } catch { /* network error — skip silently */ }
+  })();
+
+  // Also check addon updates (git-based packages)
+  const gitSafe = ['-c', 'safe.directory=*'];
+  const addonPaths = { teams: teamsPath, pro: proPath, cortex: cortexPath };
+  (async () => {
+    for (const [key, addonDir] of Object.entries(addonPaths)) {
+      if (!addonDir || !fs.existsSync(path.join(addonDir, '.git'))) continue;
+      const realDir = fs.realpathSync(addonDir);
+      try {
+        execFileSync('git', [...gitSafe, 'fetch', '--quiet'], { cwd: realDir, stdio: 'ignore', timeout: 5000 });
+        const local = execFileSync('git', [...gitSafe, 'rev-parse', 'HEAD'], { cwd: realDir, encoding: 'utf-8' }).trim();
+        const remote = execFileSync('git', [...gitSafe, 'rev-parse', '@{u}'], { cwd: realDir, encoding: 'utf-8' }).trim();
+        if (local !== remote) {
+          console.log(`  Update available for @spaces/${key} (run: spaces upgrade ${key})`);
+        }
+      } catch { /* not on a branch with upstream, skip */ }
+    }
+  })();
+
   // Check for ~/.claude/ directory
   const claudeDir = path.join(os.homedir(), '.claude');
   if (!fs.existsSync(claudeDir)) {
