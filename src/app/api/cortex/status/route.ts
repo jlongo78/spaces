@@ -35,9 +35,24 @@ export async function GET(request: NextRequest) {
     const config = readCortexConfig(configPath);
     const cortexDir = path.join(spacesDir, 'cortex');
 
+    // Build workspace ID → name map from DB
+    const wsNames = new Map<string, string>();
+    try {
+      const db = (await import('@/lib/db/schema')).getDb();
+      if (db) {
+        const rows = db.prepare('SELECT id, name FROM workspaces').all() as { id: number; name: string }[];
+        for (const r of rows) wsNames.set(String(r.id), r.name);
+      }
+    } catch { /* DB not available */ }
+
     // Scan all lobe directories for sizes and counts
     const lobes: Record<string, { count: number; sizeBytes: number; label: string }> = {};
     const layerDirs = ['personal', 'workspace', 'team'];
+    const layerLabels: Record<string, string> = {
+      personal: 'Personal',
+      workspace: 'Shared (legacy)',
+      team: 'Team',
+    };
 
     for (const layer of layerDirs) {
       const layerDir = path.join(cortexDir, layer);
@@ -49,7 +64,7 @@ export async function GET(request: NextRequest) {
         try {
           const table = await cortex.store.getTable?.(layer) ?? null;
           const count = table ? await table.countRows() : 0;
-          lobes[layer] = { count, sizeBytes: dirSize(layerDir), label: layer };
+          lobes[layer] = { count, sizeBytes: dirSize(layerDir), label: layerLabels[layer] || layer };
         } catch {
           lobes[layer] = { count: 0, sizeBytes: dirSize(layerDir), label: layer };
         }
@@ -67,9 +82,9 @@ export async function GET(request: NextRequest) {
                 try {
                   const table = await cortex.store.getTable?.(key) ?? null;
                   const count = table ? await table.countRows() : 0;
-                  lobes[key] = { count, sizeBytes: dirSize(subDir), label: `Workspace ${sub.name}` };
+                  lobes[key] = { count, sizeBytes: dirSize(subDir), label: wsNames.get(sub.name) || `Workspace ${sub.name}` };
                 } catch {
-                  lobes[key] = { count: 0, sizeBytes: dirSize(subDir), label: `Workspace ${sub.name}` };
+                  lobes[key] = { count: 0, sizeBytes: dirSize(subDir), label: wsNames.get(sub.name) || `Workspace ${sub.name}` };
                 }
               }
             }
