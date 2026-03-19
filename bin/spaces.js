@@ -352,57 +352,116 @@ function startServer() {
   console.log('');
 
   // ─── Background update check (non-blocking, repeats every 4h) ──
-  // Compare installed version against npm registry. Writes result to
-  // ~/.spaces/update-check.json so the UI can show a banner.
+  // Checks npm registry, GitHub releases, and addon git repos.
+  // Writes results to ~/.spaces/update-check.json for the UI banner.
   const updateCheckPath = path.join(SPACES_DIR, 'update-check.json');
   const checkForUpdates = async (logIfAvailable = true) => {
     try {
       const pkg = require(path.join(projectDir, 'package.json'));
       const currentVersion = pkg.version;
       const npmName = pkg.name || '@jlongo78/agent-spaces';
+      const githubRepo = 'jlongo78/spaces';
 
-      const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(npmName)}/latest`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      const latest = data.version;
+      // Check npm registry
+      let npmLatest = null;
+      try {
+        const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(npmName)}/latest`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          npmLatest = data.version;
+        }
+      } catch { /* */ }
+
+      // Check GitHub for latest release or tag (may be ahead of npm)
+      let githubLatest = null;
+      let githubPrerelease = false;
+      let githubUrl = null;
+      try {
+        // Check releases first (includes pre-releases)
+        const res = await fetch(`https://api.github.com/repos/${githubRepo}/releases?per_page=5`, {
+          signal: AbortSignal.timeout(5000),
+          headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'agent-spaces' },
+        });
+        if (res.ok) {
+          const releases = await res.json();
+          if (releases.length > 0) {
+            // Find latest stable and latest pre-release
+            const stable = releases.find(r => !r.prerelease && !r.draft);
+            const pre = releases.find(r => r.prerelease && !r.draft);
+            if (stable) {
+              githubLatest = stable.tag_name.replace(/^v/, '');
+              githubUrl = stable.html_url;
+            }
+            if (pre) {
+              const preVersion = pre.tag_name.replace(/^v/, '');
+              // If pre-release is newer than stable, surface it
+              if (!githubLatest || preVersion > githubLatest) {
+                githubLatest = preVersion;
+                githubPrerelease = true;
+                githubUrl = pre.html_url;
+              }
+            }
+          }
+        }
+      } catch { /* */ }
+
+      // Check addon git repos
+      const gitSafe = ['-c', 'safe.directory=*'];
+      const addonPaths = { teams: teamsPath, pro: proPath, cortex: cortexPath };
+      const addons = {};
+      for (const [key, addonDir] of Object.entries(addonPaths)) {
+        if (!addonDir || !fs.existsSync(path.join(addonDir, '.git'))) continue;
+        const realDir = fs.realpathSync(addonDir);
+        try {
+          execFileSync('git', [...gitSafe, 'fetch', '--quiet'], { cwd: realDir, stdio: 'ignore', timeout: 5000 });
+          const local = execFileSync('git', [...gitSafe, 'rev-parse', 'HEAD'], { cwd: realDir, encoding: 'utf-8' }).trim();
+          const remote = execFileSync('git', [...gitSafe, 'rev-parse', '@{u}'], { cwd: realDir, encoding: 'utf-8' }).trim();
+          const behind = local !== remote;
+          let commitsBehind = 0;
+          if (behind) {
+            try {
+              const count = execFileSync('git', [...gitSafe, 'rev-list', '--count', `HEAD..@{u}`], { cwd: realDir, encoding: 'utf-8' }).trim();
+              commitsBehind = parseInt(count, 10) || 0;
+            } catch { /* */ }
+          }
+          addons[key] = { installed: true, behind, commitsBehind, localHead: local.slice(0, 7) };
+          if (behind && logIfAvailable) {
+            console.log(`  Update available for @spaces/${key}: ${commitsBehind} commit(s) behind (run: spaces upgrade ${key})`);
+          }
+        } catch {
+          addons[key] = { installed: true, behind: false, commitsBehind: 0 };
+        }
+      }
+
+      const npmAvailable = npmLatest && npmLatest !== currentVersion && npmLatest > currentVersion;
+      const githubAvailable = githubLatest && githubLatest !== currentVersion && githubLatest > currentVersion;
 
       const result = {
         current: currentVersion,
-        latest,
-        available: latest !== currentVersion && latest > currentVersion,
+        npm: npmLatest ? { latest: npmLatest, available: !!npmAvailable } : null,
+        github: githubLatest ? { latest: githubLatest, prerelease: githubPrerelease, url: githubUrl, available: !!githubAvailable } : null,
+        // Backward compat: 'available' and 'latest' still work for the existing banner
+        latest: npmLatest || githubLatest || currentVersion,
+        available: !!(npmAvailable || githubAvailable),
+        addons,
         checkedAt: Date.now(),
         name: npmName,
       };
 
       fs.writeFileSync(updateCheckPath, JSON.stringify(result, null, 2));
 
-      if (result.available && logIfAvailable) {
-        console.log(`  Update available: ${currentVersion} → ${latest} (run: npm i -g ${npmName})`);
+      if (npmAvailable && logIfAvailable) {
+        console.log(`  Update available: ${currentVersion} → ${npmLatest} (run: npm i -g ${npmName})`);
+      }
+      if (githubAvailable && (!npmAvailable || githubLatest > npmLatest) && logIfAvailable) {
+        console.log(`  GitHub ${githubPrerelease ? 'pre-release' : 'release'}: ${githubLatest} (${githubUrl || `https://github.com/${githubRepo}/releases`})`);
       }
     } catch { /* network error — skip silently */ }
   };
   checkForUpdates(true);
-  setInterval(() => checkForUpdates(false), 4 * 3600_000); // re-check every 4 hours
-
-  // Also check addon updates (git-based packages)
-  const gitSafe = ['-c', 'safe.directory=*'];
-  const addonPaths = { teams: teamsPath, pro: proPath, cortex: cortexPath };
-  (async () => {
-    for (const [key, addonDir] of Object.entries(addonPaths)) {
-      if (!addonDir || !fs.existsSync(path.join(addonDir, '.git'))) continue;
-      const realDir = fs.realpathSync(addonDir);
-      try {
-        execFileSync('git', [...gitSafe, 'fetch', '--quiet'], { cwd: realDir, stdio: 'ignore', timeout: 5000 });
-        const local = execFileSync('git', [...gitSafe, 'rev-parse', 'HEAD'], { cwd: realDir, encoding: 'utf-8' }).trim();
-        const remote = execFileSync('git', [...gitSafe, 'rev-parse', '@{u}'], { cwd: realDir, encoding: 'utf-8' }).trim();
-        if (local !== remote) {
-          console.log(`  Update available for @spaces/${key} (run: spaces upgrade ${key})`);
-        }
-      } catch { /* not on a branch with upstream, skip */ }
-    }
-  })();
+  setInterval(() => checkForUpdates(false), 4 * 3600_000);
 
   // Check for ~/.claude/ directory
   const claudeDir = path.join(os.homedir(), '.claude');
