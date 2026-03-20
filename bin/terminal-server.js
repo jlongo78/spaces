@@ -913,6 +913,20 @@ function handleConnection(wss, ws, req) {
     }
   }
 
+  // Internal token auth (for VR client and other trusted local processes)
+  if (!username) {
+    const internalToken = url.searchParams.get('internal') || '';
+    const expectedToken = (process.env.SPACES_SESSION_SECRET || '').slice(0, 16);
+    if (internalToken && expectedToken && internalToken === expectedToken) {
+      const remoteIp = req.socket.remoteAddress || '';
+      const isLocal = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+      if (isLocal) {
+        username = os.userInfo().username;
+        console.log(`[Auth] Authenticated via internal token (VR): ${username}`);
+      }
+    }
+  }
+
   // Network API key auth (for proxied connections from remote nodes)
   if (!username) {
     const apiKey = url.searchParams.get('apiKey');
