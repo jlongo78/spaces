@@ -919,7 +919,7 @@ function handleConnection(wss, ws, req) {
     const expectedToken = (process.env.SPACES_SESSION_SECRET || '').slice(0, 16);
     if (internalToken && expectedToken && internalToken === expectedToken) {
       const remoteIp = req.socket.remoteAddress || '';
-      const isLocal = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+      const isLocal = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1' || remoteIp.includes('192.168.') || remoteIp.includes('::ffff:192.168.');
       if (isLocal) {
         username = os.userInfo().username;
         console.log(`[Auth] Authenticated via internal token (VR): ${username}`);
