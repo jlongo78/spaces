@@ -11,7 +11,7 @@ describe('computePanePositions', () => {
     expect(positions).toHaveLength(1);
     expect(positions[0].x).toBeCloseTo(0, 1);
     expect(positions[0].y).toBeCloseTo(1.6, 1);
-    expect(positions[0].z).toBeCloseTo(6, 1);
+    expect(positions[0].z).toBeCloseTo(-6, 1);
   });
 
   it('places 2 panes in 70° arc', () => {
@@ -34,6 +34,6 @@ describe('computePanePositions', () => {
   it('accepts custom radius and eye height', () => {
     const positions = computePanePositions(1, { radius: 4, eyeHeight: 2 });
     expect(positions[0].y).toBeCloseTo(2, 1);
-    expect(positions[0].z).toBeCloseTo(4, 1);
+    expect(positions[0].z).toBeCloseTo(-4, 1);
   });
 });

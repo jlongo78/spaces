@@ -55,11 +55,21 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
       </mesh>
 
       {/* Terminal content texture */}
-      {textureReady && texture.current && (
+      {textureReady && texture.current ? (
         <mesh position={[0, -0.15, 0.005]}>
           <planeGeometry args={[PANE_WIDTH - 0.1, PANE_HEIGHT - 0.35]} />
           <meshBasicMaterial map={texture.current} toneMapped={false} />
         </mesh>
+      ) : (
+        <Text
+          position={[0, 0, 0.005]}
+          fontSize={0.12}
+          color="#555"
+          anchorX="center"
+          anchorY="middle"
+        >
+          {`Connecting to terminal...`}
+        </Text>
       )}
 
       {/* Title bar */}

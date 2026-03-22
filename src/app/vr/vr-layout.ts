@@ -9,6 +9,10 @@ interface LayoutOptions {
   eyeHeight?: number;
 }
 
+/**
+ * Compute pane positions in a semicircle IN FRONT of the camera.
+ * Three.js camera looks down -Z, so panes go at negative Z.
+ */
 export function computePanePositions(
   paneCount: number,
   options: LayoutOptions = {}
@@ -18,7 +22,7 @@ export function computePanePositions(
   if (paneCount <= 0) return [];
 
   if (paneCount === 1) {
-    return [{ x: 0, y: eyeHeight, z: radius }];
+    return [{ x: 0, y: eyeHeight, z: -radius }];
   }
 
   const totalArcDeg =
@@ -26,7 +30,8 @@ export function computePanePositions(
     paneCount <= 4 ? 140 :
     paneCount <= 6 ? 180 : 220;
 
-  const startAngle = 90 - totalArcDeg / 2;
+  // Center the arc at 270° (facing -Z)
+  const startAngle = 270 - totalArcDeg / 2;
   const step = totalArcDeg / (paneCount - 1);
 
   const positions: Vec3[] = [];

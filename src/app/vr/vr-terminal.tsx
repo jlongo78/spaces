@@ -82,10 +82,6 @@ export function useVRTerminal({
 
     term.open(container);
 
-    // Load canvas addon — produces a real <canvas> element
-    const canvasAddon = new CanvasAddon();
-    term.loadAddon(canvasAddon);
-
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
 
@@ -93,6 +89,21 @@ export function useVRTerminal({
 
     // Mark dirty on any render
     term.onRender(() => { dirtyRef.current = true; });
+
+    // Load CanvasAddon after a frame — it needs the terminal fully rendered in DOM
+    let canvasAddon: CanvasAddon | null = null;
+    const loadCanvasAddon = () => {
+      try {
+        canvasAddon = new CanvasAddon();
+        term.loadAddon(canvasAddon);
+      } catch (e) {
+        console.warn('[VRTerminal] CanvasAddon failed, retrying...', e);
+        setTimeout(loadCanvasAddon, 200);
+        return;
+      }
+      findCanvas();
+    };
+    setTimeout(loadCanvasAddon, 50);
 
     // Find the canvas element created by CanvasAddon
     const findCanvas = () => {
@@ -103,12 +114,11 @@ export function useVRTerminal({
         texture.magFilter = THREE.LinearFilter;
         textureRef.current = texture;
         setTextureReady(true);
+      } else {
+        // Canvas not ready yet, retry
+        setTimeout(findCanvas, 100);
       }
     };
-
-    requestAnimationFrame(findCanvas);
-    setTimeout(findCanvas, 100);
-    setTimeout(findCanvas, 500);
 
     // Connect WebSocket
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
