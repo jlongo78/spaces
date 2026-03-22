@@ -82,9 +82,8 @@ export function VRApp({ terminalToken }: VRAppProps) {
             <VRGaze />
           </XR>
 
-          <EffectComposer>
-            <Bloom luminanceThreshold={0.6} luminanceSmoothing={0.9} intensity={0.3} />
-          </EffectComposer>
+          {/* Bloom disabled in XR — postprocessing conflicts with WebXR framebuffer */}
+          <NonXRBloom />
         </Canvas>
       </div>
     </VRContext.Provider>
@@ -149,6 +148,17 @@ function LandingOverlay({ onEnter, onEnterVR }: { onEnter: () => void; onEnterVR
         Spaces VR — WebXR
       </p>
     </div>
+  );
+}
+
+/** Bloom only in non-XR mode — postprocessing breaks WebXR */
+function NonXRBloom() {
+  const { gl } = useThree();
+  if (gl.xr.isPresenting) return null;
+  return (
+    <EffectComposer>
+      <Bloom luminanceThreshold={0.6} luminanceSmoothing={0.9} intensity={0.3} />
+    </EffectComposer>
   );
 }
 
