@@ -4,6 +4,8 @@ import { useState, createContext, useContext } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { XR, createXRStore } from '@react-three/xr';
 import { VRLobby } from './vr-lobby';
+import { VRRoom } from './vr-room';
+import { VRControls } from './vr-controls';
 
 export interface WorkspaceData {
   id: number;
@@ -72,6 +74,8 @@ export function VRApp({ terminalToken }: VRAppProps) {
         >
           <XR store={xrStore}>
             {scene === 'lobby' && <VRLobby />}
+            {scene === 'room' && workspace && <VRRoom />}
+            <VRControls />
           </XR>
         </Canvas>
       </div>
