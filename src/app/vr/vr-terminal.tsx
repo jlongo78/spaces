@@ -45,6 +45,7 @@ export function useVRTerminal({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dirtyRef = useRef(true);
   const elapsedRef = useRef(0);
+  const wsRef = useRef<WebSocket | null>(null);
   const [textureReady, setTextureReady] = useState(false);
 
   useEffect(() => {
@@ -124,6 +125,7 @@ export function useVRTerminal({
     ctx.fillText(`WS: ${wsUrl.slice(0, 80)}`, 10, 40);
 
     const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
 
     ws.onopen = () => {
       console.log('[VRTerminal] WebSocket connected');
@@ -299,21 +301,9 @@ export function useVRTerminal({
     termRef.current?.scrollLines(lines);
   };
 
-  // Send data to the terminal (for soft keyboard buttons)
-  const wsRefStable = useRef<WebSocket | null>(null);
-  // Store ws ref for send function
-  useEffect(() => {
-    // This runs after the main effect, wsRef won't be available here
-    // Instead, we'll use the term.onData path - writing to xterm triggers onData which sends to WS
-  }, []);
-
   const send = (data: string) => {
-    // Write directly to xterm's input handler, which triggers onData → WebSocket
-    const term = termRef.current;
-    if (term) {
-      // Use xterm's core input handler
-      (term as any)._core.coreService.triggerDataEvent(data);
-      dirtyRef.current = true;
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'data', data }));
     }
   };
 
