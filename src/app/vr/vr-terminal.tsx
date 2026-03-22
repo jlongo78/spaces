@@ -83,9 +83,8 @@ export function useVRTerminal({
     container.style.position = 'absolute';
     container.style.left = '-9999px';
     container.style.top = '-9999px';
-    container.style.width = '1px';
-    container.style.height = '1px';
-    container.style.overflow = 'hidden';
+    container.style.width = `${cols * 10}px`;
+    container.style.height = `${rows * 20}px`;
     document.body.appendChild(container);
     containerRef.current = container;
 
