@@ -27,7 +27,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     if (!SpeechRecognition) return;
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 

@@ -51,23 +51,12 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
     stopListening,
   } = useSpeechRecognition();
 
-  // Auto-start/stop voice when pane gains/loses focus
+  // Stop listening when pane loses focus
   useEffect(() => {
-    if (isFocused && isSupported) {
-      startListening();
-    } else {
+    if (!isFocused && isListening) {
       stopListening();
     }
-  }, [isFocused, isSupported]);
-
-  // Auto-restart listening after each utterance (Web Speech API stops after silence)
-  useEffect(() => {
-    if (isFocused && isSupported && !isListening && transcript) {
-      // Small delay before restarting to avoid rapid restart loops
-      const timer = setTimeout(startListening, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [isListening, isFocused, isSupported, transcript]);
+  }, [isFocused]);
 
   // Send transcribed speech to terminal
   useEffect(() => {
@@ -75,6 +64,18 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
       send(transcript);
     }
   }, [transcript, isFocused, send]);
+
+  const toggleVoice = () => {
+    try {
+      if (isListening) {
+        stopListening();
+      } else {
+        startListening();
+      }
+    } catch (e) {
+      console.warn('[VR] Speech recognition not available:', e);
+    }
+  };
 
   const paneColor = useMemo(() => new THREE.Color(pane.color || workspaceColor || '#6366f1'), [pane.color, workspaceColor]);
   const darkPaneColor = useMemo(() => paneColor.clone().multiplyScalar(0.3), [paneColor]);
@@ -98,7 +99,7 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
     ...SOFT_KEYS.map(k => ({ label: k.label, action: () => send(k.data), color: '#1a1a2e', emissive: '#6366f1' })),
     ...(isSupported ? [{
       label: isListening ? '🎤 ON' : '🎤 OFF',
-      action: () => isListening ? stopListening() : startListening(),
+      action: toggleVoice,
       color: isListening ? '#1a2a1a' : '#2a1a1a',
       emissive: isListening ? '#22c55e' : '#666666',
     }] : []),

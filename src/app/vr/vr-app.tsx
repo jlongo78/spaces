@@ -7,6 +7,7 @@ import { Text } from '@react-three/drei';
 import { VRLobby } from './vr-lobby';
 import { VRRoom } from './vr-room';
 import { VRControls } from './vr-controls';
+import { VRGaze } from './vr-gaze';
 import * as THREE from 'three';
 
 export interface WorkspaceData {
@@ -80,6 +81,7 @@ export function VRApp({ terminalToken }: VRAppProps) {
               {scene === 'room' && workspace && <VRRoom />}
             </PlayerRig>
             <VRControls />
+            <VRGaze />
           </XR>
         </Canvas>
       </div>
