@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, createContext, useContext } from 'react';
+import { useState, useRef, createContext, useContext } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { XR, createXRStore } from '@react-three/xr';
 import { Text } from '@react-three/drei';
@@ -56,17 +56,6 @@ export function VRApp({ terminalToken }: VRAppProps) {
     scene, workspace, terminalToken,
     enterWorkspace, returnToLobby, playerYRef,
   };
-
-  // Request mic permission on page load so the prompt doesn't interrupt VR later
-  const [micReady, setMicReady] = useState(false);
-  useEffect(() => {
-    navigator.mediaDevices?.getUserMedia({ audio: true })
-      .then(stream => {
-        stream.getTracks().forEach(t => t.stop()); // release immediately
-        setMicReady(true);
-      })
-      .catch(() => setMicReady(false));
-  }, []);
 
   return (
     <VRContext.Provider value={ctx}>
