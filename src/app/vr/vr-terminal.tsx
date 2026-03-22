@@ -131,28 +131,34 @@ export function useVRTerminal({
       texture.needsUpdate = true;
     };
 
-    // RAF-batched write queue
-    let writeQueue: string[] = [];
-    let writeRaf: number | null = null;
-
-    const flushWrites = () => {
-      writeRaf = null;
-      if (writeQueue.length === 0) return;
-      const batch = writeQueue.join('');
-      writeQueue = [];
-      term.write(batch);
-    };
+    let msgCount = 0;
 
     ws.onmessage = (event) => {
+      msgCount++;
+      let data = '';
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'data' && msg.data) {
-          writeQueue.push(msg.data);
-          if (writeRaf === null) writeRaf = requestAnimationFrame(flushWrites);
+          data = msg.data;
         }
       } catch {
-        writeQueue.push(event.data);
-        if (writeRaf === null) writeRaf = requestAnimationFrame(flushWrites);
+        data = event.data;
+      }
+
+      if (data) {
+        // Write directly to xterm (skip RAF queue for now)
+        term.write(data);
+        dirtyRef.current = true;
+      }
+
+      // Debug: show message count on canvas every 5 messages
+      if (msgCount <= 5 || msgCount % 20 === 0) {
+        ctx.fillStyle = '#0a0a0f';
+        ctx.fillRect(0, 60, 400, 20);
+        ctx.fillStyle = '#06b6d4';
+        ctx.font = '12px monospace';
+        ctx.fillText(`Messages: ${msgCount}, data len: ${data.length}, buffer.cursorY: ${term.buffer.active.cursorY}`, 10, 65);
+        texture.needsUpdate = true;
       }
     };
 
@@ -178,7 +184,6 @@ export function useVRTerminal({
     });
 
     return () => {
-      if (writeRaf !== null) cancelAnimationFrame(writeRaf);
       ws.close();
       term.dispose();
       container.remove();
