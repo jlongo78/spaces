@@ -243,10 +243,39 @@ export function useVRTerminal({
     ctx.font = '12px monospace';
     ctx.textBaseline = 'top';
 
+    // Two passes: backgrounds first, then foreground text
     for (let row = 0; row < rows; row++) {
       const line = buffer.getLine(row + buffer.baseY);
       if (!line) continue;
 
+      // Pass 1: Draw background colors
+      for (let col = 0; col < cols; col++) {
+        const cell = line.getCell(col);
+        if (!cell) continue;
+
+        const bgColor = cell.getBgColor();
+        const bgModeRaw = cell.getBgColorMode();
+        const bgMode = bgModeRaw > 0 ? (bgModeRaw >> 24) || bgModeRaw : 0;
+
+        let bg: string | null = null;
+        if (bgMode === 1) {
+          bg = palette[bgColor] || null;
+        } else if (bgMode === 2) {
+          bg = get256Color(bgColor);
+        } else if (bgMode === 3) {
+          const r = (bgColor >> 16) & 0xff;
+          const g = (bgColor >> 8) & 0xff;
+          const b = bgColor & 0xff;
+          bg = `rgb(${r},${g},${b})`;
+        }
+
+        if (bg) {
+          ctx.fillStyle = bg;
+          ctx.fillRect(col * charW + 4, row * lineH, charW * (cell.getWidth() || 1), lineH);
+        }
+      }
+
+      // Pass 2: Draw foreground text
       let x = 4;
       for (let col = 0; col < cols; col++) {
         const cell = line.getCell(col);
@@ -256,7 +285,6 @@ export function useVRTerminal({
         if (!char || char === ' ') { x += charW; continue; }
 
         const fgColor = cell.getFgColor();
-        // getFgColorMode() returns raw bit flags: 0x1000000=16, 0x2000000=256, 0x3000000=RGB
         const fgModeRaw = cell.getFgColorMode();
         const fgMode = fgModeRaw > 0 ? (fgModeRaw >> 24) || fgModeRaw : 0;
 
