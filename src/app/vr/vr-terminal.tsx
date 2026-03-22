@@ -206,51 +206,33 @@ export function useVRTerminal({
     const ctx = ctxRef.current;
     if (!term || !ctx) return;
 
-    const charWidth = 10;
-    const charHeight = 18;
+    const lineHeight = 16;
     const buffer = term.buffer.active;
 
     // Clear
     ctx.fillStyle = '#0a0a0f';
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    // Use monospace — guaranteed available on all platforms including Quest
-    ctx.font = '14px monospace';
+    ctx.font = '13px monospace';
     ctx.textBaseline = 'top';
+    ctx.fillStyle = '#e4e4e7';
 
+    let linesDrawn = 0;
     for (let row = 0; row < rows; row++) {
       const line = buffer.getLine(row + buffer.baseY);
       if (!line) continue;
 
-      let x = 0;
-      for (let col = 0; col < cols; col++) {
-        const cell = line.getCell(col);
-        if (!cell) { x += charWidth; continue; }
-
-        const char = cell.getChars();
-        if (!char || char === ' ') { x += charWidth; continue; }
-
-        // Get foreground color
-        const fg = cell.getFgColor();
-        const fgMode = cell.getFgColorMode();
-
-        if (fgMode === 1) {
-          // Palette color (16 basic)
-          ctx.fillStyle = ANSI_COLORS[fg] || '#e4e4e7';
-        } else if (fgMode === 2) {
-          // RGB color
-          const r = (fg >> 16) & 0xff;
-          const g = (fg >> 8) & 0xff;
-          const b = fg & 0xff;
-          ctx.fillStyle = `rgb(${r},${g},${b})`;
-        } else {
-          // Default foreground
-          ctx.fillStyle = '#e4e4e7';
-        }
-
-        ctx.fillText(char, x, row * charHeight + 2);
-        x += charWidth * cell.getWidth();
+      const text = line.translateToString(true); // true = trim trailing whitespace
+      if (text.length > 0) {
+        ctx.fillText(text, 4, row * lineHeight + 2);
+        linesDrawn++;
       }
+    }
+
+    // Debug: show line count in bottom-right if nothing drawn
+    if (linesDrawn === 0) {
+      ctx.fillStyle = '#666';
+      ctx.fillText(`baseY=${buffer.baseY} cursorY=${buffer.cursorY} length=${buffer.length}`, 4, ctx.canvas.height - 20);
     }
   }
 
