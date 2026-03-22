@@ -3,6 +3,7 @@
 import { useState, createContext, useContext } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { XR, createXRStore } from '@react-three/xr';
+import { VRLobby } from './vr-lobby';
 
 export interface WorkspaceData {
   id: number;
@@ -70,8 +71,7 @@ export function VRApp({ terminalToken }: VRAppProps) {
           style={{ background: '#07070f' }}
         >
           <XR store={xrStore}>
-            {/* Scenes will be added in later tasks */}
-            <ambientLight intensity={0.05} />
+            {scene === 'lobby' && <VRLobby />}
           </XR>
         </Canvas>
       </div>
