@@ -66,12 +66,9 @@ export function useVRTerminal({
     if (!ctx) return;
     ctxRef.current = ctx;
 
-    // Fill with terminal background and show initial status
+    // Fill with terminal background
     ctx.fillStyle = '#0a0a0f';
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    ctx.fillStyle = '#888888';
-    ctx.font = '16px monospace';
-    ctx.fillText(`Connecting to ${paneId.slice(0, 8)}...`, 10, 20);
 
     // Create texture from our canvas
     const texture = new THREE.CanvasTexture(canvas);
@@ -117,27 +114,11 @@ export function useVRTerminal({
     if (terminalToken) params.set('terminalToken', terminalToken);
 
     const wsUrl = `${proto}//${location.host}${wsPath}?${params}`;
-    console.log('[VRTerminal] Connecting:', wsUrl);
-
-    // Draw WebSocket URL on canvas for debugging
-    ctx.fillStyle = '#666666';
-    ctx.font = '12px monospace';
-    ctx.fillText(`WS: ${wsUrl.slice(0, 80)}`, 10, 40);
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onopen = () => {
-      console.log('[VRTerminal] WebSocket connected');
-      ctx.fillStyle = '#22c55e';
-      ctx.fillText('WebSocket connected!', 10, 60);
-      texture.needsUpdate = true;
-    };
-
-    let msgCount = 0;
-
     ws.onmessage = (event) => {
-      msgCount++;
       let data = '';
       try {
         const msg = JSON.parse(event.data);
@@ -149,35 +130,18 @@ export function useVRTerminal({
       }
 
       if (data) {
-        // Write directly to xterm (skip RAF queue for now)
         term.write(data);
         dirtyRef.current = true;
       }
-
-      // Debug: show message count on canvas every 5 messages
-      if (msgCount <= 5 || msgCount % 20 === 0) {
-        ctx.fillStyle = '#0a0a0f';
-        ctx.fillRect(0, 60, 400, 20);
-        ctx.fillStyle = '#06b6d4';
-        ctx.font = '12px monospace';
-        ctx.fillText(`Messages: ${msgCount}, data len: ${data.length}, buffer.cursorY: ${term.buffer.active.cursorY}`, 10, 65);
-        texture.needsUpdate = true;
-      }
     };
 
-    ws.onerror = (e) => {
-      console.error('[VRTerminal] WebSocket error', e);
-      ctx.fillStyle = '#ef4444';
-      ctx.fillText('WebSocket ERROR', 10, 60);
-      texture.needsUpdate = true;
-      term.write('\r\n\x1b[31m[WebSocket error]\x1b[0m\r\n');
+    ws.onerror = () => {
+      term.write('\r\n\x1b[31m[Connection error]\x1b[0m\r\n');
+      dirtyRef.current = true;
     };
-    ws.onclose = (e) => {
-      console.log('[VRTerminal] WebSocket closed', e.code, e.reason);
-      ctx.fillStyle = '#eab308';
-      ctx.fillText(`WebSocket closed: ${e.code} ${e.reason}`, 10, 80);
-      texture.needsUpdate = true;
+    ws.onclose = () => {
       term.write('\r\n\x1b[33m[Disconnected]\x1b[0m\r\n');
+      dirtyRef.current = true;
     };
 
     // Prevent xterm from handling keydown for printable chars —
