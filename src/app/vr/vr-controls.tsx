@@ -58,14 +58,16 @@ function VRLocomotion() {
         }
       }
 
-      // Right controller: snap turn (X) + vertical fly (Y)
+      // Right controller: A/B buttons for vertical fly, snap turn X axis
       if (source.handedness === 'right' && gp.axes.length >= 4) {
-        // Vertical movement — right thumbstick Y axis
-        const flyY = gp.axes[3];
-        if (Math.abs(flyY) > 0.2) {
+        // A button (index 4) = fly down, B button (index 5) = fly up
+        const aPressed = gp.buttons[4]?.pressed;
+        const bPressed = gp.buttons[5]?.pressed;
+        if (aPressed || bPressed) {
+          const flyDir = bPressed ? 1 : -1;
           const refSpace = xrManager.getReferenceSpace();
           if (refSpace) {
-            const offset = new XRRigidTransform({ x: 0, y: flyY * moveSpeed * delta, z: 0, w: 1 });
+            const offset = new XRRigidTransform({ x: 0, y: -flyDir * moveSpeed * delta, z: 0, w: 1 });
             xrManager.setReferenceSpace(refSpace.getOffsetReferenceSpace(offset));
           }
         }
