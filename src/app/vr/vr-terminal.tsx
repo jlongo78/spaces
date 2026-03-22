@@ -243,14 +243,15 @@ export function useVRTerminal({
         if (!char || char === ' ') { x += charW; continue; }
 
         // Resolve foreground color
+        // Mode: 0=default, 1=16-color, 2=256-color, 3=RGB
         const fgColor = cell.getFgColor();
         const fgMode = cell.getFgColorMode();
 
-        if (fgMode === 1 && fgColor < 16) {
-          ctx.fillStyle = palette[fgColor];
-        } else if (fgMode === 1 && fgColor < 256) {
-          ctx.fillStyle = get256Color(fgColor);
+        if (fgMode === 1) {
+          ctx.fillStyle = palette[fgColor] || defaultFg;
         } else if (fgMode === 2) {
+          ctx.fillStyle = get256Color(fgColor);
+        } else if (fgMode === 3) {
           const r = (fgColor >> 16) & 0xff;
           const g = (fgColor >> 8) & 0xff;
           const b = fgColor & 0xff;

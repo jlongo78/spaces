@@ -58,8 +58,19 @@ function VRLocomotion() {
         }
       }
 
-      // Right controller: snap turn
+      // Right controller: snap turn (X) + vertical fly (Y)
       if (source.handedness === 'right' && gp.axes.length >= 4) {
+        // Vertical movement — right thumbstick Y axis
+        const flyY = gp.axes[3];
+        if (Math.abs(flyY) > 0.2) {
+          const refSpace = xrManager.getReferenceSpace();
+          if (refSpace) {
+            const offset = new XRRigidTransform({ x: 0, y: flyY * moveSpeed * delta, z: 0, w: 1 });
+            xrManager.setReferenceSpace(refSpace.getOffsetReferenceSpace(offset));
+          }
+        }
+
+        // Snap turn — right thumbstick X axis
         const turnX = gp.axes[2];
         if (Math.abs(turnX) > 0.6 && snapCooldown.current <= 0) {
           const dir = turnX > 0 ? 1 : -1;
