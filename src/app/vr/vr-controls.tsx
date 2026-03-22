@@ -68,7 +68,7 @@ function VRLocomotion() {
         if (Math.abs(turnX) > 0.1) {
           const refSpace = xrManager.getReferenceSpace();
           if (refSpace) {
-            const angle = -turnX * turnSpeed * delta;
+            const angle = turnX * turnSpeed * delta;
             const rot = new XRRigidTransform(
               { x: 0, y: 0, z: 0, w: 1 },
               DOMPointReadOnly.fromPoint({
