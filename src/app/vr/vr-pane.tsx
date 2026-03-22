@@ -91,17 +91,19 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
 
   const handleClick = () => {
     onFocus();
-    focus();
+    // Don't call focus() here — it opens Quest's system keyboard
+    // User can tap the ⌨ button on the toolbar to open keyboard
   };
 
-  // Toolbar: soft keys + mic button
+  // Toolbar: keyboard open + soft keys + mic button
   const allButtons = [
+    { label: '⌨', action: () => focus(), color: '#1a1a2e', emissive: '#6366f1' },
     ...SOFT_KEYS.map(k => ({ label: k.label, action: () => send(k.data), color: '#1a1a2e', emissive: '#6366f1' })),
     ...(isSupported ? [{
-      label: isListening ? '🎤 ON' : '🎤 OFF',
+      label: isListening ? '🎤 ON' : '🎤',
       action: toggleVoice,
-      color: isListening ? '#1a2a1a' : '#2a1a1a',
-      emissive: isListening ? '#22c55e' : '#666666',
+      color: isListening ? '#1a2a1a' : '#1a1a2e',
+      emissive: isListening ? '#22c55e' : '#6366f1',
     }] : []),
   ];
 

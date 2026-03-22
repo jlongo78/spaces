@@ -20,16 +20,27 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    let SpeechRecognition: any;
+    try {
+      SpeechRecognition =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    } catch {
+      // Not available
+    }
     setIsSupported(!!SpeechRecognition);
 
     if (!SpeechRecognition) return;
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    let recognition: any;
+    try {
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+    } catch {
+      setIsSupported(false);
+      return;
+    }
 
     recognition.onresult = (event: any) => {
       let interim = '';
