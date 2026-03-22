@@ -18,13 +18,9 @@ export function VRControls() {
 function VRLocomotion() {
   const { camera } = useThree();
   const { playerYRef } = useVR();
-  const snapCooldown = useRef(0);
   const moveSpeed = 3;
-  const snapAngle = (30 * Math.PI) / 180;
 
   useFrame((state, delta) => {
-    snapCooldown.current = Math.max(0, snapCooldown.current - delta);
-
     const xrManager = state.gl.xr;
     if (!xrManager.isPresenting) return;
 
@@ -36,17 +32,12 @@ function VRLocomotion() {
       const gp = source.gamepad;
       if (!gp) continue;
 
-      // Left controller: thumbstick movement
-      // Grip held (buttons[1]) = thumbstick Y becomes fly up/down
+      // Left controller: thumbstick for horizontal movement
       if (source.handedness === 'left' && gp.axes.length >= 4) {
         const moveX = gp.axes[2];
         const moveY = gp.axes[3];
-        const gripHeld = gp.buttons[1] && (gp.buttons[1].pressed || gp.buttons[1].value > 0.5);
 
-        if (gripHeld && Math.abs(moveY) > 0.1) {
-          // Fly up/down — grip + thumbstick Y
-          playerYRef.current += moveY * moveSpeed * delta;
-        } else if (Math.abs(moveX) > 0.1 || Math.abs(moveY) > 0.1) {
+        if (Math.abs(moveX) > 0.1 || Math.abs(moveY) > 0.1) {
           // Normal horizontal movement
           const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
           forward.y = 0;
@@ -67,28 +58,33 @@ function VRLocomotion() {
         }
       }
 
-      // Right controller: A/B buttons for vertical fly, snap turn X axis
+      // Right controller: smooth turn X, fly up/down Y
       if (source.handedness === 'right' && gp.axes.length >= 4) {
-        // Vertical fly handled by in-scene buttons (see VRFlyButtons)
-
-        // Snap turn — right thumbstick X axis
         const turnX = gp.axes[2];
-        if (Math.abs(turnX) > 0.6 && snapCooldown.current <= 0) {
-          const dir = turnX > 0 ? -1 : 1;
+        const flyY = gp.axes[3];
+        const turnSpeed = 2; // radians per second
+
+        // Smooth turn — right thumbstick X
+        if (Math.abs(turnX) > 0.1) {
           const refSpace = xrManager.getReferenceSpace();
           if (refSpace) {
+            const angle = -turnX * turnSpeed * delta;
             const rot = new XRRigidTransform(
               { x: 0, y: 0, z: 0, w: 1 },
               DOMPointReadOnly.fromPoint({
                 x: 0,
-                y: Math.sin((-snapAngle * dir) / 2),
+                y: Math.sin(angle / 2),
                 z: 0,
-                w: Math.cos((-snapAngle * dir) / 2),
+                w: Math.cos(angle / 2),
               }),
             );
             xrManager.setReferenceSpace(refSpace.getOffsetReferenceSpace(rot));
           }
-          snapCooldown.current = 0.3;
+        }
+
+        // Fly up/down — right thumbstick Y
+        if (Math.abs(flyY) > 0.1) {
+          playerYRef.current += flyY * moveSpeed * delta;
         }
       }
     }
