@@ -49,11 +49,12 @@ export function useVRTerminal({
 
   useEffect(() => {
     // Create our own canvas for rendering terminal text
-    const charWidth = 10;
-    const charHeight = 18;
-    // Power-of-two dimensions for GPU compatibility
-    const canvasWidth = 1024;
-    const canvasHeight = 512;
+    // Higher res canvas for readable text on Quest
+    const fontSize = 12;
+    const charWidth = 7.2;
+    const lineHeight = 15;
+    const canvasWidth = 2048;
+    const canvasHeight = 1024;
 
     const canvas = document.createElement('canvas');
     canvas.width = canvasWidth;
@@ -211,34 +212,69 @@ export function useVRTerminal({
     const ctx = ctxRef.current;
     if (!term || !ctx) return;
 
-    const lineHeight = 16;
+    const charW = 7.2;
+    const lineH = 15;
     const buffer = term.buffer.active;
+    const defaultFg = '#e4e4e7';
+
+    // ANSI 256-color palette (first 16)
+    const palette = [
+      '#27272a', '#ef4444', '#22c55e', '#eab308', '#6366f1', '#a855f7', '#06b6d4', '#e4e4e7',
+      '#52525b', '#f87171', '#4ade80', '#facc15', '#818cf8', '#c084fc', '#22d3ee', '#fafafa',
+    ];
 
     // Clear
     ctx.fillStyle = '#0a0a0f';
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    ctx.font = '13px monospace';
+    ctx.font = '12px monospace';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = '#e4e4e7';
 
-    let linesDrawn = 0;
     for (let row = 0; row < rows; row++) {
       const line = buffer.getLine(row + buffer.baseY);
       if (!line) continue;
 
-      const text = line.translateToString(true); // true = trim trailing whitespace
-      if (text.length > 0) {
-        ctx.fillText(text, 4, row * lineHeight + 2);
-        linesDrawn++;
+      let x = 4;
+      for (let col = 0; col < cols; col++) {
+        const cell = line.getCell(col);
+        if (!cell) { x += charW; continue; }
+
+        const char = cell.getChars();
+        if (!char || char === ' ') { x += charW; continue; }
+
+        // Resolve foreground color
+        const fgColor = cell.getFgColor();
+        const fgMode = cell.getFgColorMode();
+
+        if (fgMode === 1 && fgColor < 16) {
+          ctx.fillStyle = palette[fgColor];
+        } else if (fgMode === 1 && fgColor < 256) {
+          ctx.fillStyle = get256Color(fgColor);
+        } else if (fgMode === 2) {
+          const r = (fgColor >> 16) & 0xff;
+          const g = (fgColor >> 8) & 0xff;
+          const b = fgColor & 0xff;
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+        } else {
+          ctx.fillStyle = defaultFg;
+        }
+
+        ctx.fillText(char, x, row * lineH + 2);
+        x += charW * (cell.getWidth() || 1);
       }
     }
+  }
 
-    // Debug: show line count in bottom-right if nothing drawn
-    if (linesDrawn === 0) {
-      ctx.fillStyle = '#666';
-      ctx.fillText(`baseY=${buffer.baseY} cursorY=${buffer.cursorY} length=${buffer.length}`, 4, ctx.canvas.height - 20);
+  function get256Color(idx: number): string {
+    if (idx < 16) return '#e4e4e7';
+    if (idx < 232) {
+      const v = idx - 16;
+      const b = v % 6; const rest = (v - b) / 6;
+      const g = rest % 6; const r = (rest - g) / 6;
+      return `rgb(${r * 51},${g * 51},${b * 51})`;
     }
+    const gray = 8 + (idx - 232) * 10;
+    return `rgb(${gray},${gray},${gray})`;
   }
 
   const focus = () => {
