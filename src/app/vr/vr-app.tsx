@@ -121,42 +121,16 @@ function LandingOverlay({ onEnter, onEnterVR }: { onEnter: () => void; onEnterVR
       </p>
 
       {/* Buttons */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 48 }}>
+      <div className="flex gap-4 mb-12">
         <button
           onClick={onEnterVR}
-          style={{
-            padding: '14px 32px', background: '#6366f1', color: 'white',
-            border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 16,
-            fontWeight: 600, letterSpacing: '0.05em',
-            boxShadow: '0 0 30px rgba(99,102,241,0.3), 0 0 60px rgba(99,102,241,0.1)',
-            transition: 'all 0.2s',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.boxShadow = '0 0 40px rgba(99,102,241,0.5), 0 0 80px rgba(99,102,241,0.2)';
-            e.currentTarget.style.transform = 'scale(1.05)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.boxShadow = '0 0 30px rgba(99,102,241,0.3), 0 0 60px rgba(99,102,241,0.1)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
+          className="px-8 py-3.5 bg-indigo-500 hover:bg-indigo-400 text-white font-semibold rounded-lg text-base tracking-wide transition-all duration-200 hover:scale-[1.02] shadow-[0_0_24px_rgba(99,102,241,0.25)] hover:shadow-[0_0_40px_rgba(99,102,241,0.4)]"
         >
           Enter VR
         </button>
         <button
           onClick={onEnter}
-          style={{
-            padding: '14px 32px', background: 'transparent', color: '#a1a1aa',
-            border: '1px solid #27272a', borderRadius: 8, cursor: 'pointer',
-            fontSize: 16, fontWeight: 400, transition: 'all 0.2s',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.borderColor = '#6366f1';
-            e.currentTarget.style.color = '#e4e4e7';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.borderColor = '#27272a';
-            e.currentTarget.style.color = '#a1a1aa';
-          }}
+          className="px-8 py-3.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-medium rounded-lg text-base border border-zinc-800 hover:border-zinc-600 transition-all duration-200"
         >
           Desktop 3D View
         </button>
