@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { useVRTerminal } from './vr-terminal';
 import { useVR } from './vr-app';
+import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import type { PaneData } from '@/lib/db/queries';
 
 interface VRPaneProps {
@@ -18,7 +19,6 @@ interface VRPaneProps {
 const PANE_WIDTH = 4;
 const PANE_HEIGHT = 2.5;
 
-// Terminal soft keys — same as mobile toolbar
 const SOFT_KEYS = [
   { label: 'Esc', data: '\x1b' },
   { label: 'Tab', data: '\t' },
@@ -42,6 +42,22 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
     isFocused,
   });
 
+  const {
+    isListening,
+    isSupported,
+    transcript,
+    interimTranscript,
+    startListening,
+    stopListening,
+  } = useSpeechRecognition();
+
+  // Send transcribed speech to terminal
+  useEffect(() => {
+    if (transcript && isFocused) {
+      send(transcript);
+    }
+  }, [transcript, isFocused, send]);
+
   const paneColor = useMemo(() => new THREE.Color(pane.color || workspaceColor || '#6366f1'), [pane.color, workspaceColor]);
   const darkPaneColor = useMemo(() => paneColor.clone().multiplyScalar(0.3), [paneColor]);
 
@@ -58,6 +74,17 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
     onFocus();
     focus();
   };
+
+  // Toolbar: soft keys + mic button
+  const allButtons = [
+    ...SOFT_KEYS.map(k => ({ label: k.label, action: () => send(k.data), color: '#1a1a2e', emissive: '#6366f1' })),
+    ...(isSupported ? [{
+      label: isListening ? '🔴 Stop' : '🎤 Mic',
+      action: () => isListening ? stopListening() : startListening(),
+      color: isListening ? '#2a1a1a' : '#1a2a1a',
+      emissive: isListening ? '#ef4444' : '#22c55e',
+    }] : []),
+  ];
 
   return (
     <group position={position} rotation={rotation}>
@@ -110,20 +137,38 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
         {pane.title || pane.agentType} — {pane.agentType}
       </Text>
 
-      {/* Soft keyboard toolbar — shown when focused */}
+      {/* Interim transcript preview */}
+      {isFocused && isListening && interimTranscript && (
+        <Text
+          position={[0, -PANE_HEIGHT / 2 - 0.35, 0.01]}
+          fontSize={0.07}
+          color="#a78bfa"
+          anchorX="center"
+          anchorY="middle"
+          maxWidth={PANE_WIDTH}
+        >
+          {interimTranscript}
+        </Text>
+      )}
+
+      {/* Soft keyboard + mic toolbar — shown when focused */}
       {isFocused && (
         <group position={[0, -PANE_HEIGHT / 2 - 0.15, 0.01]}>
-          {SOFT_KEYS.map((key, i) => {
-            const totalWidth = SOFT_KEYS.length * 0.4;
+          {allButtons.map((btn, i) => {
+            const totalWidth = allButtons.length * 0.4;
             const x = -totalWidth / 2 + i * 0.4 + 0.2;
             return (
-              <group key={key.label} position={[x, 0, 0]}>
-                <mesh onClick={() => send(key.data)}>
+              <group key={btn.label} position={[x, 0, 0]}>
+                <mesh onClick={btn.action}>
                   <planeGeometry args={[0.35, 0.18]} />
-                  <meshStandardMaterial color="#1a1a2e" emissive="#6366f1" emissiveIntensity={0.08} />
+                  <meshStandardMaterial
+                    color={btn.color}
+                    emissive={btn.emissive}
+                    emissiveIntensity={0.08}
+                  />
                 </mesh>
-                <Text position={[0, 0, 0.005]} fontSize={0.06} color="#ccc" anchorX="center" anchorY="middle">
-                  {key.label}
+                <Text position={[0, 0, 0.005]} fontSize={0.05} color="#ccc" anchorX="center" anchorY="middle">
+                  {btn.label}
                 </Text>
               </group>
             );
