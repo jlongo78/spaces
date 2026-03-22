@@ -25,11 +25,7 @@ interface VRContextType {
 export const VRContext = createContext<VRContextType>(null!);
 export const useVR = () => useContext(VRContext);
 
-const xrStore = createXRStore({
-  onSessionEnd: () => {
-    console.log('[VR] XR session ended, falling back to desktop mode');
-  },
-});
+const xrStore = createXRStore();
 
 interface VRAppProps {
   terminalToken: string;
