@@ -64,9 +64,12 @@ export function useVRTerminal({
     if (!ctx) return;
     ctxRef.current = ctx;
 
-    // Fill with terminal background
+    // Fill with terminal background and show initial status
     ctx.fillStyle = '#0a0a0f';
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    ctx.fillStyle = '#888888';
+    ctx.font = '16px monospace';
+    ctx.fillText(`Connecting to ${paneId.slice(0, 8)}...`, 10, 20);
 
     // Create texture from our canvas
     const texture = new THREE.CanvasTexture(canvas);
@@ -113,7 +116,21 @@ export function useVRTerminal({
     if (terminalToken) params.set('terminalToken', terminalToken);
 
     const wsUrl = `${proto}//${location.host}${wsPath}?${params}`;
+    console.log('[VRTerminal] Connecting:', wsUrl);
+
+    // Draw WebSocket URL on canvas for debugging
+    ctx.fillStyle = '#666666';
+    ctx.font = '12px monospace';
+    ctx.fillText(`WS: ${wsUrl.slice(0, 80)}`, 10, 40);
+
     const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('[VRTerminal] WebSocket connected');
+      ctx.fillStyle = '#22c55e';
+      ctx.fillText('WebSocket connected!', 10, 60);
+      texture.needsUpdate = true;
+    };
 
     // RAF-batched write queue
     let writeQueue: string[] = [];
@@ -140,8 +157,20 @@ export function useVRTerminal({
       }
     };
 
-    ws.onerror = () => { term.write('\r\n\x1b[31m[WebSocket error]\x1b[0m\r\n'); };
-    ws.onclose = () => { term.write('\r\n\x1b[33m[Disconnected]\x1b[0m\r\n'); };
+    ws.onerror = (e) => {
+      console.error('[VRTerminal] WebSocket error', e);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillText('WebSocket ERROR', 10, 60);
+      texture.needsUpdate = true;
+      term.write('\r\n\x1b[31m[WebSocket error]\x1b[0m\r\n');
+    };
+    ws.onclose = (e) => {
+      console.log('[VRTerminal] WebSocket closed', e.code, e.reason);
+      ctx.fillStyle = '#eab308';
+      ctx.fillText(`WebSocket closed: ${e.code} ${e.reason}`, 10, 80);
+      texture.needsUpdate = true;
+      term.write('\r\n\x1b[33m[Disconnected]\x1b[0m\r\n');
+    };
 
     term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
