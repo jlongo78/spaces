@@ -6,7 +6,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     root: '.',
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'src/**/*.test.ts'],
     setupFiles: ['tests/setup.ts'],
     // Use forks pool to avoid ONNX file-lock contention on Windows
     // when multiple test files load onnxruntime-node concurrently
