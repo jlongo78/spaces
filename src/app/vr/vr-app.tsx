@@ -4,7 +4,6 @@ import { useState, useRef, createContext, useContext } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { XR, createXRStore } from '@react-three/xr';
 import { Text, Stars } from '@react-three/drei';
-import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { VRLobby } from './vr-lobby';
 import { VRRoom } from './vr-room';
 import { VRControls } from './vr-controls';
@@ -82,8 +81,6 @@ export function VRApp({ terminalToken }: VRAppProps) {
             <VRGaze />
           </XR>
 
-          {/* Bloom disabled in XR — postprocessing conflicts with WebXR framebuffer */}
-          <NonXRBloom />
         </Canvas>
       </div>
     </VRContext.Provider>
@@ -148,17 +145,6 @@ function LandingOverlay({ onEnter, onEnterVR }: { onEnter: () => void; onEnterVR
         Spaces VR — WebXR
       </p>
     </div>
-  );
-}
-
-/** Bloom only in non-XR mode — postprocessing breaks WebXR */
-function NonXRBloom() {
-  const { gl } = useThree();
-  if (gl.xr.isPresenting) return null;
-  return (
-    <EffectComposer>
-      <Bloom luminanceThreshold={0.6} luminanceSmoothing={0.9} intensity={0.3} />
-    </EffectComposer>
   );
 }
 
