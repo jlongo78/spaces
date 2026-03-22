@@ -51,6 +51,24 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
     stopListening,
   } = useSpeechRecognition();
 
+  // Auto-start/stop voice when pane gains/loses focus
+  useEffect(() => {
+    if (isFocused && isSupported) {
+      startListening();
+    } else {
+      stopListening();
+    }
+  }, [isFocused, isSupported]);
+
+  // Auto-restart listening after each utterance (Web Speech API stops after silence)
+  useEffect(() => {
+    if (isFocused && isSupported && !isListening && transcript) {
+      // Small delay before restarting to avoid rapid restart loops
+      const timer = setTimeout(startListening, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isListening, isFocused, isSupported, transcript]);
+
   // Send transcribed speech to terminal
   useEffect(() => {
     if (transcript && isFocused) {
@@ -79,10 +97,10 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
   const allButtons = [
     ...SOFT_KEYS.map(k => ({ label: k.label, action: () => send(k.data), color: '#1a1a2e', emissive: '#6366f1' })),
     ...(isSupported ? [{
-      label: isListening ? '🔴 Stop' : '🎤 Mic',
+      label: isListening ? '🎤 ON' : '🎤 OFF',
       action: () => isListening ? stopListening() : startListening(),
-      color: isListening ? '#2a1a1a' : '#1a2a1a',
-      emissive: isListening ? '#ef4444' : '#22c55e',
+      color: isListening ? '#1a2a1a' : '#2a1a1a',
+      emissive: isListening ? '#22c55e' : '#666666',
     }] : []),
   ];
 
