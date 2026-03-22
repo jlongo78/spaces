@@ -4,6 +4,7 @@ import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { PointerLockControls } from '@react-three/drei';
 import * as THREE from 'three';
+import { useVR } from './vr-app';
 
 export function VRControls() {
   return (
@@ -16,6 +17,7 @@ export function VRControls() {
 
 function VRLocomotion() {
   const { camera } = useThree();
+  const { playerYRef } = useVR();
   const snapCooldown = useRef(0);
   const moveSpeed = 3;
   const snapAngle = (30 * Math.PI) / 180;
@@ -60,17 +62,11 @@ function VRLocomotion() {
 
       // Right controller: A/B buttons for vertical fly, snap turn X axis
       if (source.handedness === 'right' && gp.axes.length >= 4) {
-        // A button (index 4) = fly down, B button (index 5) = fly up
+        // B button (index 5) = fly up, A button (index 4) = fly down
         const aPressed = gp.buttons[4]?.pressed;
         const bPressed = gp.buttons[5]?.pressed;
-        if (aPressed || bPressed) {
-          const flyDir = bPressed ? 1 : -1;
-          const refSpace = xrManager.getReferenceSpace();
-          if (refSpace) {
-            const offset = new XRRigidTransform({ x: 0, y: -flyDir * moveSpeed * delta, z: 0, w: 1 });
-            xrManager.setReferenceSpace(refSpace.getOffsetReferenceSpace(offset));
-          }
-        }
+        if (bPressed) playerYRef.current += moveSpeed * delta;
+        if (aPressed) playerYRef.current -= moveSpeed * delta;
 
         // Snap turn — right thumbstick X axis
         const turnX = gp.axes[2];
@@ -106,11 +102,15 @@ function DesktopControls() {
   useFrame((state, delta) => {
     if (state.gl.xr.isPresenting) return;
 
-    let moveX = 0, moveZ = 0;
+    let moveX = 0, moveZ = 0, moveY = 0;
     if (keys.current.has('w') || keys.current.has('arrowup')) moveZ -= 1;
     if (keys.current.has('s') || keys.current.has('arrowdown')) moveZ += 1;
     if (keys.current.has('a') || keys.current.has('arrowleft')) moveX -= 1;
     if (keys.current.has('d') || keys.current.has('arrowright')) moveX += 1;
+    if (keys.current.has('e') || keys.current.has(' ')) moveY += 1;
+    if (keys.current.has('q') || keys.current.has('shift')) moveY -= 1;
+
+    if (moveY !== 0) camera.position.y += moveY * speed * delta;
 
     if (moveX !== 0 || moveZ !== 0) {
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
