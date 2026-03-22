@@ -230,6 +230,10 @@ export function useVRTerminal({
     ctx.font = '12px monospace';
     ctx.textBaseline = 'top';
 
+    // Debug: collect first few colored cells to see actual values
+    let debugInfo = '';
+    let debugCount = 0;
+
     for (let row = 0; row < rows; row++) {
       const line = buffer.getLine(row + buffer.baseY);
       if (!line) continue;
@@ -242,11 +246,19 @@ export function useVRTerminal({
         const char = cell.getChars();
         if (!char || char === ' ') { x += charW; continue; }
 
-        // Resolve foreground color
-        // Mode: 0=default, 1=16-color, 2=256-color, 3=RGB
+        // Get raw color info
         const fgColor = cell.getFgColor();
         const fgMode = cell.getFgColorMode();
+        const bgColor = cell.getBgColor();
+        const bgMode = cell.getBgColorMode();
 
+        // Collect debug for first non-default colored cells
+        if (debugCount < 5 && fgMode !== 0) {
+          debugInfo += `m${fgMode}c${fgColor} `;
+          debugCount++;
+        }
+
+        // Resolve foreground color
         if (fgMode === 1) {
           ctx.fillStyle = palette[fgColor] || defaultFg;
         } else if (fgMode === 2) {
@@ -264,6 +276,11 @@ export function useVRTerminal({
         x += charW * (cell.getWidth() || 1);
       }
     }
+
+    // Show debug color info at bottom of canvas
+    ctx.fillStyle = '#06b6d4';
+    ctx.font = '11px monospace';
+    ctx.fillText(`Colors: ${debugInfo || 'all mode 0 (default)'}`, 4, ctx.canvas.height - 14);
   }
 
   function get256Color(idx: number): string {
