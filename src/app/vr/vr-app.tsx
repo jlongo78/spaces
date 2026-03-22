@@ -121,16 +121,16 @@ function LandingOverlay({ onEnter, onEnterVR }: { onEnter: () => void; onEnterVR
       </p>
 
       {/* Buttons */}
-      <div className="flex gap-4 mb-12">
+      <div className="flex gap-3 mb-12">
         <button
           onClick={onEnterVR}
-          className="px-8 py-3.5 bg-indigo-500 hover:bg-indigo-400 text-white font-semibold rounded-lg text-base tracking-wide transition-all duration-200 hover:scale-[1.02] shadow-[0_0_24px_rgba(99,102,241,0.25)] hover:shadow-[0_0_40px_rgba(99,102,241,0.4)]"
+          className="px-6 py-2.5 text-sm font-medium tracking-wide text-white border border-indigo-500/50 rounded-md bg-indigo-500/15 hover:bg-indigo-500/25 hover:border-indigo-400/70 transition-all duration-200 shadow-[0_0_20px_rgba(99,102,241,0.15)] hover:shadow-[0_0_30px_rgba(99,102,241,0.25)]"
         >
           Enter VR
         </button>
         <button
           onClick={onEnter}
-          className="px-8 py-3.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-medium rounded-lg text-base border border-zinc-800 hover:border-zinc-600 transition-all duration-200"
+          className="px-6 py-2.5 text-sm font-medium tracking-wide text-zinc-500 border border-zinc-800 rounded-md hover:text-zinc-300 hover:border-zinc-600 transition-all duration-200"
         >
           Desktop 3D View
         </button>
