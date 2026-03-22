@@ -71,20 +71,15 @@ export function VRApp({ terminalToken }: VRAppProps) {
           gl={{ antialias: true, alpha: false }}
           style={{ background: '#07070f' }}
         >
-          {/* Stars visible from landing page */}
           <Stars radius={100} depth={50} count={300} factor={2} saturation={0} speed={0.3} />
 
           <XR store={xrStore}>
-            {entered && (
-              <>
-                <PlayerRig>
-                  {scene === 'lobby' && <VRLobby />}
-                  {scene === 'room' && workspace && <VRRoom />}
-                </PlayerRig>
-                <VRControls />
-                <VRGaze />
-              </>
-            )}
+            <PlayerRig>
+              {scene === 'lobby' && <VRLobby />}
+              {scene === 'room' && workspace && <VRRoom />}
+            </PlayerRig>
+            <VRControls />
+            <VRGaze />
           </XR>
 
           <EffectComposer>
