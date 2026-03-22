@@ -178,16 +178,18 @@ export function useVRTerminal({
       term.write('\r\n\x1b[33m[Disconnected]\x1b[0m\r\n');
     };
 
-    // Deduplicate input — Quest virtual keyboard fires both keydown and input events
-    let lastSent = '';
-    let lastSentTime = 0;
+    // Prevent xterm from handling keydown for printable chars —
+    // the textarea 'input' event handles those. This avoids double input
+    // on Quest's virtual keyboard which fires both keydown and input.
+    // Special keys (Ctrl, arrows, Esc) still go through keydown.
+    term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
+      if (ev.type === 'keydown' && ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+        return false; // let input event handle it
+      }
+      return true;
+    });
 
     term.onData((data) => {
-      const now = Date.now();
-      if (data === lastSent && now - lastSentTime < 50) return; // skip duplicate within 50ms
-      lastSent = data;
-      lastSentTime = now;
-
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'data', data }));
       }
