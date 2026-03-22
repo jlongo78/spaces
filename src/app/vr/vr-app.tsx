@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, createContext, useContext } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { XR, createXRStore } from '@react-three/xr';
+import { Text } from '@react-three/drei';
 import { VRLobby } from './vr-lobby';
 import { VRRoom } from './vr-room';
 import { VRControls } from './vr-controls';
@@ -78,6 +79,7 @@ export function VRApp({ terminalToken }: VRAppProps) {
               {scene === 'lobby' && <VRLobby />}
               {scene === 'room' && workspace && <VRRoom />}
             </PlayerRig>
+            <FlyButtons />
             <VRControls />
           </XR>
         </Canvas>
@@ -98,4 +100,51 @@ function PlayerRig({ children }: { children: React.ReactNode }) {
   });
 
   return <group ref={groupRef}>{children}</group>;
+}
+
+/** Floating fly up/down buttons — always visible, follow camera */
+function FlyButtons() {
+  const { playerYRef } = useVR();
+  const groupRef = useRef<THREE.Group>(null!);
+  const { camera } = useThree();
+  const flySpeed = 0.5;
+
+  // Keep buttons at a fixed position relative to camera
+  useFrame(() => {
+    if (groupRef.current) {
+      // Position to the left of camera view, at hip level
+      const offset = new THREE.Vector3(-0.8, -0.5, -1.2);
+      offset.applyQuaternion(camera.quaternion);
+      groupRef.current.position.copy(camera.position).add(offset);
+      groupRef.current.quaternion.copy(camera.quaternion);
+    }
+  });
+
+  return (
+    <group ref={groupRef}>
+      {/* Up button */}
+      <mesh
+        position={[0, 0.12, 0]}
+        onPointerDown={() => { playerYRef.current += flySpeed; }}
+      >
+        <planeGeometry args={[0.15, 0.1]} />
+        <meshStandardMaterial color="#1a2a1a" emissive="#22c55e" emissiveIntensity={0.3} toneMapped={false} />
+      </mesh>
+      <Text position={[0, 0.12, 0.005]} fontSize={0.05} color="white" anchorX="center" anchorY="middle">
+        ▲ UP
+      </Text>
+
+      {/* Down button */}
+      <mesh
+        position={[0, -0.02, 0]}
+        onPointerDown={() => { playerYRef.current -= flySpeed; }}
+      >
+        <planeGeometry args={[0.15, 0.1]} />
+        <meshStandardMaterial color="#2a1a1a" emissive="#ef4444" emissiveIntensity={0.3} toneMapped={false} />
+      </mesh>
+      <Text position={[0, -0.02, 0.005]} fontSize={0.05} color="white" anchorX="center" anchorY="middle">
+        ▼ DN
+      </Text>
+    </group>
+  );
 }

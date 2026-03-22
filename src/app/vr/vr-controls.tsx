@@ -62,16 +62,12 @@ function VRLocomotion() {
 
       // Right controller: A/B buttons for vertical fly, snap turn X axis
       if (source.handedness === 'right' && gp.axes.length >= 4) {
-        // B button (index 5) = fly up, A button (index 4) = fly down
-        const aPressed = gp.buttons[4]?.pressed;
-        const bPressed = gp.buttons[5]?.pressed;
-        if (bPressed) playerYRef.current += moveSpeed * delta;
-        if (aPressed) playerYRef.current -= moveSpeed * delta;
+        // Vertical fly handled by in-scene buttons (see VRFlyButtons)
 
         // Snap turn — right thumbstick X axis
         const turnX = gp.axes[2];
         if (Math.abs(turnX) > 0.6 && snapCooldown.current <= 0) {
-          const dir = turnX > 0 ? 1 : -1;
+          const dir = turnX > 0 ? -1 : 1;
           const refSpace = xrManager.getReferenceSpace();
           if (refSpace) {
             const rot = new XRRigidTransform(

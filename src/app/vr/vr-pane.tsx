@@ -18,9 +18,23 @@ interface VRPaneProps {
 const PANE_WIDTH = 4;
 const PANE_HEIGHT = 2.5;
 
+// Terminal soft keys — same as mobile toolbar
+const SOFT_KEYS = [
+  { label: 'Esc', data: '\x1b' },
+  { label: 'Tab', data: '\t' },
+  { label: '↑', data: '\x1b[A' },
+  { label: '↓', data: '\x1b[B' },
+  { label: '←', data: '\x1b[D' },
+  { label: '→', data: '\x1b[C' },
+  { label: '⏎', data: '\r' },
+  { label: 'Ctrl-C', data: '\x03' },
+  { label: '|', data: '|' },
+  { label: '~', data: '~' },
+];
+
 export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: VRPaneProps) {
   const { terminalToken } = useVR();
-  const { texture, textureReady, focus, scroll } = useVRTerminal({
+  const { texture, textureReady, focus, scroll, send } = useVRTerminal({
     paneId: pane.id,
     cwd: pane.cwd || '~',
     agentType: pane.agentType || 'shell',
@@ -31,7 +45,6 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
   const paneColor = useMemo(() => new THREE.Color(pane.color || workspaceColor || '#6366f1'), [pane.color, workspaceColor]);
   const darkPaneColor = useMemo(() => paneColor.clone().multiplyScalar(0.3), [paneColor]);
 
-  // Face center (0, eyeHeight, 0)
   const rotation = useMemo(() => {
     const lookTarget = new THREE.Vector3(0, position[1], 0);
     const panePos = new THREE.Vector3(...position);
@@ -61,14 +74,8 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
           <meshBasicMaterial map={texture.current} toneMapped={false} />
         </mesh>
       ) : (
-        <Text
-          position={[0, 0, 0.005]}
-          fontSize={0.12}
-          color="#555"
-          anchorX="center"
-          anchorY="middle"
-        >
-          {`Connecting to terminal...`}
+        <Text position={[0, 0, 0.005]} fontSize={0.12} color="#555" anchorX="center" anchorY="middle">
+          Connecting to terminal...
         </Text>
       )}
 
@@ -102,6 +109,27 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
       >
         {pane.title || pane.agentType} — {pane.agentType}
       </Text>
+
+      {/* Soft keyboard toolbar — shown when focused */}
+      {isFocused && (
+        <group position={[0, -PANE_HEIGHT / 2 - 0.15, 0.01]}>
+          {SOFT_KEYS.map((key, i) => {
+            const totalWidth = SOFT_KEYS.length * 0.4;
+            const x = -totalWidth / 2 + i * 0.4 + 0.2;
+            return (
+              <group key={key.label} position={[x, 0, 0]}>
+                <mesh onClick={() => send(key.data)}>
+                  <planeGeometry args={[0.35, 0.18]} />
+                  <meshStandardMaterial color="#1a1a2e" emissive="#6366f1" emissiveIntensity={0.08} />
+                </mesh>
+                <Text position={[0, 0, 0.005]} fontSize={0.06} color="#ccc" anchorX="center" anchorY="middle">
+                  {key.label}
+                </Text>
+              </group>
+            );
+          })}
+        </group>
+      )}
     </group>
   );
 }

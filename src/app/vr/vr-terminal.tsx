@@ -230,10 +230,6 @@ export function useVRTerminal({
     ctx.font = '12px monospace';
     ctx.textBaseline = 'top';
 
-    // Debug: collect first few colored cells to see actual values
-    let debugInfo = '';
-    let debugCount = 0;
-
     for (let row = 0; row < rows; row++) {
       const line = buffer.getLine(row + buffer.baseY);
       if (!line) continue;
@@ -246,19 +242,11 @@ export function useVRTerminal({
         const char = cell.getChars();
         if (!char || char === ' ') { x += charW; continue; }
 
-        // Get raw color info
         const fgColor = cell.getFgColor();
-        const fgMode = cell.getFgColorMode();
-        const bgColor = cell.getBgColor();
-        const bgMode = cell.getBgColorMode();
+        // getFgColorMode() returns raw bit flags: 0x1000000=16, 0x2000000=256, 0x3000000=RGB
+        const fgModeRaw = cell.getFgColorMode();
+        const fgMode = fgModeRaw > 0 ? (fgModeRaw >> 24) || fgModeRaw : 0;
 
-        // Collect debug for first non-default colored cells
-        if (debugCount < 5 && fgMode !== 0) {
-          debugInfo += `m${fgMode}c${fgColor} `;
-          debugCount++;
-        }
-
-        // Resolve foreground color
         if (fgMode === 1) {
           ctx.fillStyle = palette[fgColor] || defaultFg;
         } else if (fgMode === 2) {
@@ -277,10 +265,6 @@ export function useVRTerminal({
       }
     }
 
-    // Show debug color info at bottom of canvas
-    ctx.fillStyle = '#06b6d4';
-    ctx.font = '11px monospace';
-    ctx.fillText(`Colors: ${debugInfo || 'all mode 0 (default)'}`, 4, ctx.canvas.height - 14);
   }
 
   function get256Color(idx: number): string {
@@ -304,5 +288,23 @@ export function useVRTerminal({
     termRef.current?.scrollLines(lines);
   };
 
-  return { texture: textureRef, textureReady, term: termRef, focus, scroll };
+  // Send data to the terminal (for soft keyboard buttons)
+  const wsRefStable = useRef<WebSocket | null>(null);
+  // Store ws ref for send function
+  useEffect(() => {
+    // This runs after the main effect, wsRef won't be available here
+    // Instead, we'll use the term.onData path - writing to xterm triggers onData which sends to WS
+  }, []);
+
+  const send = (data: string) => {
+    // Write directly to xterm's input handler, which triggers onData → WebSocket
+    const term = termRef.current;
+    if (term) {
+      // Use xterm's core input handler
+      (term as any)._core.coreService.triggerDataEvent(data);
+      dirtyRef.current = true;
+    }
+  };
+
+  return { texture: textureRef, textureReady, term: termRef, focus, scroll, send };
 }
