@@ -5,6 +5,7 @@ import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { useVRTerminal } from './vr-terminal';
 import { useVR } from './vr-app';
+import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import type { PaneData } from '@/lib/db/queries';
 
 interface VRPaneProps {
@@ -42,6 +43,43 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
   });
 
 
+  const {
+    isListening,
+    isSupported: micSupported,
+    transcript,
+    startListening,
+    stopListening,
+  } = useSpeechRecognition();
+
+  // Auto-start dictation when pane is focused
+  useEffect(() => {
+    if (isFocused && micSupported) {
+      try { startListening(); } catch {}
+    }
+    return () => {
+      if (isListening) {
+        try { stopListening(); } catch {}
+      }
+    };
+  }, [isFocused, micSupported]);
+
+  // Auto-restart after each utterance
+  useEffect(() => {
+    if (isFocused && micSupported && !isListening) {
+      const timer = setTimeout(() => {
+        try { startListening(); } catch {}
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [isListening, isFocused, micSupported]);
+
+  // Send transcript to terminal
+  useEffect(() => {
+    if (transcript && isFocused) {
+      send(transcript);
+    }
+  }, [transcript, isFocused, send]);
+
   const paneColor = useMemo(() => new THREE.Color(pane.color || workspaceColor || '#6366f1'), [pane.color, workspaceColor]);
   const darkPaneColor = useMemo(() => paneColor.clone().multiplyScalar(0.3), [paneColor]);
 
@@ -56,14 +94,12 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
 
   const handleClick = () => {
     onFocus();
-    // Don't call focus() here — it opens Quest's system keyboard
-    // User can tap the ⌨ button on the toolbar to open keyboard
   };
 
-  // Toolbar: keyboard (with Quest dictation) + soft keys
+  // Toolbar: soft keys + keyboard fallback
   const allButtons = [
-    { label: '⌨ Type/Dictate', action: () => focus(), color: '#1a2a1a', emissive: '#22c55e' },
     ...SOFT_KEYS.map(k => ({ label: k.label, action: () => send(k.data), color: '#1a1a2e', emissive: '#6366f1' })),
+    { label: '⌨', action: () => focus(), color: '#1a1a2e', emissive: '#6366f1' },
   ];
 
   return (
@@ -116,6 +152,19 @@ export function VRPane({ pane, position, workspaceColor, isFocused, onFocus }: V
       >
         {pane.title || pane.agentType} — {pane.agentType}
       </Text>
+
+      {/* Dictation status — shown on title bar when focused */}
+      {isFocused && micSupported && (
+        <Text
+          position={[PANE_WIDTH / 2 - 0.3, PANE_HEIGHT / 2 - 0.06, 0.01]}
+          fontSize={0.06}
+          color={isListening ? '#22c55e' : '#666'}
+          anchorX="right"
+          anchorY="middle"
+        >
+          {isListening ? '🎤 Listening...' : '🎤 Off'}
+        </Text>
+      )}
 
       {/* Toolbar — shown when focused */}
       {isFocused && (
