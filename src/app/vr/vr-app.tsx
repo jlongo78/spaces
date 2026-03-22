@@ -79,7 +79,6 @@ export function VRApp({ terminalToken }: VRAppProps) {
               {scene === 'lobby' && <VRLobby />}
               {scene === 'room' && workspace && <VRRoom />}
             </PlayerRig>
-            <FlyButtons />
             <VRControls />
           </XR>
         </Canvas>

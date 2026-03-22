@@ -37,10 +37,17 @@ function VRLocomotion() {
       if (!gp) continue;
 
       // Left controller: thumbstick movement
+      // Grip held (buttons[1]) = thumbstick Y becomes fly up/down
       if (source.handedness === 'left' && gp.axes.length >= 4) {
         const moveX = gp.axes[2];
         const moveY = gp.axes[3];
-        if (Math.abs(moveX) > 0.1 || Math.abs(moveY) > 0.1) {
+        const gripHeld = gp.buttons[1] && (gp.buttons[1].pressed || gp.buttons[1].value > 0.5);
+
+        if (gripHeld && Math.abs(moveY) > 0.1) {
+          // Fly up/down — grip + thumbstick Y
+          playerYRef.current += moveY * moveSpeed * delta;
+        } else if (Math.abs(moveX) > 0.1 || Math.abs(moveY) > 0.1) {
+          // Normal horizontal movement
           const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
           forward.y = 0;
           forward.normalize();
