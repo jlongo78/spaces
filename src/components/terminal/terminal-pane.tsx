@@ -156,6 +156,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         return false;
       }
       if (ev.ctrlKey && ev.key === 'v') {
+        // Prevent default browser paste so xterm doesn't also fire onData with the same text
+        ev.preventDefault();
         navigator.clipboard.readText().then(text => {
           if (text && wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({ type: 'data', data: text }));
