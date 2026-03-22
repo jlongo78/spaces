@@ -48,6 +48,8 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@react-three/postprocessing": "^3.0.4",
+    "@react-three/xr": "^6.6.29",
+    "@xterm/addon-canvas": "^0.7.0",
     "better-sqlite3": "^12.6.2",
     "bonjour-service": "^1.3.0",
     "force-graph": "^1.51.2",
