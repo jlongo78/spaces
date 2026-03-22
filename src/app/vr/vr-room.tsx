@@ -36,8 +36,8 @@ export function VRRoom() {
     <group>
       <VREnvironment variant="room" accentColor={wsColor} />
 
-      {/* Back button behind the user */}
-      <group position={[0, 1.2, -2]} rotation={[0, Math.PI, 0]}>
+      {/* Back button — low and close, in front of user */}
+      <group position={[0, 0.8, -1.5]}>
         <mesh onClick={returnToLobby}>
           <planeGeometry args={[1.2, 0.3]} />
           <meshStandardMaterial color="#1a1a2e" emissive="#6366f1" emissiveIntensity={0.1} />

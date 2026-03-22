@@ -49,10 +49,11 @@ export function useVRTerminal({
 
   useEffect(() => {
     // Create our own canvas for rendering terminal text
-    const charWidth = 9;
-    const charHeight = 17;
-    const canvasWidth = cols * charWidth;
-    const canvasHeight = rows * charHeight;
+    const charWidth = 10;
+    const charHeight = 18;
+    // Power-of-two dimensions for GPU compatibility
+    const canvasWidth = 1024;
+    const canvasHeight = 512;
 
     const canvas = document.createElement('canvas');
     canvas.width = canvasWidth;
@@ -177,16 +178,16 @@ export function useVRTerminal({
     const ctx = ctxRef.current;
     if (!term || !ctx) return;
 
-    const charWidth = 9;
-    const charHeight = 17;
+    const charWidth = 10;
+    const charHeight = 18;
     const buffer = term.buffer.active;
 
     // Clear
     ctx.fillStyle = '#0a0a0f';
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    // Set font
-    ctx.font = '14px "Cascadia Code", "JetBrains Mono", "Consolas", monospace';
+    // Use monospace — guaranteed available on all platforms including Quest
+    ctx.font = '14px monospace';
     ctx.textBaseline = 'top';
 
     for (let row = 0; row < rows; row++) {
