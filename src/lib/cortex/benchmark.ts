@@ -2,6 +2,7 @@ import { getCortexAddon } from './index';
 import { getUserPaths } from '../config';
 import { getCurrentUser } from '../auth';
 import path from 'path';
+import type { ChildProcess } from 'node:child_process';
 
 let _access: any = null;
 
@@ -37,4 +38,30 @@ export function resetBenchmarkAccess(): void {
     _access.close();
     _access = null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Benchmark process tracking
+// ---------------------------------------------------------------------------
+
+interface BenchmarkProcessInfo {
+  process: ChildProcess;
+  pid: number;
+  startedAt: string;
+  preset: string;
+  categories: string;
+  model: string;
+  noJudge: boolean;
+  getOutput: () => string;
+  getErrors: () => string;
+}
+
+let _benchmarkProcess: BenchmarkProcessInfo | null = null;
+
+export function getBenchmarkProcess(): BenchmarkProcessInfo | null {
+  return _benchmarkProcess;
+}
+
+export function setBenchmarkProcess(info: BenchmarkProcessInfo): void {
+  _benchmarkProcess = info;
 }

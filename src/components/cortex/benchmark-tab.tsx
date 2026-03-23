@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   BarChart,
   Bar,
@@ -10,8 +10,14 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import { FlaskConical, ChevronDown, ChevronRight } from 'lucide-react';
-import { useBenchmarkRuns, useBenchmarkRun, useBenchmarkLobes } from '@/hooks/use-benchmark';
+import { FlaskConical, ChevronDown, ChevronRight, Play, Loader2 } from 'lucide-react';
+import {
+  useBenchmarkRuns,
+  useBenchmarkRun,
+  useBenchmarkLobes,
+  useBenchmarkStatus,
+  useStartBenchmark,
+} from '@/hooks/use-benchmark';
 
 interface BenchmarkRun {
   id: string;
@@ -238,8 +244,278 @@ function BadgePill({ tier }: { tier: string | null }) {
   );
 }
 
+const BENCHMARK_CATEGORIES = [
+  'codebase-qa',
+  'bug-fixing',
+  'code-generation',
+  'refactoring',
+  'style-convention',
+  'decision-recall',
+  'cross-session',
+  'error-recovery',
+  'domain-knowledge',
+  'multi-layer',
+  'performance-optimization',
+  'api-integration',
+  'security-access',
+  'meta-self',
+  'lobe-specific',
+];
+
+const PRESET_META: Record<string, { label: string; desc: string; tasks: string; time: string }> = {
+  quick: {
+    label: 'Quick Test',
+    desc: 'Single task per category',
+    tasks: '~15 tasks',
+    time: '~3 min',
+  },
+  standard: {
+    label: 'Standard',
+    desc: '5 tasks per category',
+    tasks: '~75 tasks',
+    time: '~20 min',
+  },
+  full: {
+    label: 'Comprehensive',
+    desc: 'All tasks',
+    tasks: '~156 tasks',
+    time: '~1 hour',
+  },
+};
+
+function ProgressBar({ current, total }: { current: number; total: number }) {
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  return (
+    <div className="w-full">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] text-gray-500 tabular-nums">
+          {current} / {total > 0 ? total : '?'} tasks
+        </span>
+        <span className="text-[10px] text-gray-500 tabular-nums">{pct}%</span>
+      </div>
+      <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+        <div
+          className="h-full bg-purple-500 rounded-full transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function RunLauncher({ onRunComplete }: { onRunComplete: () => void }) {
+  const { data: status } = useBenchmarkStatus();
+  const startBenchmark = useStartBenchmark();
+
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [customModel, setCustomModel] = useState('claude-haiku-4-5');
+  const [noJudge, setNoJudge] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
+
+  const isRunning = status?.running === true;
+
+  // When a run transitions from running -> finished, trigger refresh of runs list
+  const prevRunningRef = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    if (prevRunningRef.current === true && !isRunning && status?.exitCode != null) {
+      onRunComplete();
+    }
+    prevRunningRef.current = isRunning;
+  }, [isRunning, status?.exitCode, onRunComplete]);
+
+  function handlePreset(preset: string) {
+    startBenchmark.mutate({ preset });
+  }
+
+  function handleCustomRun() {
+    startBenchmark.mutate({
+      preset: 'custom',
+      categories: selectedCategories.length > 0 ? selectedCategories.join(',') : undefined,
+      noJudge,
+      model: customModel,
+    });
+  }
+
+  function toggleCategory(cat: string) {
+    setSelectedCategories(prev =>
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat],
+    );
+  }
+
+  const lastLines = status?.output
+    ? status.output
+        .split('\n')
+        .filter((l: string) => l.trim().length > 0)
+        .slice(-6)
+    : [];
+
+  if (isRunning) {
+    return (
+      <div className="bg-white/[0.02] border border-white/[0.06] rounded-lg p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 text-purple-400 animate-spin" />
+            <span className="text-xs font-medium text-gray-300">
+              Benchmark running — {status?.preset}
+              {status?.categories && status.categories !== 'all' ? ` (${status.categories})` : ''}
+            </span>
+          </div>
+          <span className="text-[10px] text-gray-600 font-mono">
+            {status?.model}
+          </span>
+        </div>
+
+        <ProgressBar
+          current={status?.progress?.current ?? 0}
+          total={status?.progress?.total ?? 0}
+        />
+
+        {lastLines.length > 0 && (
+          <div className="bg-black/30 rounded-md p-3 font-mono text-[10px] text-gray-500 space-y-0.5 max-h-28 overflow-y-auto">
+            {lastLines.map((line: string, i: number) => (
+              <div key={i} className="leading-relaxed">{line}</div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Not running — show launcher
+  const startError = (startBenchmark.data as any)?.error;
+
+  return (
+    <div className="bg-white/[0.02] border border-white/[0.06] rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-white/[0.05]">
+        <h3 className="text-xs font-medium text-gray-400">Run Benchmark</h3>
+      </div>
+
+      <div className="p-4 space-y-2">
+        {/* Preset buttons */}
+        {Object.entries(PRESET_META).map(([preset, meta]) => (
+          <div
+            key={preset}
+            className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-white/[0.05] hover:border-white/[0.10] hover:bg-white/[0.02] transition-colors"
+          >
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-300">{meta.label}</span>
+                <span className="text-[10px] text-gray-600">{meta.desc}</span>
+              </div>
+              <div className="text-[10px] text-gray-600 mt-0.5 tabular-nums">
+                {meta.tasks} &middot; {meta.time}
+              </div>
+            </div>
+            <button
+              onClick={() => handlePreset(preset)}
+              disabled={startBenchmark.isPending}
+              className="ml-4 flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md bg-purple-600/20 text-purple-300 border border-purple-500/20 hover:bg-purple-600/30 hover:border-purple-500/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+            >
+              <Play className="w-2.5 h-2.5" />
+              Run
+            </button>
+          </div>
+        ))}
+
+        {/* Custom section toggle */}
+        <div className="pt-1">
+          <button
+            onClick={() => setShowCustom(v => !v)}
+            className="flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-gray-400 transition-colors"
+          >
+            {showCustom ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            Custom
+          </button>
+
+          {showCustom && (
+            <div className="mt-3 space-y-3 pl-1">
+              {/* Category checkboxes */}
+              <div>
+                <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-2">Categories</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {BENCHMARK_CATEGORIES.map(cat => {
+                    const active = selectedCategories.includes(cat);
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => toggleCategory(cat)}
+                        className={`px-2 py-0.5 text-[10px] rounded border transition-colors ${
+                          active
+                            ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                            : 'bg-white/[0.03] text-gray-500 border-white/[0.06] hover:text-gray-400 hover:border-white/[0.10]'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedCategories.length === 0 && (
+                  <div className="text-[10px] text-gray-600 mt-1">None selected = all categories</div>
+                )}
+              </div>
+
+              {/* Model + noJudge row */}
+              <div className="flex items-center gap-4">
+                <div>
+                  <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-1">Model</div>
+                  <select
+                    value={customModel}
+                    onChange={e => setCustomModel(e.target.value)}
+                    className="px-2.5 py-1 text-xs bg-white/5 border border-white/10 rounded-md text-gray-300 focus:outline-none focus:border-purple-500/50"
+                  >
+                    <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+                    <option value="claude-sonnet-4-5">claude-sonnet-4-5</option>
+                    <option value="claude-opus-4-5">claude-opus-4-5</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 mt-4">
+                  <input
+                    id="no-judge"
+                    type="checkbox"
+                    checked={noJudge}
+                    onChange={e => setNoJudge(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded accent-purple-500"
+                  />
+                  <label htmlFor="no-judge" className="text-[11px] text-gray-400 cursor-pointer">
+                    Skip judge
+                  </label>
+                </div>
+              </div>
+
+              {/* Run custom */}
+              <button
+                onClick={handleCustomRun}
+                disabled={startBenchmark.isPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-purple-600/20 text-purple-300 border border-purple-500/20 hover:bg-purple-600/30 hover:border-purple-500/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Play className="w-3 h-3" />
+                Run Custom
+              </button>
+            </div>
+          )}
+        </div>
+
+        {startError && (
+          <div className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+            {startError}
+          </div>
+        )}
+
+        {status && !isRunning && status.exitCode != null && (
+          <div className="text-[11px] text-gray-500 bg-white/[0.02] border border-white/[0.05] rounded-md px-3 py-2">
+            Last run finished — exit code {status.exitCode}
+            {status.exitCode === 0 ? ' (success)' : ' (error)'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function BenchmarkTab() {
-  const { data: runsData, isLoading: runsLoading } = useBenchmarkRuns();
+  const { data: runsData, isLoading: runsLoading, refetch: refetchRuns } = useBenchmarkRuns();
   const runs: BenchmarkRun[] = runsData?.runs ?? [];
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
@@ -257,18 +533,26 @@ export function BenchmarkTab() {
   const noData = !runsLoading && runs.length === 0;
 
   if (runsLoading) {
-    return <div className="p-6 text-sm text-gray-500">Loading benchmark data...</div>;
+    return (
+      <div className="p-6 max-w-5xl space-y-6">
+        <RunLauncher onRunComplete={() => refetchRuns()} />
+        <div className="text-sm text-gray-500">Loading benchmark data...</div>
+      </div>
+    );
   }
 
   if (noData) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-24 text-gray-600">
-        <FlaskConical className="w-10 h-10" />
-        <p className="text-sm text-center max-w-xs">
-          No benchmark data yet.{' '}
-          <span className="text-gray-500 font-mono text-xs">npm run benchmark</span>
-          {' '}to generate results.
-        </p>
+      <div className="p-6 max-w-5xl space-y-6">
+        <RunLauncher onRunComplete={() => refetchRuns()} />
+        <div className="flex flex-col items-center justify-center gap-4 py-16 text-gray-600">
+          <FlaskConical className="w-10 h-10" />
+          <p className="text-sm text-center max-w-xs">
+            No benchmark data yet. Use the launcher above or run{' '}
+            <span className="text-gray-500 font-mono text-xs">npm run benchmark</span>
+            {' '}to generate results.
+          </p>
+        </div>
       </div>
     );
   }
@@ -293,6 +577,9 @@ export function BenchmarkTab() {
 
   return (
     <div className="p-6 max-w-5xl space-y-6">
+      {/* Run launcher */}
+      <RunLauncher onRunComplete={() => refetchRuns()} />
+
       {/* Run selector */}
       <div className="flex items-center gap-3">
         <label className="text-[11px] text-gray-500 shrink-0">Run</label>
