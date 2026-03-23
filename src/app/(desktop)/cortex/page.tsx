@@ -8,13 +8,14 @@ import { CortexSettings } from '@/components/cortex/cortex-settings';
 import { CortexDashboard } from '@/components/cortex/cortex-dashboard';
 import { CurationTab } from '@/components/cortex/curation-tab';
 import { MarketplaceTab } from '@/components/cortex/marketplace-tab';
+import { BenchmarkTab } from '@/components/cortex/benchmark-tab';
 
 const EntityGraphView = dynamic(
   () => import('@/components/cortex/entity-graph').then(m => ({ default: m.EntityGraphView })),
   { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">Loading graph...</div> }
 );
 
-type Tab = 'dashboard' | 'graph' | 'knowledge' | 'curation' | 'marketplace' | 'settings';
+type Tab = 'dashboard' | 'graph' | 'knowledge' | 'curation' | 'marketplace' | 'benchmark' | 'settings';
 
 export default function CortexPage() {
   const [tab, setTab] = useState<Tab>('dashboard');
@@ -32,6 +33,7 @@ export default function CortexPage() {
     { key: 'knowledge', label: 'Knowledge' },
     { key: 'curation', label: 'Curation' },
     { key: 'marketplace', label: 'Marketplace' },
+    { key: 'benchmark', label: 'Benchmark' },
     { key: 'settings', label: 'Settings' },
   ];
 
@@ -67,6 +69,7 @@ export default function CortexPage() {
         {tab === 'knowledge' && <KnowledgeTab />}
         {tab === 'curation' && <CurationTab />}
         {tab === 'marketplace' && <MarketplaceTab />}
+        {tab === 'benchmark' && <BenchmarkTab />}
         {tab === 'settings' && (
           <div className="p-6 max-w-2xl space-y-8">
             <CortexSettings />
