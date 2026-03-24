@@ -197,6 +197,45 @@ server.listen(PORT, () => {
   console.log(`\n  Spaces dev server on http://localhost:${PORT}\n`);
 });
 
+// ─── HTTPS server for WebXR (Quest requires secure context) ──
+const HTTPS_PORT = parseInt(process.env.SPACES_HTTPS_PORT || '', 10) || PORT + 1;
+const certsDir = path.join(__dirname, '..', 'certs');
+if (fs.existsSync(path.join(certsDir, 'cert.crt')) && fs.existsSync(path.join(certsDir, 'cert.key'))) {
+  const https = require('https');
+  const httpsOptions = {
+    key: fs.readFileSync(path.join(certsDir, 'cert.key')),
+    cert: fs.readFileSync(path.join(certsDir, 'cert.crt')),
+  };
+  const httpsServer = https.createServer(httpsOptions, (req, res) => {
+    const proxyReq = http.request(
+      { hostname: '127.0.0.1', port: NEXT_INTERNAL_PORT, path: req.url, method: req.method, headers: req.headers },
+      (proxyRes) => { res.writeHead(proxyRes.statusCode, proxyRes.headers); proxyRes.pipe(res); }
+    );
+    proxyReq.on('error', () => { if (!res.headersSent) { res.writeHead(502); res.end('Not ready'); } });
+    req.pipe(proxyReq);
+  });
+  createTerminalServer(httpsServer);
+  httpsServer.on('upgrade', (req, socket, head) => {
+    const url = new URL(req.url, 'https://localhost');
+    if (url.pathname !== '/ws' && !url.pathname.endsWith('/ws')) {
+      const proxyReq = http.request({ hostname: '127.0.0.1', port: NEXT_INTERNAL_PORT, path: req.url, method: req.method, headers: req.headers });
+      proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
+        socket.write('HTTP/1.1 101 Switching Protocols\r\n' + Object.entries(proxyRes.headers).map(([k, v]) => `${k}: ${v}`).join('\r\n') + '\r\n\r\n');
+        if (proxyHead.length > 0) proxySocket.unshift(proxyHead);
+        proxySocket.pipe(socket); socket.pipe(proxySocket);
+        proxySocket.on('error', () => socket.destroy()); socket.on('error', () => proxySocket.destroy());
+      });
+      proxyReq.on('error', () => socket.destroy());
+      socket.on('error', () => {});
+      if (head.length > 0) proxyReq.write(head);
+      proxyReq.end();
+    }
+  });
+  httpsServer.listen(HTTPS_PORT, () => {
+    console.log(`  Spaces HTTPS (VR) on https://192.168.1.16:${HTTPS_PORT}/vr\n`);
+  });
+}
+
 // Cleanup
 function cleanup() {
   next.kill();

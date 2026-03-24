@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users } from 'lucide-react';
+import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users, Mic, MicOff, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AGENT_TYPES } from '@/lib/agents';
 import { useTier } from '@/hooks/use-tier';
@@ -71,6 +71,20 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const [injectionCount, setInjectionCount] = useState(0);
   const [injectionItems, setInjectionItems] = useState<Array<{ type: string; text: string }>>([]);
 
+  // Quest browser detection + dictation state
+  const [isQuest, setIsQuest] = useState(false);
+  const [isDictating, setIsDictating] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const vadRafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const ua = navigator.userAgent || '';
+    setIsQuest(/Quest|Oculus|Pacific/i.test(ua));
+  }, []);
+
   // Use refs for props so the connect function never needs to re-create.
   // This prevents all terminals from reconnecting when parent state changes.
   const paneRef = useRef(pane);
@@ -79,6 +93,9 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   onUpdateRef.current = onUpdate;
   const terminalTokenRef = useRef(terminalToken);
   terminalTokenRef.current = terminalToken;
+
+  // Upload handler ref (used inside connect callback which captures refs)
+  const uploadFilesRef = useRef<(files: File[]) => void>(() => {});
 
   // Auto-reconnect state
   const exitedRef = useRef(false);
@@ -156,14 +173,11 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         return false;
       }
       if (ev.ctrlKey && ev.key === 'v') {
-        // Prevent default browser paste so xterm doesn't also fire onData with the same text
-        ev.preventDefault();
-        navigator.clipboard.readText().then(text => {
-          if (text && wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'data', data: text }));
-          }
-        });
-        return false;
+        // Return true → let xterm handle paste natively via its internal textarea.
+        // Text paste: xterm reads clipboard text → fires onData → sent to server via WS.
+        // File/image paste: our document-level capture-phase paste listener intercepts
+        // the paste event before xterm sees it and uploads the files.
+        return true;
       }
       return true;
     });
@@ -340,6 +354,186 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       onPopout(pane.id);
     }
   };
+
+  // ─── Quest toolbar: send keystrokes to terminal ───
+  const sendKey = (key: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'data', data: key }));
+    }
+  };
+
+  // ─── Quest toolbar: dictation via MediaRecorder → Whisper ───
+  const startDictation = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        audioCtx.close();
+        if (vadRafRef.current) cancelAnimationFrame(vadRafRef.current);
+
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (blob.size < 1000) { setIsDictating(false); return; } // too short, ignore
+
+        // Send to server for Whisper transcription
+        const form = new FormData();
+        form.append('audio', blob, 'dictation.webm');
+        try {
+          const res = await fetch('/api/whisper', { method: 'POST', body: form });
+          if (res.ok) {
+            const { text } = await res.json();
+            if (text?.trim()) sendKey(text.trim());
+          }
+        } catch { /* transcription failed silently */ }
+        setIsDictating(false);
+      };
+
+      // VAD: auto-stop after 2s of silence
+      const dataArr = new Uint8Array(analyser.frequencyBinCount);
+      let lastSpeechTime = Date.now();
+      const checkSilence = () => {
+        if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') return;
+        analyser.getByteFrequencyData(dataArr);
+        const avg = dataArr.reduce((a, b) => a + b, 0) / dataArr.length;
+        if (avg > 15) lastSpeechTime = Date.now();
+        if (Date.now() - lastSpeechTime > 2000) {
+          mediaRecorderRef.current.stop();
+          return;
+        }
+        vadRafRef.current = requestAnimationFrame(checkSilence);
+      };
+
+      recorder.start(250); // collect in 250ms chunks
+      mediaRecorderRef.current = recorder;
+      setIsDictating(true);
+      vadRafRef.current = requestAnimationFrame(checkSilence);
+    } catch {
+      setIsDictating(false);
+    }
+  };
+
+  const stopDictation = () => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  // ─── File paste & drag-drop upload ───
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const uploadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const uploadFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    const cwd = paneRef.current.cwd || '/';
+    const form = new FormData();
+    form.append('dir', cwd);
+    for (const f of files) form.append('files', f);
+
+    const names = files.map(f => f.name).join(', ');
+    setUploadStatus(`Uploading ${files.length} file${files.length > 1 ? 's' : ''}...`);
+    if (uploadTimeoutRef.current) clearTimeout(uploadTimeoutRef.current);
+
+    try {
+      const res = await fetch('/api/files', { method: 'POST', body: form });
+      if (res.ok) {
+        const data = await res.json();
+        setUploadStatus(`Uploaded ${data.files?.join(', ') || names} to ${cwd}`);
+        // Write a note into the terminal so the user/agent knows the file is there
+        const term = xtermRef.current;
+        if (term) {
+          term.write(`\r\n\x1b[90m[Uploaded ${data.files?.join(', ') || names} → ${cwd}]\x1b[0m\r\n`);
+        }
+      } else {
+        setUploadStatus('Upload failed');
+      }
+    } catch {
+      setUploadStatus('Upload failed');
+    }
+    uploadTimeoutRef.current = setTimeout(() => setUploadStatus(null), 4000);
+  }, []);
+  uploadFilesRef.current = uploadFiles;
+
+  // Listen for paste events with files/images.
+  // Must use document-level capture because xterm.js creates an internal <textarea>
+  // that receives focus and swallows paste events before they reach the container.
+  useEffect(() => {
+    const el = termRef.current;
+    if (!el) return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      // Only handle pastes when this terminal pane is focused
+      if (!el.contains(e.target as Node)) return;
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === 'file') {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (files.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        uploadFilesRef.current(files);
+      }
+      // If no files, let the normal text paste handler (Ctrl+V) handle it
+    };
+
+    // Capture phase so we intercept before xterm's textarea handler
+    document.addEventListener('paste', handlePaste, true);
+
+    // Drag-and-drop (works directly on the container — xterm doesn't intercept drag events)
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(true);
+    };
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      if (el && !el.contains(e.relatedTarget as Node)) {
+        setIsDragging(false);
+      }
+    };
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false);
+      const files: File[] = [];
+      if (e.dataTransfer?.files) {
+        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+          files.push(e.dataTransfer.files[i]);
+        }
+      }
+      if (files.length > 0) uploadFilesRef.current(files);
+    };
+
+    el.addEventListener('dragover', handleDragOver);
+    el.addEventListener('dragleave', handleDragLeave);
+    el.addEventListener('drop', handleDrop);
+    return () => {
+      document.removeEventListener('paste', handlePaste, true);
+      el.removeEventListener('dragover', handleDragOver);
+      el.removeEventListener('dragleave', handleDragLeave);
+      el.removeEventListener('drop', handleDrop);
+    };
+  }, []);
 
   // Close color picker on outside click
   useEffect(() => {
@@ -534,11 +728,87 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       </div>
 
       {/* Terminal */}
-      <div
-        ref={termRef}
-        className="flex-1 bg-[#0a0a0a]"
-        style={{ minHeight: isMaximized ? 'calc(100vh - 100px)' : '300px' }}
-      />
+      <div className="flex-1 relative">
+        <div
+          ref={termRef}
+          className="absolute inset-0 bg-[#0a0a0a]"
+          style={{ minHeight: isMaximized ? 'calc(100vh - 100px)' : '300px' }}
+        />
+
+        {/* Drag overlay */}
+        {isDragging && (
+          <div className="absolute inset-0 z-10 bg-indigo-500/10 border-2 border-dashed border-indigo-400 flex items-center justify-center pointer-events-none">
+            <div className="flex items-center gap-2 bg-zinc-900/90 px-4 py-2 rounded-lg text-sm text-indigo-300">
+              <Upload className="w-4 h-4" />
+              Drop files to upload to {pane.cwd.split(/[/\\]/).pop() || pane.cwd}
+            </div>
+          </div>
+        )}
+
+        {/* Upload status toast */}
+        {uploadStatus && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 bg-zinc-800/95 border border-zinc-600 px-3 py-1.5 rounded-lg text-xs text-zinc-300 shadow-lg">
+            {uploadStatus}
+          </div>
+        )}
+      </div>
+
+      {/* Quest browser toolbar — virtual keys + mic for headset use */}
+      {isQuest && (
+        <div
+          className="flex items-center gap-1 px-2 py-1.5 flex-shrink-0 border-t border-zinc-700"
+          style={{ backgroundColor: `${pane.color}15`, borderTopColor: `${pane.color}30` }}
+        >
+          <button
+            onClick={() => sendKey('\x1b')}
+            className="px-2.5 py-1.5 text-[11px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-600"
+          >
+            Esc
+          </button>
+          <button
+            onClick={() => sendKey('\t')}
+            className="px-2.5 py-1.5 text-[11px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-600"
+          >
+            Tab
+          </button>
+          <button
+            onClick={() => sendKey('\x03')}
+            className="px-2.5 py-1.5 text-[11px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-600"
+          >
+            Ctrl+C
+          </button>
+          <button
+            onClick={() => sendKey('\x04')}
+            className="px-2.5 py-1.5 text-[11px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-600"
+          >
+            Ctrl+D
+          </button>
+          <button
+            onClick={() => sendKey('\r')}
+            className="px-3 py-1.5 text-[11px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-600"
+          >
+            Enter
+          </button>
+
+          <div className="flex-1" />
+
+          {isDictating && (
+            <span className="text-[10px] text-green-400 animate-pulse mr-1">Listening...</span>
+          )}
+          <button
+            onClick={isDictating ? stopDictation : startDictation}
+            className={cn(
+              'p-1.5 rounded border',
+              isDictating
+                ? 'bg-red-900/50 border-red-600 text-red-400 hover:bg-red-900/80'
+                : 'bg-zinc-800 border-zinc-600 text-zinc-300 hover:bg-zinc-700'
+            )}
+            title={isDictating ? 'Stop dictation' : 'Start voice dictation'}
+          >
+            {isDictating ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

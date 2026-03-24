@@ -425,6 +425,43 @@ function verifyAll() {
 }
 
 // ─── Upgrade command ──────────────────────────────────────────
+
+/**
+ * Upgrade the core @jlongo78/agent-spaces package via npm.
+ * Detects the current version, checks for a newer one, and upgrades in-place.
+ */
+function upgradeCorePackage() {
+  const pkgName = '@jlongo78/agent-spaces';
+  log(`─── ${pkgName} (core) ───`);
+
+  // Get current installed version
+  let currentVersion = '0.0.0';
+  try { currentVersion = require('../package.json').version; } catch {}
+
+  // Check latest on npm
+  let latestVersion;
+  try {
+    latestVersion = run('npm', ['view', pkgName, 'version'], { quiet: true }).trim();
+  } catch {
+    logErr(`Could not check npm for latest ${pkgName} version`);
+    return;
+  }
+
+  if (latestVersion === currentVersion) {
+    logOk(`${pkgName} is already at latest (${currentVersion})`);
+    return;
+  }
+
+  log(`Upgrading ${pkgName}: ${currentVersion} → ${latestVersion}`);
+  try {
+    run('npm', ['install', '-g', `${pkgName}@latest`]);
+    logOk(`${pkgName} upgraded to ${latestVersion}`);
+  } catch (err) {
+    logErr(`Failed to upgrade ${pkgName}: ${err.message}`);
+    log('You may need to run with elevated permissions (sudo / admin shell)');
+  }
+}
+
 function upgradePackage(pkgKey) {
   if (pkgKey) {
     // Upgrade specific package
@@ -441,8 +478,10 @@ function upgradePackage(pkgKey) {
     console.log(`\n  Upgrading ${pkg.name}...\n`);
     doUpgrade(pkgKey, pkg);
   } else {
-    // Upgrade all installed packages
-    console.log('\n  Upgrading all installed packages...\n');
+    // Upgrade core app first, then all installed addon packages
+    console.log('\n  Upgrading Agent Spaces...\n');
+    upgradeCorePackage();
+    log('');
     for (const [key, pkg] of Object.entries(PACKAGES)) {
       if (fs.existsSync(pkg.dir)) {
         log(`─── ${pkg.name} ───`);

@@ -982,6 +982,16 @@ function handleConnection(wss, ws, req) {
 
     ws.send(JSON.stringify({ type: 'ready', paneId, reattached: true }));
 
+    // Re-send detected session ID on reattach — the original WS message may
+    // have been lost if the connection dropped during detection
+    if (existing.detectedSessionId) {
+      ws.send(JSON.stringify({
+        type: 'session-detected',
+        sessionId: existing.detectedSessionId,
+        paneId,
+      }));
+    }
+
     // Skip Cortex injection on reattach — context was already injected at spawn.
     // The badge polls /api/cortex/status independently.
 
@@ -1061,6 +1071,9 @@ function handleConnection(wss, ws, req) {
     shell = isWindows ? 'cmd.exe' : (process.env.SHELL || '/bin/bash');
     args = [];
   }
+
+  // Detect bash-on-Windows so cd commands use bash syntax, not cmd.exe `cd /d`
+  const isBashOnWindows = isWindows && shell && (shell.endsWith('bash.exe') || shell.endsWith('bash'));
 
   const env = { ...process.env };
   delete env.CLAUDECODE;
@@ -1167,6 +1180,7 @@ function handleConnection(wss, ws, req) {
     startedAt: Date.now(),
     workspaceId: env.SPACES_WORKSPACE_ID || null,
     isCollaborating,
+    detectedSessionId: null,  // Populated when Claude session is detected
   };
   sessions.set(paneId, session);
   analyticsRecordSessionStart(paneId, username, agentType);
@@ -1183,12 +1197,12 @@ function handleConnection(wss, ws, req) {
   if (isSSH) {
     setTimeout(() => {
       if (!session.exited) {
-        if (isWindows) {
-          // Windows cmd.exe uses double quotes
+        if (isWindows && !isBashOnWindows) {
+          // Windows cmd.exe uses double quotes and /d to change drive
           const escapedCwd = safeCwd.replace(/"/g, '""');
           term.write(`cd /d "${escapedCwd}"\r`);
         } else {
-          // Unix shells use single quotes
+          // Unix shells (including git-bash on Windows) use single quotes
           const escapedCwd = safeCwd.replace(/'/g, "'\\''");
           term.write(`cd '${escapedCwd}'\r`);
         }
@@ -1218,20 +1232,38 @@ function handleConnection(wss, ws, req) {
         if (agentType === 'claude') {
           // Claude needs to be run from the correct project CWD
           const sessionCwd = findSessionCwd(agentSession, username);
-          setTimeout(() => {
-            if (session.exited) return;
-            if (sessionCwd && sessionCwd !== safeCwd) {
-              const cdCmd = isWindows ? `cd /d "${sessionCwd}"` : `cd "${sessionCwd}"`;
-              term.write(cdCmd + '\r');
-              setTimeout(() => {
-                if (!session.exited) {
-                  term.write(`${command} ${agent.resumeFlag} ${agentSession}\r`);
-                }
-              }, 300);
-            } else {
-              term.write(`${command} ${agent.resumeFlag} ${agentSession}\r`);
-            }
-          }, delay);
+
+          // Verify the session actually exists on disk before attempting resume.
+          // If the .jsonl file is gone (server restart, cleanup, etc.), fall back
+          // to starting fresh so the user doesn't see "No conversation found".
+          const sessionExists = sessionCwd !== null || findSessionFile(agentSession, username);
+
+          if (!sessionExists) {
+            console.log(`[Resume] Session ${agentSession.slice(0, 8)} not found on disk — starting fresh for pane ${paneId.slice(0, 8)}`);
+            // Clear the stale session ID from the DB
+            persistSessionToDb(paneId, 'new');
+            setTimeout(() => {
+              if (!session.exited) {
+                term.write(`${command}\r`);
+              }
+            }, delay);
+          } else {
+            setTimeout(() => {
+              if (session.exited) return;
+              if (sessionCwd && sessionCwd !== safeCwd) {
+                // Use bash-compatible cd on Windows when shell is git-bash
+                const cdCmd = (isWindows && !isBashOnWindows) ? `cd /d "${sessionCwd}"` : `cd "${sessionCwd}"`;
+                term.write(cdCmd + '\r');
+                setTimeout(() => {
+                  if (!session.exited) {
+                    term.write(`${command} ${agent.resumeFlag} ${agentSession}\r`);
+                  }
+                }, 300);
+              } else {
+                term.write(`${command} ${agent.resumeFlag} ${agentSession}\r`);
+              }
+            }, delay);
+          }
         } else {
           // Generic resume: works for both subcommand (codex resume <id>) and flag (gemini --resume <id>)
           setTimeout(() => {
@@ -1338,6 +1370,33 @@ function getUserHome(username) {
 
 const UUID_JSONL_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
 
+/**
+ * Convert a CWD path to the project directory key used by Claude Code.
+ * Claude encodes paths by replacing colons, slashes, backslashes, and spaces with dashes.
+ * e.g. "C:\projects\spaces-cortex" → "C--projects-spaces-cortex"
+ * e.g. "/home/user/projects"      → "-home-user-projects"
+ */
+function cwdToProjectKey(cwd) {
+  return cwd.replace(/[:\\/\s]/g, '-').replace(/-$/, '');
+}
+
+/**
+ * Check if a Claude session's .jsonl file exists on disk (without parsing CWD).
+ * Used to verify a session is resumable before attempting `claude --resume`.
+ */
+function findSessionFile(sessionId, username) {
+  const claudeProjectsDir = path.join(getUserHome(username), '.claude', 'projects');
+  try {
+    if (!fs.existsSync(claudeProjectsDir)) return false;
+    const fileName = `${sessionId}.jsonl`;
+    for (const projDir of fs.readdirSync(claudeProjectsDir, { withFileTypes: true })) {
+      if (!projDir.isDirectory()) continue;
+      if (fs.existsSync(path.join(claudeProjectsDir, projDir.name, fileName))) return true;
+    }
+  } catch { /* ignore */ }
+  return false;
+}
+
 function findSessionCwd(sessionId, username) {
   const claudeProjectsDir = path.join(getUserHome(username), '.claude', 'projects');
   try {
@@ -1367,10 +1426,22 @@ function findSessionCwd(sessionId, username) {
           } catch { /* skip */ }
         }
 
-        // Fallback: derive CWD from the project directory name
-        // Claude encodes paths as e.g. "-home-user-projects-myapp"
-        const derivedPath = '/' + projDir.name.replace(/^-/, '').replace(/-/g, '/');
-        if (fs.existsSync(derivedPath)) {
+        // Fallback: derive CWD from the project directory name.
+        // NOTE: this is inherently ambiguous — hyphens in directory names
+        // (e.g. "spaces-cortex") are indistinguishable from path separators
+        // in the encoded form. Only use this if the .jsonl had no cwd field.
+        let derivedPath;
+        const winDriveMatch = projDir.name.match(/^([A-Za-z])--(.*)/);
+        if (winDriveMatch) {
+          // Windows: "C--projects-spaces-cortex" → try "C:\projects\spaces-cortex" etc.
+          // We can't perfectly reverse the encoding due to hyphen ambiguity,
+          // but the drive letter prefix (X--) is unambiguous.
+          derivedPath = winDriveMatch[1] + ':\\' + winDriveMatch[2].replace(/-/g, '\\');
+        } else {
+          // Unix: "-home-user-projects" → "/home/user/projects"
+          derivedPath = '/' + projDir.name.replace(/^-/, '').replace(/-/g, '/');
+        }
+        if (derivedPath && fs.existsSync(derivedPath)) {
           console.log(`[Session CWD] ${sessionId.slice(0, 8)}: ${derivedPath} (derived from dir name)`);
           return derivedPath;
         }
@@ -1382,36 +1453,81 @@ function findSessionCwd(sessionId, username) {
   return null;
 }
 
+/**
+ * Persist a detected Claude session ID to the database via the Next.js API.
+ * This is the critical reliability fix: even if the WebSocket message to the
+ * frontend is lost (tab backgrounded, network glitch, etc.), the DB is updated
+ * so that workspace-load and page-refresh will use `claude --resume <id>`.
+ */
+function persistSessionToDb(paneId, sessionId, _retries) {
+  const retries = _retries || 0;
+  if (!isApiReady()) {
+    console.log(`[Session Persist] API not ready, retrying in 2s for pane ${paneId.slice(0, 8)}`);
+    if (retries < 5) setTimeout(() => persistSessionToDb(paneId, sessionId, retries + 1), 2000);
+    return;
+  }
+  const internalToken = (process.env.SPACES_SESSION_SECRET || '').slice(0, 16);
+  const payload = JSON.stringify({ claudeSessionId: sessionId });
+  const req = http.request({
+    hostname: 'localhost',
+    port: API_PORT,
+    path: `/api/panes/${paneId}`,
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(payload),
+      'x-spaces-internal': internalToken,
+    },
+    timeout: 5000,
+  }, (res) => {
+    res.resume(); // consume body
+    if (res.statusCode < 300) {
+      console.log(`[Session Persist] Saved session ${sessionId.slice(0, 8)} to DB for pane ${paneId.slice(0, 8)}`);
+    } else {
+      console.error(`[Session Persist] DB update failed: HTTP ${res.statusCode} for pane ${paneId.slice(0, 8)}`);
+      if (retries < 3) setTimeout(() => persistSessionToDb(paneId, sessionId, retries + 1), 3000);
+    }
+  });
+  req.on('error', (err) => {
+    console.error(`[Session Persist] HTTP error for pane ${paneId.slice(0, 8)}: ${err.message}`);
+    if (retries < 3) setTimeout(() => persistSessionToDb(paneId, sessionId, retries + 1), 3000);
+  });
+  req.on('timeout', () => { req.destroy(); });
+  req.write(payload);
+  req.end();
+}
+
 function detectNewClaudeSession(paneId, cwd, ws, session, username) {
   const claudeProjectsDir = path.join(getUserHome(username), '.claude', 'projects');
 
+  // CRITICAL FIX: scope detection to the project directory matching this pane's CWD.
+  // Previously, this scanned ALL project directories for any new .jsonl file.
+  // When multiple panes started Claude simultaneously (e.g. workspace load),
+  // panes could steal each other's session IDs — Pane A would detect Pane B's
+  // new session file first and claim it, leaving Pane B with no session.
+  const expectedProjectKey = cwdToProjectKey(cwd);
+  const expectedProjPath = path.join(claudeProjectsDir, expectedProjectKey);
+
   const knownSessionIds = new Set();
   try {
-    if (!fs.existsSync(claudeProjectsDir)) { /* will be created */ }
-    else {
-      for (const projDir of fs.readdirSync(claudeProjectsDir, { withFileTypes: true })) {
-        if (!projDir.isDirectory()) continue;
-        const projPath = path.join(claudeProjectsDir, projDir.name);
+    if (fs.existsSync(expectedProjPath)) {
+      for (const item of fs.readdirSync(expectedProjPath)) {
+        const m = item.match(UUID_JSONL_RE);
+        if (m) knownSessionIds.add(m[1]);
+      }
+      const indexPath = path.join(expectedProjPath, 'sessions-index.json');
+      if (fs.existsSync(indexPath)) {
         try {
-          for (const item of fs.readdirSync(projPath)) {
-            const m = item.match(UUID_JSONL_RE);
-            if (m) knownSessionIds.add(m[1]);
-          }
-          const indexPath = path.join(projPath, 'sessions-index.json');
-          if (fs.existsSync(indexPath)) {
-            try {
-              const data = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-              if (data.entries) {
-                for (const entry of data.entries) knownSessionIds.add(entry.sessionId);
-              }
-            } catch { /* ignore */ }
+          const data = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+          if (data.entries) {
+            for (const entry of data.entries) knownSessionIds.add(entry.sessionId);
           }
         } catch { /* ignore */ }
       }
     }
   } catch { /* ignore */ }
 
-  console.log(`[Session Detect] Pane ${paneId.slice(0, 8)} (${username}): snapshot ${knownSessionIds.size} existing sessions`);
+  console.log(`[Session Detect] Pane ${paneId.slice(0, 8)} (${username}): scanning ${expectedProjectKey} — snapshot ${knownSessionIds.size} existing sessions`);
 
   let attempts = 0;
   const maxAttempts = 45;
@@ -1419,33 +1535,41 @@ function detectNewClaudeSession(paneId, cwd, ws, session, username) {
     attempts++;
     if (attempts > maxAttempts || session.exited) {
       clearInterval(interval);
+      if (attempts > maxAttempts) {
+        console.log(`[Session Detect] Pane ${paneId.slice(0, 8)}: timed out after ${maxAttempts * 2}s waiting for session in ${expectedProjectKey}`);
+      }
       return;
     }
 
     try {
-      if (!fs.existsSync(claudeProjectsDir)) return;
+      // Project directory may not exist yet if Claude hasn't started writing
+      if (!fs.existsSync(expectedProjPath)) return;
 
-      for (const projDir of fs.readdirSync(claudeProjectsDir, { withFileTypes: true })) {
-        if (!projDir.isDirectory()) continue;
-        const projPath = path.join(claudeProjectsDir, projDir.name);
-        try {
-          for (const item of fs.readdirSync(projPath)) {
-            const m = item.match(UUID_JSONL_RE);
-            if (m && !knownSessionIds.has(m[1])) {
-              const newSessionId = m[1];
-              clearInterval(interval);
-              console.log(`[Session Detect] Pane ${paneId.slice(0, 8)} (${username}): detected session ${newSessionId}`);
-              if (session.ws && session.ws.readyState === 1) {
-                session.ws.send(JSON.stringify({
-                  type: 'session-detected',
-                  sessionId: newSessionId,
-                  paneId,
-                }));
-              }
-              return;
-            }
+      for (const item of fs.readdirSync(expectedProjPath)) {
+        const m = item.match(UUID_JSONL_RE);
+        if (m && !knownSessionIds.has(m[1])) {
+          const newSessionId = m[1];
+          clearInterval(interval);
+          console.log(`[Session Detect] Pane ${paneId.slice(0, 8)} (${username}): detected session ${newSessionId} in ${expectedProjectKey}`);
+
+          // Cache in memory so reattaching WebSocket gets the session ID
+          session.detectedSessionId = newSessionId;
+
+          // Persist to DB server-side — this is the reliability backstop.
+          // Even if the WebSocket message below never reaches the frontend,
+          // the DB will have the correct sessionId for future loads.
+          persistSessionToDb(paneId, newSessionId);
+
+          // Also notify the frontend via WebSocket (for immediate UI update)
+          if (session.ws && session.ws.readyState === 1) {
+            session.ws.send(JSON.stringify({
+              type: 'session-detected',
+              sessionId: newSessionId,
+              paneId,
+            }));
           }
-        } catch { /* ignore */ }
+          return;
+        }
       }
     } catch { /* ignore */ }
   }, 2000);

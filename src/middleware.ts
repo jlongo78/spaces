@@ -72,7 +72,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Internal API requests from MCP servers / agent processes / VR client (local network)
-  if (request.headers.get('x-spaces-internal') === (process.env.SPACES_SESSION_SECRET || '').slice(0, 16) &&
+  const internalToken = request.headers.get('x-spaces-internal') || request.nextUrl.searchParams.get('_internal');
+  if (internalToken === (process.env.SPACES_SESSION_SECRET || '').slice(0, 16) &&
       (request.headers.get('host')?.startsWith('localhost') || request.headers.get('host')?.startsWith('127.0.0.1') || request.headers.get('host')?.startsWith('192.168.'))) {
     return NextResponse.next();
   }
