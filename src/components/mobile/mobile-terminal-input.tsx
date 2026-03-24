@@ -41,6 +41,7 @@ export function MobileTerminalInput({ onSend }: MobileTerminalInputProps) {
 
         <textarea
           ref={textareaRef}
+          id="mobile-terminal-input"
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Type a command..."

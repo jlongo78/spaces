@@ -59,7 +59,8 @@ export function MobileTerminalPane({ pane, terminalToken, isVisible, onIdleChang
     }
 
     const term = new Terminal({
-      cursorBlink: true,
+      cursorBlink: false,
+      disableStdin: true,  // Mobile: input goes through the compose bar, not xterm's hidden textarea
       fontSize: 16,
       fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
       theme: {
@@ -283,11 +284,12 @@ export function MobileTerminalPane({ pane, terminalToken, isVisible, onIdleChang
         )}
       </div>
 
-      {/* Terminal */}
+      {/* Terminal — tap to focus the compose input */}
       <div
         ref={termRef}
         className="flex-1 bg-[#0a0a0a]"
         style={{ minHeight: '200px' }}
+        onClick={() => document.getElementById('mobile-terminal-input')?.focus()}
       />
 
       {/* Modifier key toolbar */}
