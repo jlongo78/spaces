@@ -19,6 +19,18 @@ const { execFileSync, spawn } = require('child_process');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+
+// Load .env.local into process.env so Next.js API routes see the keys
+const _envLocalPath = path.join(__dirname, '..', '.env.local');
+try {
+  if (fs.existsSync(_envLocalPath)) {
+    for (const line of fs.readFileSync(_envLocalPath, 'utf-8').split('\n')) {
+      const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.+)$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
+    }
+  }
+} catch {}
+
 // terminal-server is loaded lazily (after SPACES_TIER is set in process.env)
 
 // ─── Memory monitoring (only when SPACES_DEBUG or cortex.debug) ──

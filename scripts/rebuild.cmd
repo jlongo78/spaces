@@ -4,23 +4,26 @@ setlocal
 :: Run from a Spaces pane:  C:\projects\spaces\scripts\rebuild.cmd
 
 set SPACES_DIR=C:\projects\spaces
-set PORT=3457
 
-echo === Stopping Spaces server (port %PORT%) ===
+echo === Stopping Spaces server ===
 
-:: Find and kill processes listening on our port
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%PORT% " ^| findstr "LISTEN"') do (
-    if not "%%a"=="0" (
-        echo   Killing PID: %%a
-        taskkill /F /PID %%a >nul 2>&1
-    )
+:: Kill ALL node processes running spaces.js (catches any port)
+for /f "tokens=2" %%a in ('wmic process where "commandline like '%%spaces.js%%' and name='node.exe'" get processid 2^>nul ^| findstr /r "[0-9]"') do (
+    echo   Killing Spaces PID: %%a
+    taskkill /F /PID %%a >nul 2>&1
+)
+
+:: Also kill any node-terminal-server processes
+for /f "tokens=2" %%a in ('wmic process where "commandline like '%%terminal-server%%' and name='node.exe'" get processid 2^>nul ^| findstr /r "[0-9]"') do (
+    echo   Killing terminal-server PID: %%a
+    taskkill /F /PID %%a >nul 2>&1
 )
 
 :: Also try service stop
 node "%SPACES_DIR%\bin\spaces.js" service stop >nul 2>&1
 
 :: Give processes time to die
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
 
 echo.
 echo === Building ===
@@ -36,20 +39,27 @@ echo.
 echo === Starting Spaces ===
 start "Spaces Server" /min node "%SPACES_DIR%\bin\spaces.js"
 
-:: Wait for it to come up
-echo   Waiting for server on port %PORT%...
-for /l %%i in (1,1,30) do (
-    curl -s -o nul http://localhost:%PORT% >nul 2>&1
+:: Detect port from config or default
+set PORT=3457
+echo   Waiting for server to start...
+for /l %%i in (1,1,45) do (
+    curl -s -o nul http://localhost:3457 >nul 2>&1
     if not errorlevel 1 (
         echo.
-        echo === Spaces is running at http://localhost:%PORT% ===
+        echo === Spaces is running at http://localhost:3457 ===
+        goto :done
+    )
+    curl -s -o nul http://localhost:3458 >nul 2>&1
+    if not errorlevel 1 (
+        echo.
+        echo === Spaces is running at http://localhost:3458 ===
         goto :done
     )
     timeout /t 1 /nobreak >nul
     <nul set /p =.
 )
 echo.
-echo   Server may still be starting — check http://localhost:%PORT%
+echo   Server may still be starting — check http://localhost:3457 or :3458
 
 :done
 endlocal

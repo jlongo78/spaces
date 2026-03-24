@@ -71,14 +71,13 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const [injectionCount, setInjectionCount] = useState(0);
   const [injectionItems, setInjectionItems] = useState<Array<{ type: string; text: string }>>([]);
 
-  // Quest browser detection + dictation state
+  // Quest browser detection + voice state
   const [isQuest, setIsQuest] = useState(false);
-  const [isDictating, setIsDictating] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const vadRafRef = useRef<number | null>(null);
+  const [isImmersiveVoice, setIsImmersiveVoice] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'transcribing' | 'waiting'>('idle');
+  const immersiveRef = useRef(false);
+  const [questInput, setQuestInput] = useState('');
+  const questInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const ua = navigator.userAgent || '';
@@ -118,8 +117,10 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       xtermRef.current.dispose();
     }
 
+    const isQuestUA = /Quest|Oculus|Pacific/i.test(navigator.userAgent);
     const term = new Terminal({
-      cursorBlink: true,
+      cursorBlink: !isQuestUA,
+      disableStdin: isQuestUA,  // On Quest, input goes through the visible input field instead
       fontSize: 13,
       fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
       scrollback: 10000,           // Cap scrollback buffer (default is unlimited → OOM on heavy output)
@@ -173,11 +174,13 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         return false;
       }
       if (ev.ctrlKey && ev.key === 'v') {
-        // Return true → let xterm handle paste natively via its internal textarea.
-        // Text paste: xterm reads clipboard text → fires onData → sent to server via WS.
-        // File/image paste: our document-level capture-phase paste listener intercepts
-        // the paste event before xterm sees it and uploads the files.
-        return true;
+        ev.preventDefault();
+        navigator.clipboard.readText().then(text => {
+          if (text && wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'data', data: text }));
+          }
+        });
+        return false;
       }
       return true;
     });
@@ -325,10 +328,10 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     return () => { cancelAnimationFrame(rafId); observer.disconnect(); };
   }, []);
 
-  // Resize when maximized changes
+  // Resize when maximized changes or Quest toolbar appears/disappears
   useEffect(() => {
     setTimeout(safeFit, 50);
-  }, [isMaximized]);
+  }, [isMaximized, isQuest]);
 
   const saveTitle = () => {
     onUpdate(pane.id, { title: titleValue });
@@ -362,74 +365,83 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     }
   };
 
-  // ─── Quest toolbar: dictation via MediaRecorder → Whisper ───
-  const startDictation = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const audioCtx = new AudioContext();
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 512;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-      audioChunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        audioCtx.close();
-        if (vadRafRef.current) cancelAnimationFrame(vadRafRef.current);
-
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        if (blob.size < 1000) { setIsDictating(false); return; } // too short, ignore
-
-        // Send to server for Whisper transcription
-        const form = new FormData();
-        form.append('audio', blob, 'dictation.webm');
-        try {
-          const res = await fetch('/api/whisper', { method: 'POST', body: form });
-          if (res.ok) {
-            const { text } = await res.json();
-            if (text?.trim()) sendKey(text.trim());
-          }
-        } catch { /* transcription failed silently */ }
-        setIsDictating(false);
-      };
-
-      // VAD: auto-stop after 2s of silence
-      const dataArr = new Uint8Array(analyser.frequencyBinCount);
-      let lastSpeechTime = Date.now();
-      const checkSilence = () => {
-        if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') return;
-        analyser.getByteFrequencyData(dataArr);
-        const avg = dataArr.reduce((a, b) => a + b, 0) / dataArr.length;
-        if (avg > 15) lastSpeechTime = Date.now();
-        if (Date.now() - lastSpeechTime > 2000) {
-          mediaRecorderRef.current.stop();
-          return;
-        }
-        vadRafRef.current = requestAnimationFrame(checkSilence);
-      };
-
-      recorder.start(250); // collect in 250ms chunks
-      mediaRecorderRef.current = recorder;
-      setIsDictating(true);
-      vadRafRef.current = requestAnimationFrame(checkSilence);
-    } catch {
-      setIsDictating(false);
+  // Send text as a bracketed paste — terminal treats it as a single block
+  // instead of processing character-by-character (prevents prompt redraw glitches)
+  const sendPaste = (text: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const bracketed = `\x1b[200~${text}\x1b[201~`;
+      wsRef.current.send(JSON.stringify({ type: 'data', data: bracketed }));
     }
   };
 
-  const stopDictation = () => {
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop();
+  // ─── Voice mode: Web Speech API on desktop, keyboard mic on Quest ───
+  const recognitionRef = useRef<any>(null);
+  const isQuestBrowser = typeof navigator !== 'undefined' && /Quest|Oculus|Pacific/i.test(navigator.userAgent);
+  const hasWebSpeech = typeof window !== 'undefined' && !isQuestBrowser &&
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  const startWebSpeech = () => {
+    if (!immersiveRef.current) return;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    let lastFinalLength = 0;
+
+    recognition.onresult = (event: any) => {
+      if (!immersiveRef.current) return;
+      let finalText = '';
+      for (let i = 0; i < event.results.length; i++) {
+        if (event.results[i].isFinal) finalText += event.results[i][0].transcript;
+      }
+      if (finalText.length > lastFinalLength) {
+        sendPaste(finalText.slice(lastFinalLength));
+        lastFinalLength = finalText.length;
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        immersiveRef.current = false;
+        setIsImmersiveVoice(false);
+        setVoiceStatus('idle');
+        return;
+      }
+      if (immersiveRef.current) setTimeout(startWebSpeech, 500);
+    };
+
+    recognition.onend = () => {
+      if (immersiveRef.current) setTimeout(startWebSpeech, 100);
+      else setVoiceStatus('idle');
+    };
+
+    recognition.onstart = () => setVoiceStatus('listening');
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  const toggleImmersiveVoice = () => {
+    if (immersiveRef.current) {
+      immersiveRef.current = false;
+      setIsImmersiveVoice(false);
+      setVoiceStatus('idle');
+      if (recognitionRef.current) { try { recognitionRef.current.abort(); } catch {} recognitionRef.current = null; }
+    } else if (hasWebSpeech) {
+      immersiveRef.current = true;
+      setIsImmersiveVoice(true);
+      startWebSpeech();
+      setTimeout(() => xtermRef.current?.focus(), 100);
     }
   };
+
+  useEffect(() => {
+    return () => { immersiveRef.current = false; if (recognitionRef.current) try { recognitionRef.current.abort(); } catch {} };
+  }, []);
 
   // ─── File paste & drag-drop upload ───
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -727,13 +739,13 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         </button>
       </div>
 
-      {/* Terminal */}
-      <div className="flex-1 relative">
-        <div
-          ref={termRef}
-          className="absolute inset-0 bg-[#0a0a0a]"
-          style={{ minHeight: isMaximized ? 'calc(100vh - 100px)' : '300px' }}
-        />
+      {/* Terminal — on Quest, tapping terminal focuses the visible input instead of xterm's hidden textarea */}
+      <div
+        ref={termRef}
+        className="flex-1 relative bg-[#0a0a0a]"
+        style={{ minHeight: isMaximized ? (isQuest ? 'calc(100vh - 180px)' : 'calc(100vh - 100px)') : '300px' }}
+        onClick={isQuest ? (e) => { e.preventDefault(); questInputRef.current?.focus(); } : undefined}
+      >
 
         {/* Drag overlay */}
         {isDragging && (
@@ -753,59 +765,107 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         )}
       </div>
 
-      {/* Quest browser toolbar — virtual keys + mic for headset use */}
+      {/* Quest: input field + virtual keys — prevents xterm hidden textarea layout issues */}
       {isQuest && (
         <div
-          className="flex items-center gap-1 px-2 py-1.5 flex-shrink-0 border-t border-zinc-700"
+          className="flex flex-col gap-1 px-2 py-1.5 flex-shrink-0 border-t border-zinc-700"
           style={{ backgroundColor: `${pane.color}15`, borderTopColor: `${pane.color}30` }}
         >
-          <button
-            onClick={() => sendKey('\x1b')}
-            className="px-2.5 py-1.5 text-[11px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-600"
-          >
-            Esc
-          </button>
-          <button
-            onClick={() => sendKey('\t')}
-            className="px-2.5 py-1.5 text-[11px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-600"
-          >
-            Tab
-          </button>
-          <button
-            onClick={() => sendKey('\x03')}
-            className="px-2.5 py-1.5 text-[11px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-600"
-          >
-            Ctrl+C
-          </button>
-          <button
-            onClick={() => sendKey('\x04')}
-            className="px-2.5 py-1.5 text-[11px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-600"
-          >
-            Ctrl+D
-          </button>
-          <button
-            onClick={() => sendKey('\r')}
-            className="px-3 py-1.5 text-[11px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-600"
-          >
-            Enter
-          </button>
+          {/* Text input — tap to type or use Quest keyboard mic for dictation */}
+          <div className="flex items-center gap-1">
+            <input
+              ref={questInputRef}
+              type="text"
+              value={questInput}
+              onChange={(e) => setQuestInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  // Send text + Enter as a single message so terminal processes it atomically
+                  sendKey(questInput ? questInput + '\r' : '\r');
+                  setQuestInput('');
+                }
+              }}
+              placeholder="Type or use mic..."
+              className="flex-1 bg-zinc-900 text-zinc-200 text-sm px-3 py-2 rounded border border-zinc-600 focus:border-zinc-400 focus:outline-none font-mono placeholder:text-zinc-600"
+              autoComplete="off"
+              autoCorrect="on"
+              spellCheck={false}
+            />
+            <button
+              onClick={() => {
+                sendKey(questInput ? questInput + '\r' : '\r');
+                setQuestInput('');
+                questInputRef.current?.focus();
+              }}
+              className="px-3 py-2 text-[11px] font-mono bg-indigo-600 hover:bg-indigo-500 text-white rounded border border-indigo-500 font-medium"
+            >
+              Send
+            </button>
+          </div>
+          {/* Virtual keys row */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { sendKey('\x1b'); questInputRef.current?.focus(); }}
+              className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
+            >
+              Esc
+            </button>
+            <button
+              onClick={() => { sendKey('\t'); questInputRef.current?.focus(); }}
+              className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
+            >
+              Tab
+            </button>
+            <button
+              onClick={() => { sendKey('\x03'); questInputRef.current?.focus(); }}
+              className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
+            >
+              Ctrl+C
+            </button>
+            <button
+              onClick={() => { sendKey('\x1b[A'); questInputRef.current?.focus(); }}
+              className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
+            >
+              ↑
+            </button>
+            <button
+              onClick={() => { sendKey('\x1b[B'); questInputRef.current?.focus(); }}
+              className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
+            >
+              ↓
+            </button>
+            <div className="flex-1" />
+            <button
+              onClick={() => { setQuestInput(''); questInputRef.current?.focus(); }}
+              className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
 
-          <div className="flex-1" />
-
-          {isDictating && (
+      {/* Desktop: mic button for Web Speech API */}
+      {!isQuest && hasWebSpeech && (
+        <div
+          className="flex items-center justify-end gap-1 px-2 py-1 flex-shrink-0 border-t border-zinc-700/50"
+          style={{ backgroundColor: `${pane.color}08` }}
+        >
+          {isImmersiveVoice && (
             <span className="text-[10px] text-green-400 animate-pulse mr-1">Listening...</span>
           )}
           <button
-            onClick={isDictating ? stopDictation : startDictation}
+            onClick={toggleImmersiveVoice}
             className={cn(
-              'p-1.5 rounded border',
-              isDictating
-                ? 'bg-red-900/50 border-red-600 text-red-400 hover:bg-red-900/80'
-                : 'bg-zinc-800 border-zinc-600 text-zinc-300 hover:bg-zinc-700'
+              'p-1 rounded border transition-all',
+              isImmersiveVoice
+                ? 'bg-green-900/50 border-green-500 text-green-400 hover:bg-red-900/50 hover:border-red-600 hover:text-red-400 shadow-[0_0_8px_rgba(34,197,94,0.3)]'
+                : 'bg-zinc-800/50 border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
             )}
-            title={isDictating ? 'Stop dictation' : 'Start voice dictation'}
+            title={isImmersiveVoice ? 'Stop voice mode' : 'Start voice dictation'}
           >
-            {isDictating ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            {isImmersiveVoice ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
           </button>
         </div>
       )}

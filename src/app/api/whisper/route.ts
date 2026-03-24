@@ -1,6 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * Load a key from process.env, falling back to .env.local if not set.
+ * The custom spaces.js launcher doesn't load .env.local automatically.
+ */
+function getEnvKey(name: string): string | undefined {
+  if (process.env[name]) return process.env[name];
+  // Try multiple locations for .env.local
+  const candidates = [
+    path.join(process.cwd(), '.env.local'),
+    path.resolve(__dirname, '../../../../.env.local'),  // from .next/server/app/api/
+    path.resolve(__dirname, '../../../.env.local'),
+    path.resolve(__dirname, '../../.env.local'),
+  ];
+  for (const envPath of candidates) {
+    try {
+      if (!fs.existsSync(envPath)) continue;
+      const content = fs.readFileSync(envPath, 'utf-8');
+      const match = content.match(new RegExp(`^${name}=(.+)$`, 'm'));
+      if (match?.[1]?.trim()) {
+        console.log(`[Whisper] Found ${name} in ${envPath}`);
+        return match[1].trim();
+      }
+    } catch { continue; }
+  }
+  return undefined;
+}
 
 /**
  * POST /api/whisper — transcribe audio via OpenAI Whisper API (or Groq).
@@ -17,12 +46,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine which API to use
-    const groqKey = process.env.GROQ_API_KEY;
-    const openaiKey = process.env.OPENAI_API_KEY;
+    const groqKey = getEnvKey('GROQ_API_KEY');
+    const openaiKey = getEnvKey('OPENAI_API_KEY');
 
     if (!groqKey && !openaiKey) {
       return NextResponse.json(
-        { error: 'No transcription API key configured. Set GROQ_API_KEY or OPENAI_API_KEY.' },
+        { error: 'No transcription API key configured. Set GROQ_API_KEY or OPENAI_API_KEY in .env.local' },
         { status: 500 }
       );
     }
@@ -32,6 +61,7 @@ export async function POST(request: NextRequest) {
     upstream.append('file', audioFile, 'audio.webm');
     upstream.append('model', groqKey ? 'whisper-large-v3' : 'whisper-1');
     upstream.append('response_format', 'json');
+    upstream.append('language', 'en');
 
     const apiUrl = groqKey
       ? 'https://api.groq.com/openai/v1/audio/transcriptions'
@@ -52,7 +82,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await res.json();
-    return NextResponse.json({ text: data.text || '' });
+    return NextResponse.json({ text: data.text || '', backend: groqKey ? 'groq' : 'openai' });
   } catch (err: any) {
     console.error('[Whisper] Error:', err.message);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
