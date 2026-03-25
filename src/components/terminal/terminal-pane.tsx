@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { AGENT_TYPES } from '@/lib/agents';
 import { useTier } from '@/hooks/use-tier';
 import { InjectionBadge } from '@/components/cortex/injection-badge';
+import { VoiceInput } from '@/components/mobile/voice-input';
 import type { PaneData } from '@/lib/db/queries';
 import 'xterm/css/xterm.css';
 
@@ -792,6 +793,10 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
               autoCorrect="on"
               spellCheck={false}
             />
+            <VoiceInput onTranscript={(text) => {
+              setQuestInput(prev => prev ? `${prev} ${text}` : text);
+              questInputRef.current?.focus();
+            }} />
             <button
               onClick={() => {
                 sendKey(questInput ? questInput + '\r' : '\r');
