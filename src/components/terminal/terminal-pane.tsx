@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { AGENT_TYPES } from '@/lib/agents';
 import { useTier } from '@/hooks/use-tier';
 import { InjectionBadge } from '@/components/cortex/injection-badge';
-import { VoiceInput } from '@/components/mobile/voice-input';
+
 import type { PaneData } from '@/lib/db/queries';
 import 'xterm/css/xterm.css';
 
@@ -79,6 +79,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const immersiveRef = useRef(false);
   const [questInput, setQuestInput] = useState('');
   const questInputRef = useRef<HTMLInputElement>(null);
+  const [questMicActive, setQuestMicActive] = useState(false);
+  const questRecorderRef = useRef<MediaRecorder | null>(null);
 
   useEffect(() => {
     const ua = navigator.userAgent || '';
@@ -372,6 +374,100 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       const bracketed = `\x1b[200~${text}\x1b[201~`;
       wsRef.current.send(JSON.stringify({ type: 'data', data: bracketed }));
+    }
+  };
+
+  // ─── Quest Whisper mic: record → Groq/Whisper → text into input field ───
+  const toggleQuestMic = async () => {
+    if (questMicActive) {
+      // Stop recording
+      if (questRecorderRef.current?.state === 'recording') questRecorderRef.current.stop();
+      return;
+    }
+
+    setQuestMicActive(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm';
+      const recorder = new MediaRecorder(stream, { mimeType });
+      const chunks: Blob[] = [];
+      let hasSpeech = false;
+
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        try { source.disconnect(); } catch {}
+        try { audioCtx.close(); } catch {}
+        questRecorderRef.current = null;
+
+        if (!hasSpeech || chunks.length === 0) {
+          setQuestMicActive(false);
+          return;
+        }
+
+        // Send to Whisper/Groq
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        if (blob.size < 500) { setQuestMicActive(false); return; }
+
+        const form = new FormData();
+        form.append('audio', blob, 'dictation.webm');
+        try {
+          const res = await fetch('/api/whisper', { method: 'POST', body: form });
+          if (res.ok) {
+            const { text } = await res.json();
+            if (text?.trim()) {
+              setQuestInput(prev => prev ? `${prev} ${text.trim()}` : text.trim());
+              questInputRef.current?.focus();
+            }
+          }
+        } catch {}
+        setQuestMicActive(false);
+      };
+
+      // VAD: detect speech, stop after 1.5s silence
+      const dataArr = new Uint8Array(analyser.frequencyBinCount);
+      let lastSpeechTime = 0;
+      let speechFrames = 0;
+      const startTime = Date.now();
+
+      const checkVAD = () => {
+        if (!questRecorderRef.current || questRecorderRef.current.state !== 'recording') return;
+
+        analyser.getByteFrequencyData(dataArr);
+        const avg = dataArr.reduce((a, b) => a + b, 0) / dataArr.length;
+
+        if (avg > 20) {
+          speechFrames++;
+          lastSpeechTime = Date.now();
+          if (speechFrames >= 10) hasSpeech = true;
+        } else if (!hasSpeech) {
+          speechFrames = 0;
+        }
+
+        if (hasSpeech && Date.now() - lastSpeechTime > 1500) {
+          questRecorderRef.current.stop();
+          return;
+        }
+        if (!hasSpeech && Date.now() - startTime > 15000) {
+          questRecorderRef.current.stop();
+          return;
+        }
+        requestAnimationFrame(checkVAD);
+      };
+
+      recorder.start(250);
+      questRecorderRef.current = recorder;
+      requestAnimationFrame(checkVAD);
+    } catch {
+      setQuestMicActive(false);
     }
   };
 
@@ -793,10 +889,18 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
               autoCorrect="on"
               spellCheck={false}
             />
-            <VoiceInput onTranscript={(text) => {
-              setQuestInput(prev => prev ? `${prev} ${text}` : text);
-              questInputRef.current?.focus();
-            }} />
+            <button
+              onClick={toggleQuestMic}
+              className={cn(
+                'p-2 rounded border transition-all',
+                questMicActive
+                  ? 'bg-red-500 border-red-400 text-white animate-pulse'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'
+              )}
+              title={questMicActive ? 'Stop recording' : 'Start voice dictation'}
+            >
+              {questMicActive ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
             <button
               onClick={() => {
                 sendKey(questInput ? questInput + '\r' : '\r');
