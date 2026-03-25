@@ -81,6 +81,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const questInputRef = useRef<HTMLInputElement>(null);
   const [questMicActive, setQuestMicActive] = useState(false);
   const questRecorderRef = useRef<MediaRecorder | null>(null);
+  const [questKeyboardOpen, setQuestKeyboardOpen] = useState(false);
 
   useEffect(() => {
     const ua = navigator.userAgent || '';
@@ -425,7 +426,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             const { text } = await res.json();
             if (text?.trim()) {
               setQuestInput(prev => prev ? `${prev} ${text.trim()}` : text.trim());
-              questInputRef.current?.focus();
+              // Don't focus input — that would pop up the keyboard
             }
           }
         } catch {}
@@ -841,7 +842,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         ref={termRef}
         className="flex-1 relative bg-[#0a0a0a]"
         style={{ minHeight: isMaximized ? (isQuest ? 'calc(100vh - 180px)' : 'calc(100vh - 100px)') : '300px' }}
-        onClick={isQuest ? (e) => { e.preventDefault(); questInputRef.current?.focus(); } : undefined}
+        onClick={isQuest ? (e) => { e.preventDefault(); } : undefined}
       >
 
         {/* Drag overlay */}
@@ -868,23 +869,32 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
           className="flex flex-col gap-1 px-2 py-1.5 flex-shrink-0 border-t border-zinc-700"
           style={{ backgroundColor: `${pane.color}15`, borderTopColor: `${pane.color}30` }}
         >
-          {/* Text input — tap to type or use Quest keyboard mic for dictation */}
+          {/* Text input — readOnly by default to prevent keyboard popup */}
           <div className="flex items-center gap-1">
             <input
               ref={questInputRef}
               type="text"
               value={questInput}
+              readOnly={!questKeyboardOpen}
               onChange={(e) => setQuestInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  // Send text + Enter as a single message so terminal processes it atomically
                   sendKey(questInput ? questInput + '\r' : '\r');
                   setQuestInput('');
+                  // Close keyboard after sending
+                  setQuestKeyboardOpen(false);
+                  questInputRef.current?.blur();
                 }
               }}
-              placeholder="Type or use mic..."
-              className="flex-1 bg-zinc-900 text-zinc-200 text-sm px-3 py-2 rounded border border-zinc-600 focus:border-zinc-400 focus:outline-none font-mono placeholder:text-zinc-600"
+              onBlur={() => setQuestKeyboardOpen(false)}
+              placeholder={questMicActive ? 'Listening...' : questKeyboardOpen ? 'Type here...' : 'Use mic or tap ⌨ to type'}
+              className={cn(
+                'flex-1 text-zinc-200 text-sm px-3 py-2 rounded border focus:outline-none font-mono',
+                questKeyboardOpen
+                  ? 'bg-zinc-900 border-zinc-400 placeholder:text-zinc-500'
+                  : 'bg-zinc-900/50 border-zinc-700 placeholder:text-zinc-600'
+              )}
               autoComplete="off"
               autoCorrect="on"
               spellCheck={false}
@@ -905,7 +915,6 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
               onClick={() => {
                 sendKey(questInput ? questInput + '\r' : '\r');
                 setQuestInput('');
-                questInputRef.current?.focus();
               }}
               className="px-3 py-2 text-[11px] font-mono bg-indigo-600 hover:bg-indigo-500 text-white rounded border border-indigo-500 font-medium"
             >
@@ -915,38 +924,52 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
           {/* Virtual keys row */}
           <div className="flex items-center gap-1">
             <button
-              onClick={() => { sendKey('\x1b'); questInputRef.current?.focus(); }}
+              onClick={() => {
+                setQuestKeyboardOpen(true);
+                setTimeout(() => questInputRef.current?.focus(), 50);
+              }}
+              className={cn(
+                'px-2 py-1 text-[10px] font-mono rounded border',
+                questKeyboardOpen
+                  ? 'bg-indigo-600 border-indigo-500 text-white'
+                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 border-zinc-700'
+              )}
+            >
+              ⌨
+            </button>
+            <button
+              onClick={() => sendKey('\x1b')}
               className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
             >
               Esc
             </button>
             <button
-              onClick={() => { sendKey('\t'); questInputRef.current?.focus(); }}
+              onClick={() => sendKey('\t')}
               className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
             >
               Tab
             </button>
             <button
-              onClick={() => { sendKey('\x03'); questInputRef.current?.focus(); }}
+              onClick={() => sendKey('\x03')}
               className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
             >
               Ctrl+C
             </button>
             <button
-              onClick={() => { sendKey('\x1b[A'); questInputRef.current?.focus(); }}
+              onClick={() => sendKey('\x1b[A')}
               className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
             >
               ↑
             </button>
             <button
-              onClick={() => { sendKey('\x1b[B'); questInputRef.current?.focus(); }}
+              onClick={() => sendKey('\x1b[B')}
               className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
             >
               ↓
             </button>
             <div className="flex-1" />
             <button
-              onClick={() => { setQuestInput(''); questInputRef.current?.focus(); }}
+              onClick={() => setQuestInput('')}
               className="px-2 py-1 text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded border border-zinc-700"
             >
               Clear
