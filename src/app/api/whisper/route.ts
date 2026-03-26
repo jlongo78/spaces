@@ -45,9 +45,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
     }
 
-    // Determine which API to use
+    // Determine which API to use — prefer Groq (faster)
     const groqKey = getEnvKey('GROQ_API_KEY');
     const openaiKey = getEnvKey('OPENAI_API_KEY');
+    console.log(`[Whisper] Backend: ${groqKey ? 'Groq' : openaiKey ? 'OpenAI' : 'NONE'}`);
 
     if (!groqKey && !openaiKey) {
       return NextResponse.json(
