@@ -1147,7 +1147,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
               <input
                 type="range"
                 min={10}
-                max={60}
+                max={120}
                 value={immersiveSensitivity}
                 onChange={(e) => {
                   const val = Number(e.target.value);
@@ -1155,8 +1155,9 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
                   immersiveSensitivityRef.current = val;
                 }}
                 className="w-16 h-1.5 accent-green-500"
-                title={`Sensitivity: ${immersiveSensitivity} (lower = more sensitive)`}
+                title={`Sensitivity threshold: ${immersiveSensitivity}`}
               />
+              <span className="text-[9px] text-zinc-500 font-mono w-6 text-center">{immersiveSensitivity}</span>
             )}
             <button
               onClick={() => {
