@@ -705,8 +705,12 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     };
 
     recognition.onend = () => {
-      if (immersiveRef.current) setTimeout(() => startWebSpeech(autoSend), 100);
-      else setVoiceStatus('idle');
+      if (immersiveRef.current && document.visibilityState === 'visible') {
+        setTimeout(() => startWebSpeech(autoSend), 100);
+      } else if (!immersiveRef.current) {
+        setVoiceStatus('idle');
+      }
+      // If tab hidden but still immersive, visibility handler will restart
     };
 
     recognition.onstart = () => setVoiceStatus('listening');
@@ -745,8 +749,19 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     }
   };
 
+  // Restart voice when tab regains focus (mobile/desktop browsers kill audio in background)
   useEffect(() => {
-    return () => { immersiveRef.current = false; if (recognitionRef.current) try { recognitionRef.current.abort(); } catch {} };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && immersiveRef.current && !recognitionRef.current) {
+        startWebSpeech(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      immersiveRef.current = false;
+      if (recognitionRef.current) try { recognitionRef.current.abort(); } catch {}
+    };
   }, []);
 
   // ─── File paste & drag-drop upload ───
@@ -1161,7 +1176,6 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
                 />
                 <span className="text-[8px] text-zinc-500 font-normal font-mono leading-none">{immersiveSensitivity}</span>
               </div>
-              </>
             )}
             <button
               onClick={() => {

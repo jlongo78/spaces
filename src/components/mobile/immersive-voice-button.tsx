@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { AudioLines } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -53,13 +53,41 @@ export function ImmersiveVoiceButton({ onSend, size = 'md' }: ImmersiveVoiceButt
     };
 
     recognition.onend = () => {
-      if (activeRef.current) setTimeout(startListening, 100);
-      else setActive(false);
+      if (activeRef.current && document.visibilityState === 'visible') {
+        setTimeout(startListening, 100);
+      } else if (activeRef.current) {
+        // Tab hidden — wait for visibility change to restart
+        setActive(true); // keep button green
+      } else {
+        setActive(false);
+      }
     };
 
     recognitionRef.current = recognition;
     recognition.start();
   }, [onSend]);
+
+  // Restart when tab regains focus (mobile browsers kill audio in background)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && activeRef.current) {
+        // Tab came back — restart listening
+        if (!recognitionRef.current) {
+          startListening();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [startListening]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      activeRef.current = false;
+      if (recognitionRef.current) { try { recognitionRef.current.abort(); } catch {} }
+    };
+  }, []);
 
   const toggle = useCallback(() => {
     if (activeRef.current) {
