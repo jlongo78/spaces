@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send } from 'lucide-react';
 import { VoiceInput } from './voice-input';
+import { ImmersiveVoiceButton } from './immersive-voice-button';
 import { cn } from '@/lib/utils';
 
 interface MobileTerminalInputProps {
@@ -38,6 +39,7 @@ export function MobileTerminalInput({ onSend }: MobileTerminalInputProps) {
     <div className="flex-shrink-0 border-t border-zinc-800 bg-zinc-950 pb-[env(safe-area-inset-bottom)]">
       <div className="flex items-end gap-2 px-3 py-2">
         <VoiceInput onTranscript={handleVoiceTranscript} />
+        <ImmersiveVoiceButton onSend={onSend} />
 
         <textarea
           ref={textareaRef}

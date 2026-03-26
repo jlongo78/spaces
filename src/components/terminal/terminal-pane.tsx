@@ -661,7 +661,9 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const hasWebSpeech = typeof window !== 'undefined' && !isQuestBrowser &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
-  const startWebSpeech = () => {
+  // autoSend: false = text goes to terminal inline (dictation mode)
+  //           true  = each final phrase gets Enter appended (immersive mode)
+  const startWebSpeech = (autoSend: boolean) => {
     if (!immersiveRef.current) return;
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
@@ -680,7 +682,12 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         if (event.results[i].isFinal) finalText += event.results[i][0].transcript;
       }
       if (finalText.length > lastFinalLength) {
-        sendPaste(finalText.slice(lastFinalLength));
+        const newText = finalText.slice(lastFinalLength);
+        if (autoSend) {
+          sendKey(newText.trim() + '\r');
+        } else {
+          sendPaste(newText);
+        }
         lastFinalLength = finalText.length;
       }
     };
@@ -692,11 +699,11 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         setVoiceStatus('idle');
         return;
       }
-      if (immersiveRef.current) setTimeout(startWebSpeech, 500);
+      if (immersiveRef.current) setTimeout(() => startWebSpeech(autoSend), 500);
     };
 
     recognition.onend = () => {
-      if (immersiveRef.current) setTimeout(startWebSpeech, 100);
+      if (immersiveRef.current) setTimeout(() => startWebSpeech(autoSend), 100);
       else setVoiceStatus('idle');
     };
 
@@ -706,7 +713,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     recognition.start();
   };
 
-  const toggleImmersiveVoice = () => {
+  // Dictation mode: text appears inline, no auto-Enter
+  const toggleDictation = () => {
     if (immersiveRef.current) {
       immersiveRef.current = false;
       setIsImmersiveVoice(false);
@@ -715,7 +723,22 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     } else if (hasWebSpeech) {
       immersiveRef.current = true;
       setIsImmersiveVoice(true);
-      startWebSpeech();
+      startWebSpeech(false);
+      setTimeout(() => xtermRef.current?.focus(), 100);
+    }
+  };
+
+  // Immersive mode: each phrase auto-sends with Enter
+  const toggleDesktopImmersive = () => {
+    if (immersiveRef.current) {
+      immersiveRef.current = false;
+      setIsImmersiveVoice(false);
+      setVoiceStatus('idle');
+      if (recognitionRef.current) { try { recognitionRef.current.abort(); } catch {} recognitionRef.current = null; }
+    } else if (hasWebSpeech) {
+      immersiveRef.current = true;
+      setIsImmersiveVoice(true);
+      startWebSpeech(true);
       setTimeout(() => xtermRef.current?.focus(), 100);
     }
   };
@@ -1184,26 +1207,43 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         </div>
       )}
 
-      {/* Desktop: mic button for Web Speech API */}
+      {/* Desktop/Mobile: dictation + immersive voice buttons */}
       {!isQuest && hasWebSpeech && (
         <div
-          className="flex items-center justify-end gap-1 px-2 py-1 flex-shrink-0 border-t border-zinc-700/50"
+          className="flex items-center justify-end gap-1.5 px-2 py-1 flex-shrink-0 border-t border-zinc-700/50"
           style={{ backgroundColor: `${pane.color}08` }}
         >
           {isImmersiveVoice && (
-            <span className="text-[10px] text-green-400 animate-pulse mr-1">Listening...</span>
+            <span className="text-[10px] text-green-400 animate-pulse mr-1">
+              {voiceStatus === 'listening' ? 'Listening...' : 'Voice active'}
+            </span>
           )}
+          {/* Dictation: text appears inline, no auto-Enter */}
           <button
-            onClick={toggleImmersiveVoice}
+            onClick={toggleDictation}
             className={cn(
               'p-1 rounded border transition-all',
-              isImmersiveVoice
+              isImmersiveVoice && !questImmersive
                 ? 'bg-green-900/50 border-green-500 text-green-400 hover:bg-red-900/50 hover:border-red-600 hover:text-red-400 shadow-[0_0_8px_rgba(34,197,94,0.3)]'
                 : 'bg-zinc-800/50 border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
             )}
-            title={isImmersiveVoice ? 'Stop voice mode' : 'Start voice dictation'}
+            title="Dictation (text appears, you press Enter)"
           >
-            {isImmersiveVoice ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+            <Mic className="w-3.5 h-3.5" />
+          </button>
+          {/* Immersive: auto-sends each phrase with Enter */}
+          <button
+            onClick={toggleDesktopImmersive}
+            className={cn(
+              'p-1 rounded-full border transition-all',
+              isImmersiveVoice && !questImmersive
+                ? 'bg-green-600 border-green-400 text-white shadow-[0_0_10px_rgba(34,197,94,0.5)] animate-pulse'
+                : questImmersive ? 'bg-zinc-800/50 border-zinc-700 text-zinc-600'
+                : 'bg-zinc-800/50 border-zinc-700 text-zinc-500 hover:text-green-400 hover:border-green-600'
+            )}
+            title="Immersive voice (auto-send on silence)"
+          >
+            <AudioLines className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
