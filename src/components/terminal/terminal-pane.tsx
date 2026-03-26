@@ -1144,8 +1144,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             </button>
             {/* Sensitivity slider — only visible when immersive is active */}
             {questImmersive && (
-              <>
-                <span className="text-[9px] text-zinc-500 font-normal">Sensitivity</span>
+              <div className="flex flex-col items-center gap-0.5">
+                <span className="text-[8px] text-zinc-500 font-normal leading-none">Sensitivity</span>
                 <input
                   type="range"
                   min={10}
@@ -1156,10 +1156,11 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
                     setImmersiveSensitivity(val);
                     immersiveSensitivityRef.current = val;
                   }}
-                  className="w-16 h-1.5 accent-green-500"
+                  className="w-14 h-1.5 accent-green-500"
                   title={`Sensitivity threshold: ${immersiveSensitivity}`}
                 />
-                <span className="text-[9px] text-zinc-500 font-normal font-mono w-6 text-center">{immersiveSensitivity}</span>
+                <span className="text-[8px] text-zinc-500 font-normal font-mono leading-none">{immersiveSensitivity}</span>
+              </div>
               </>
             )}
             <button
