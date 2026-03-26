@@ -79,7 +79,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const immersiveRef = useRef(false);
   const [questInput, setQuestInput] = useState('');
   const questInputRef = useRef<HTMLInputElement>(null);
-  const [questMicActive, setQuestMicActive] = useState(false);
+  const [questMicStatus, setQuestMicStatus] = useState<'off' | 'listening' | 'transcribing'>('off');
   const questRecorderRef = useRef<MediaRecorder | null>(null);
   const [questKeyboardOpen, setQuestKeyboardOpen] = useState(false);
 
@@ -391,13 +391,13 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
 
   // ─── Quest Whisper mic: record → Groq/Whisper → text into input field ───
   const toggleQuestMic = async () => {
-    if (questMicActive) {
+    if (questMicStatus !== 'off') {
       // Stop recording
       if (questRecorderRef.current?.state === 'recording') questRecorderRef.current.stop();
       return;
     }
 
-    setQuestMicActive(true);
+    setQuestMicStatus('listening');
     try {
       // Get Groq/Whisper config for direct browser call (no server proxy)
       const cfgRes = await fetch('/api/whisper/config');
@@ -424,11 +424,12 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         try { audioCtx.close(); } catch {}
         questRecorderRef.current = null;
 
-        if (!hasSpeech || chunks.length === 0) { setQuestMicActive(false); return; }
+        if (!hasSpeech || chunks.length === 0) { setQuestMicStatus('off'); return; }
 
         const blob = new Blob(chunks, { type: 'audio/webm' });
-        if (blob.size < 500) { setQuestMicActive(false); return; }
+        if (blob.size < 500) { setQuestMicStatus('off'); return; }
 
+        setQuestMicStatus('transcribing');
         try {
           let text = '';
           if (cfg?.apiKey) {
@@ -461,7 +462,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             setQuestInput(prev => prev ? `${prev} ${text.trim()}` : text.trim());
           }
         } catch {}
-        setQuestMicActive(false);
+        setQuestMicStatus('off');
       };
 
       // VAD: detect speech, stop after 1s silence (fast trigger)
@@ -502,7 +503,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       if (xtermRef.current) {
         xtermRef.current.write(`\r\n\x1b[91m[Mic] ${e.name || 'Error'}: ${e.message || 'Failed to access microphone'}\x1b[0m\r\n`);
       }
-      setQuestMicActive(false);
+      setQuestMicStatus('off');
     }
   };
 
@@ -922,7 +923,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
                 }
               }}
               onBlur={() => setQuestKeyboardOpen(false)}
-              placeholder={questMicActive ? 'Listening...' : questKeyboardOpen ? 'Type here...' : 'Use mic or tap ⌨ to type'}
+              placeholder={questMicStatus === 'listening' ? '🎤 Listening...' : questMicStatus === 'transcribing' ? '⏳ Transcribing...' : questKeyboardOpen ? 'Type here...' : 'Use mic or tap ⌨ to type'}
               className={cn(
                 'flex-1 text-zinc-200 text-sm px-3 py-2 rounded border focus:outline-none font-mono',
                 questKeyboardOpen
@@ -937,13 +938,13 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
               onClick={toggleQuestMic}
               className={cn(
                 'p-2 rounded border transition-all',
-                questMicActive
+                questMicStatus !== 'off'
                   ? 'bg-red-500 border-red-400 text-white animate-pulse'
                   : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'
               )}
-              title={questMicActive ? 'Stop recording' : 'Start voice dictation'}
+              title={questMicStatus !== 'off' ? 'Stop recording' : 'Start voice dictation'}
             >
-              {questMicActive ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              {questMicStatus !== 'off' ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </button>
             <button
               onClick={() => {
