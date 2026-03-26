@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users, Mic, MicOff, Upload } from 'lucide-react';
+import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users, Mic, MicOff, Upload, AudioLines } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AGENT_TYPES } from '@/lib/agents';
 import { useTier } from '@/hooks/use-tier';
@@ -1108,16 +1108,14 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             <button
               onClick={toggleQuestImmersive}
               className={cn(
-                'p-2 rounded border transition-all',
+                'p-2 rounded-full border transition-all',
                 questImmersive
-                  ? 'bg-green-600 border-green-400 text-white shadow-[0_0_10px_rgba(34,197,94,0.4)]'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-white'
+                  ? 'bg-green-600 border-green-400 text-white shadow-[0_0_12px_rgba(34,197,94,0.5)] animate-pulse'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-green-400 hover:border-green-600'
               )}
               title={questImmersive ? 'Exit immersive voice' : 'Immersive voice (auto-send)'}
             >
-              <span className={cn('text-sm', questImmersive && 'animate-pulse')}>
-                {questImmersive ? '🔴' : '🎙️'}
-              </span>
+              <AudioLines className="w-4 h-4" />
             </button>
             <button
               onClick={() => {
