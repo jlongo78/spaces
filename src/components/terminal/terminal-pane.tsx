@@ -399,6 +399,10 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
 
     setQuestMicActive(true);
     try {
+      // Get Groq/Whisper config for direct browser call (no server proxy)
+      const cfgRes = await fetch('/api/whisper/config');
+      const cfg = cfgRes.ok ? await cfgRes.json() : null;
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioCtx = new AudioContext();
       const source = audioCtx.createMediaStreamSource(stream);
@@ -420,31 +424,47 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         try { audioCtx.close(); } catch {}
         questRecorderRef.current = null;
 
-        if (!hasSpeech || chunks.length === 0) {
-          setQuestMicActive(false);
-          return;
-        }
+        if (!hasSpeech || chunks.length === 0) { setQuestMicActive(false); return; }
 
-        // Send to Whisper/Groq
         const blob = new Blob(chunks, { type: 'audio/webm' });
         if (blob.size < 500) { setQuestMicActive(false); return; }
 
-        const form = new FormData();
-        form.append('audio', blob, 'dictation.webm');
         try {
-          const res = await fetch('/api/whisper', { method: 'POST', body: form });
-          if (res.ok) {
-            const { text } = await res.json();
-            if (text?.trim()) {
-              setQuestInput(prev => prev ? `${prev} ${text.trim()}` : text.trim());
-              // Don't focus input — that would pop up the keyboard
+          let text = '';
+          if (cfg?.apiKey) {
+            // Direct call to Groq/OpenAI — skip server proxy for speed
+            const form = new FormData();
+            form.append('file', blob, 'audio.webm');
+            form.append('model', cfg.model);
+            form.append('response_format', 'json');
+            form.append('language', 'en');
+            const res = await fetch(cfg.apiUrl, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${cfg.apiKey}` },
+              body: form,
+            });
+            if (res.ok) {
+              const data = await res.json();
+              text = data.text || '';
             }
+          } else {
+            // Fallback to server proxy
+            const form = new FormData();
+            form.append('audio', blob, 'dictation.webm');
+            const res = await fetch('/api/whisper', { method: 'POST', body: form });
+            if (res.ok) {
+              const data = await res.json();
+              text = data.text || '';
+            }
+          }
+          if (text.trim()) {
+            setQuestInput(prev => prev ? `${prev} ${text.trim()}` : text.trim());
           }
         } catch {}
         setQuestMicActive(false);
       };
 
-      // VAD: detect speech, stop after 1.5s silence
+      // VAD: detect speech, stop after 1s silence (fast trigger)
       const dataArr = new Uint8Array(analyser.frequencyBinCount);
       let lastSpeechTime = 0;
       let speechFrames = 0;
@@ -464,11 +484,11 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
           speechFrames = 0;
         }
 
-        if (hasSpeech && Date.now() - lastSpeechTime > 1500) {
+        if (hasSpeech && Date.now() - lastSpeechTime > 1000) {
           questRecorderRef.current.stop();
           return;
         }
-        if (!hasSpeech && Date.now() - startTime > 15000) {
+        if (!hasSpeech && Date.now() - startTime > 10000) {
           questRecorderRef.current.stop();
           return;
         }
