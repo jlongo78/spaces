@@ -83,6 +83,16 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const questRecorderRef = useRef<MediaRecorder | null>(null);
   const [questKeyboardOpen, setQuestKeyboardOpen] = useState(false);
 
+  // Quest controller button mapping (configurable)
+  const CONTROLLER_ACTIONS: Record<string, { label: string; fn: () => void }> = {};
+  // Populated after sendKey is defined — see useEffect below
+  const [controllerConfig, setControllerConfig] = useState<Record<string, string>>(() => {
+    if (typeof localStorage === 'undefined') return {};
+    try { return JSON.parse(localStorage.getItem('quest-controller-map') || '{}'); } catch { return {}; }
+  });
+  const [showControllerConfig, setShowControllerConfig] = useState(false);
+  const controllerConfigRef = useRef(controllerConfig);
+
   useEffect(() => {
     const ua = navigator.userAgent || '';
     setIsQuest(/Quest|Oculus|Pacific/i.test(ua));
@@ -467,9 +477,128 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       recorder.start(250);
       questRecorderRef.current = recorder;
       requestAnimationFrame(checkVAD);
-    } catch {
+    } catch (e: any) {
+      if (xtermRef.current) {
+        xtermRef.current.write(`\r\n\x1b[91m[Mic] ${e.name || 'Error'}: ${e.message || 'Failed to access microphone'}\x1b[0m\r\n`);
+      }
       setQuestMicActive(false);
     }
+  };
+
+  // ─── Quest controller support (Gamepad API) ───
+  const QUEST_ACTIONS: Record<string, { label: string; key: string }> = {
+    'send':    { label: 'Send / Enter',   key: '\r' },
+    'ctrlc':   { label: 'Ctrl+C',         key: '\x03' },
+    'yes':     { label: 'Yes (y)',         key: 'y' },
+    'no':      { label: 'No (n)',          key: 'n' },
+    'up':      { label: '↑ History',       key: '\x1b[A' },
+    'down':    { label: '↓ History',       key: '\x1b[B' },
+    'tab':     { label: 'Tab',            key: '\t' },
+    'esc':     { label: 'Escape',          key: '\x1b' },
+    'mic':     { label: 'Toggle mic',      key: '__mic__' },
+    'keyboard':{ label: 'Toggle keyboard', key: '__keyboard__' },
+    'none':    { label: 'Disabled',        key: '' },
+  };
+
+  // Default button → action mapping
+  const DEFAULT_CONTROLLER_MAP: Record<string, string> = {
+    'trigger':         'send',      // Index trigger → Enter
+    'grip':            'ctrlc',     // Grip → Ctrl+C
+    'a_x':             'yes',       // A or X → y
+    'b_y':             'no',        // B or Y → n
+    'thumbstick_up':   'up',        // Stick up → ↑
+    'thumbstick_down': 'down',      // Stick down → ↓
+    'thumbstick_click':'mic',       // Stick press → toggle mic
+  };
+
+  const getControllerMap = () => ({ ...DEFAULT_CONTROLLER_MAP, ...controllerConfigRef.current });
+
+  const executeControllerAction = (actionId: string) => {
+    const action = QUEST_ACTIONS[actionId];
+    if (!action || !action.key) return;
+    if (action.key === '__mic__') { toggleQuestMic(); return; }
+    if (action.key === '__keyboard__') {
+      setQuestKeyboardOpen(prev => !prev);
+      if (!questKeyboardOpen) setTimeout(() => questInputRef.current?.focus(), 50);
+      return;
+    }
+    // If there's text in the input and action is 'send', send input + enter
+    if (actionId === 'send' && questInput) {
+      sendKey(questInput + '\r');
+      setQuestInput('');
+    } else {
+      sendKey(action.key);
+    }
+  };
+
+  // Gamepad polling loop — only runs on Quest
+  useEffect(() => {
+    if (!isQuest) return;
+    let rafId: number;
+    const prevPressed: Record<string, boolean> = {};
+
+    const poll = () => {
+      const gamepads = navigator.getGamepads?.();
+      if (!gamepads) { rafId = requestAnimationFrame(poll); return; }
+
+      const map = getControllerMap();
+
+      for (const gp of gamepads) {
+        if (!gp) continue;
+        const prefix = gp.index === 0 ? 'L' : 'R';
+
+        // Buttons: 0=trigger, 1=grip, 4=A/X, 5=B/Y, 3=thumbstick click
+        const checks: [string, number][] = [
+          ['trigger', 0],
+          ['grip', 1],
+          ['a_x', 4],
+          ['b_y', 5],
+          ['thumbstick_click', 3],
+        ];
+
+        for (const [name, idx] of checks) {
+          const pressed = gp.buttons[idx]?.pressed ?? false;
+          const id = `${prefix}_${name}`;
+          if (pressed && !prevPressed[id]) {
+            // Button just pressed — execute mapped action (use either hand)
+            const actionId = map[name];
+            if (actionId) executeControllerAction(actionId);
+          }
+          prevPressed[id] = pressed;
+        }
+
+        // Thumbstick Y axis: up (< -0.5) / down (> 0.5)
+        if (gp.axes.length >= 2) {
+          const y = gp.axes[1];
+          const upId = `${prefix}_stick_up`;
+          const downId = `${prefix}_stick_down`;
+          const upPressed = y < -0.5;
+          const downPressed = y > 0.5;
+          if (upPressed && !prevPressed[upId]) {
+            const actionId = map['thumbstick_up'];
+            if (actionId) executeControllerAction(actionId);
+          }
+          if (downPressed && !prevPressed[downId]) {
+            const actionId = map['thumbstick_down'];
+            if (actionId) executeControllerAction(actionId);
+          }
+          prevPressed[upId] = upPressed;
+          prevPressed[downId] = downPressed;
+        }
+      }
+      rafId = requestAnimationFrame(poll);
+    };
+
+    rafId = requestAnimationFrame(poll);
+    return () => cancelAnimationFrame(rafId);
+  }, [isQuest, questInput, questKeyboardOpen]);
+
+  // Persist controller config to localStorage
+  const updateControllerConfig = (button: string, actionId: string) => {
+    const next = { ...controllerConfig, [button]: actionId };
+    setControllerConfig(next);
+    controllerConfigRef.current = next;
+    try { localStorage.setItem('quest-controller-map', JSON.stringify(next)); } catch {}
   };
 
   // ─── Voice mode: Web Speech API on desktop, keyboard mic on Quest ───
@@ -974,7 +1103,56 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             >
               Clear
             </button>
+            <button
+              onClick={() => setShowControllerConfig(!showControllerConfig)}
+              className={cn(
+                'px-2 py-1 text-[10px] font-mono rounded border',
+                showControllerConfig
+                  ? 'bg-zinc-700 border-zinc-600 text-zinc-200'
+                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-500 border-zinc-700'
+              )}
+              title="Configure controller buttons"
+            >
+              🎮
+            </button>
           </div>
+
+          {/* Controller button config panel */}
+          {showControllerConfig && (
+            <div className="border-t border-zinc-800 px-1 py-1.5">
+              <div className="text-[9px] text-zinc-500 mb-1 px-1">Controller Button Mapping</div>
+              <div className="grid grid-cols-2 gap-1">
+                {Object.entries(DEFAULT_CONTROLLER_MAP).map(([button, defaultAction]) => {
+                  const currentAction = getControllerMap()[button] || defaultAction;
+                  const buttonLabel = button.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                  return (
+                    <div key={button} className="flex items-center gap-1">
+                      <span className="text-[9px] text-zinc-400 w-[80px] truncate">{buttonLabel}</span>
+                      <select
+                        value={currentAction}
+                        onChange={(e) => updateControllerConfig(button, e.target.value)}
+                        className="flex-1 text-[9px] bg-zinc-800 border border-zinc-700 rounded px-1 py-0.5 text-zinc-300"
+                      >
+                        {Object.entries(QUEST_ACTIONS).map(([id, { label }]) => (
+                          <option key={id} value={id}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => {
+                  setControllerConfig({});
+                  controllerConfigRef.current = {};
+                  try { localStorage.removeItem('quest-controller-map'); } catch {}
+                }}
+                className="mt-1 px-2 py-0.5 text-[9px] text-zinc-500 hover:text-zinc-300"
+              >
+                Reset to defaults
+              </button>
+            </div>
+          )}
         </div>
       )}
 
