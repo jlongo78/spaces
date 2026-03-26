@@ -82,6 +82,9 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const [questMicStatus, setQuestMicStatus] = useState<'off' | 'listening' | 'transcribing'>('off');
   const questRecorderRef = useRef<MediaRecorder | null>(null);
   const [questKeyboardOpen, setQuestKeyboardOpen] = useState(false);
+  const [questImmersive, setQuestImmersive] = useState(false);
+  const questImmersiveRef = useRef(false);
+  const questWhisperCfgRef = useRef<any>(null);
 
   useEffect(() => {
     const ua = navigator.userAgent || '';
@@ -507,6 +510,151 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     }
   };
 
+  // ─── Quest immersive voice: continuous loop — listen → transcribe → send → repeat ───
+  const startImmersiveCycle = async () => {
+    if (!questImmersiveRef.current) return;
+    setQuestMicStatus('listening');
+
+    try {
+      // Fetch config once, cache for subsequent cycles
+      if (!questWhisperCfgRef.current) {
+        const cfgRes = await fetch('/api/whisper/config');
+        if (cfgRes.ok) questWhisperCfgRef.current = await cfgRes.json();
+      }
+      if (!questImmersiveRef.current) return;
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!questImmersiveRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm';
+      const recorder = new MediaRecorder(stream, { mimeType });
+      const chunks: Blob[] = [];
+      let hasSpeech = false;
+
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        try { source.disconnect(); } catch {}
+        try { audioCtx.close(); } catch {}
+        questRecorderRef.current = null;
+
+        if (!questImmersiveRef.current) { setQuestMicStatus('off'); return; }
+
+        // No speech — restart quickly
+        if (!hasSpeech || chunks.length === 0) {
+          setTimeout(startImmersiveCycle, 300);
+          return;
+        }
+
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        if (blob.size < 500) { setTimeout(startImmersiveCycle, 300); return; }
+
+        setQuestMicStatus('transcribing');
+        const cfg = questWhisperCfgRef.current;
+        try {
+          let text = '';
+          if (cfg?.apiKey) {
+            const form = new FormData();
+            form.append('file', blob, 'audio.webm');
+            form.append('model', cfg.model);
+            form.append('response_format', 'json');
+            form.append('language', 'en');
+            const res = await fetch(cfg.apiUrl, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${cfg.apiKey}` },
+              body: form,
+            });
+            if (res.ok) text = (await res.json()).text || '';
+          } else {
+            const form = new FormData();
+            form.append('audio', blob, 'dictation.webm');
+            const res = await fetch('/api/whisper', { method: 'POST', body: form });
+            if (res.ok) text = (await res.json()).text || '';
+          }
+          if (text.trim() && questImmersiveRef.current) {
+            // Auto-send: type text + Enter
+            sendKey(text.trim() + '\r');
+          }
+        } catch {}
+
+        // Loop: restart listening if still immersive
+        if (questImmersiveRef.current) {
+          setTimeout(startImmersiveCycle, 800);
+        } else {
+          setQuestMicStatus('off');
+        }
+      };
+
+      // VAD: detect speech, stop after 1s silence
+      const dataArr = new Uint8Array(analyser.frequencyBinCount);
+      let lastSpeechTime = 0;
+      let speechFrames = 0;
+      const startTime = Date.now();
+
+      const checkVAD = () => {
+        if (!questRecorderRef.current || questRecorderRef.current.state !== 'recording') return;
+        if (!questImmersiveRef.current) { questRecorderRef.current.stop(); return; }
+
+        analyser.getByteFrequencyData(dataArr);
+        const avg = dataArr.reduce((a, b) => a + b, 0) / dataArr.length;
+
+        if (avg > 20) {
+          speechFrames++;
+          lastSpeechTime = Date.now();
+          if (speechFrames >= 10) hasSpeech = true;
+        } else if (!hasSpeech) {
+          speechFrames = 0;
+        }
+
+        if (hasSpeech && Date.now() - lastSpeechTime > 1000) {
+          questRecorderRef.current.stop();
+          return;
+        }
+        if (!hasSpeech && Date.now() - startTime > 10000) {
+          questRecorderRef.current.stop();
+          return;
+        }
+        requestAnimationFrame(checkVAD);
+      };
+
+      recorder.start(250);
+      questRecorderRef.current = recorder;
+      requestAnimationFrame(checkVAD);
+    } catch (e: any) {
+      if (xtermRef.current) {
+        xtermRef.current.write(`\r\n\x1b[91m[Mic] ${e.name || 'Error'}: ${e.message || 'Failed to access microphone'}\x1b[0m\r\n`);
+      }
+      if (questImmersiveRef.current) setTimeout(startImmersiveCycle, 2000);
+      else setQuestMicStatus('off');
+    }
+  };
+
+  const toggleQuestImmersive = () => {
+    if (questImmersiveRef.current) {
+      // Exit immersive
+      questImmersiveRef.current = false;
+      setQuestImmersive(false);
+      setQuestMicStatus('off');
+      questWhisperCfgRef.current = null;
+      if (questRecorderRef.current?.state === 'recording') {
+        try { questRecorderRef.current.stop(); } catch {}
+      }
+    } else {
+      // Enter immersive
+      questImmersiveRef.current = true;
+      setQuestImmersive(true);
+      startImmersiveCycle();
+    }
+  };
+
   // ─── Voice mode: Web Speech API on desktop, Whisper/Groq mic on Quest ───
   const recognitionRef = useRef<any>(null);
   const isQuestBrowser = typeof navigator !== 'undefined' && /Quest|Oculus|Pacific/i.test(navigator.userAgent);
@@ -923,7 +1071,14 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
                 }
               }}
               onBlur={() => setQuestKeyboardOpen(false)}
-              placeholder={questMicStatus === 'listening' ? '🎤 Listening...' : questMicStatus === 'transcribing' ? '⏳ Transcribing...' : questKeyboardOpen ? 'Type here...' : 'Use mic or tap ⌨ to type'}
+              placeholder={
+                questImmersive && questMicStatus === 'listening' ? '🎙️ Immersive — speak now...' :
+                questImmersive && questMicStatus === 'transcribing' ? '⏳ Sending...' :
+                questImmersive ? '🎙️ Immersive mode active' :
+                questMicStatus === 'listening' ? '🎤 Listening...' :
+                questMicStatus === 'transcribing' ? '⏳ Transcribing...' :
+                questKeyboardOpen ? 'Type here...' : 'Use 🎤 or 🎙️ or tap ⌨ to type'
+              }
               className={cn(
                 'flex-1 text-zinc-200 text-sm px-3 py-2 rounded border focus:outline-none font-mono',
                 questKeyboardOpen
@@ -934,17 +1089,35 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
               autoCorrect="on"
               spellCheck={false}
             />
+            {/* Single-shot mic — text goes into input for review */}
+            {!questImmersive && (
+              <button
+                onClick={toggleQuestMic}
+                className={cn(
+                  'p-2 rounded border transition-all',
+                  questMicStatus !== 'off' && !questImmersive
+                    ? 'bg-red-500 border-red-400 text-white animate-pulse'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'
+                )}
+                title="Voice → input (review before send)"
+              >
+                {questMicStatus !== 'off' && !questImmersive ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+            )}
+            {/* Immersive mode — continuous listen → auto-send loop */}
             <button
-              onClick={toggleQuestMic}
+              onClick={toggleQuestImmersive}
               className={cn(
                 'p-2 rounded border transition-all',
-                questMicStatus !== 'off'
-                  ? 'bg-red-500 border-red-400 text-white animate-pulse'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'
+                questImmersive
+                  ? 'bg-green-600 border-green-400 text-white shadow-[0_0_10px_rgba(34,197,94,0.4)]'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-white'
               )}
-              title={questMicStatus !== 'off' ? 'Stop recording' : 'Start voice dictation'}
+              title={questImmersive ? 'Exit immersive voice' : 'Immersive voice (auto-send)'}
             >
-              {questMicStatus !== 'off' ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              <span className={cn('text-sm', questImmersive && 'animate-pulse')}>
+                {questImmersive ? '🔴' : '🎙️'}
+              </span>
             </button>
             <button
               onClick={() => {
