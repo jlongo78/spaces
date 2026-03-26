@@ -175,6 +175,17 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       if (termRef.current) {
         term.open(termRef.current);
         try { fitAddon.fit(); } catch { /* dimensions may be wrong — corrected below */ }
+
+        // On Quest: hide xterm's internal textarea so it can't grab focus and pop up the keyboard
+        if (isQuestUA && termRef.current) {
+          const textarea = termRef.current.querySelector('textarea');
+          if (textarea) {
+            textarea.setAttribute('readonly', 'true');
+            textarea.setAttribute('inputmode', 'none');
+            textarea.style.opacity = '0';
+            textarea.style.pointerEvents = 'none';
+          }
+        }
       }
       resolve();
     }));
