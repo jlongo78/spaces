@@ -490,7 +490,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
           speechFrames = 0;
         }
 
-        if (hasSpeech && Date.now() - lastSpeechTime > 1000) {
+        if (hasSpeech && Date.now() - lastSpeechTime > 1500) {
           questRecorderRef.current.stop();
           return;
         }
@@ -616,7 +616,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
           speechFrames = 0;
         }
 
-        if (hasSpeech && Date.now() - lastSpeechTime > 1000) {
+        if (hasSpeech && Date.now() - lastSpeechTime > 1500) {
           questRecorderRef.current.stop();
           return;
         }
@@ -1144,20 +1144,23 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             </button>
             {/* Sensitivity slider — only visible when immersive is active */}
             {questImmersive && (
-              <input
-                type="range"
-                min={10}
-                max={120}
-                value={immersiveSensitivity}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setImmersiveSensitivity(val);
-                  immersiveSensitivityRef.current = val;
-                }}
-                className="w-16 h-1.5 accent-green-500"
-                title={`Sensitivity threshold: ${immersiveSensitivity}`}
-              />
-              <span className="text-[9px] text-zinc-500 font-mono w-6 text-center">{immersiveSensitivity}</span>
+              <>
+                <span className="text-[9px] text-zinc-500 font-normal">Sensitivity</span>
+                <input
+                  type="range"
+                  min={10}
+                  max={120}
+                  value={immersiveSensitivity}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setImmersiveSensitivity(val);
+                    immersiveSensitivityRef.current = val;
+                  }}
+                  className="w-16 h-1.5 accent-green-500"
+                  title={`Sensitivity threshold: ${immersiveSensitivity}`}
+                />
+                <span className="text-[9px] text-zinc-500 font-normal font-mono w-6 text-center">{immersiveSensitivity}</span>
+              </>
             )}
             <button
               onClick={() => {
