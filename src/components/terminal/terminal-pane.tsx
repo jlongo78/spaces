@@ -85,6 +85,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const [questImmersive, setQuestImmersive] = useState(false);
   const questImmersiveRef = useRef(false);
   const questWhisperCfgRef = useRef<any>(null);
+  const [immersiveSensitivity, setImmersiveSensitivity] = useState(35);
+  const immersiveSensitivityRef = useRef(35);
 
   useEffect(() => {
     const ua = navigator.userAgent || '';
@@ -606,10 +608,10 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         analyser.getByteFrequencyData(dataArr);
         const avg = dataArr.reduce((a, b) => a + b, 0) / dataArr.length;
 
-        if (avg > 20) {
+        if (avg > immersiveSensitivityRef.current) {
           speechFrames++;
           lastSpeechTime = Date.now();
-          if (speechFrames >= 10) hasSpeech = true;
+          if (speechFrames >= 15) hasSpeech = true;
         } else if (!hasSpeech) {
           speechFrames = 0;
         }
@@ -1140,6 +1142,22 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             >
               <AudioLines className="w-4 h-4" />
             </button>
+            {/* Sensitivity slider — only visible when immersive is active */}
+            {questImmersive && (
+              <input
+                type="range"
+                min={10}
+                max={60}
+                value={immersiveSensitivity}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setImmersiveSensitivity(val);
+                  immersiveSensitivityRef.current = val;
+                }}
+                className="w-16 h-1.5 accent-green-500"
+                title={`Sensitivity: ${immersiveSensitivity} (lower = more sensitive)`}
+              />
+            )}
             <button
               onClick={() => {
                 sendKey(questInput ? questInput + '\r' : '\r');
