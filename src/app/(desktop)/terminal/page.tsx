@@ -4,10 +4,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Loader2, Terminal, Search, MessageSquare, FolderOpen,
   Clock, ChevronDown, ChevronRight, Save, FolderInput, Trash2, Pencil, Check, X,
-  Layers, Copy, Home, XCircle, ArrowLeftToLine, Globe, AlertCircle, Users, Brain,
+  Layers, Copy, Home, XCircle, ArrowLeftToLine, Globe, AlertCircle, Users, Brain, Maximize2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { TerminalPane } from '@/components/terminal/terminal-pane';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { ColorPicker } from '@/components/common/color-picker';
 import { DevDirectoryPicker } from '@/components/common/dev-directory-picker';
 import { NodeSelector } from '@/components/network/node-selector';
@@ -23,6 +26,21 @@ import { track } from '@/lib/telemetry';
 import { LobeSettings } from '@/components/cortex/lobe-settings';
 import { FileExplorer } from '@/components/files/file-explorer';
 import { useTier } from '@/hooks/use-tier';
+
+function SortablePane({ id, children }: { id: string; children: (dragHandleProps: Record<string, any>) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto' as any,
+  };
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children({ ...attributes, ...listeners })}
+    </div>
+  );
+}
 
 export default function TerminalPage() {
   return (
@@ -40,6 +58,7 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
   const [wsLoading, setWsLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [maximized, setMaximized] = useState<string | null>(null);
+  const [minimized, setMinimized] = useState<Set<string>>(new Set());
   const [poppedOut, setPoppedOut] = useState<Set<string>>(new Set());
   const [entered, setEntered] = useState(false);
   const [busPanelCollapsed, setBusPanelCollapsed] = useState(true);
@@ -292,6 +311,43 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
     setMaximized(prev => prev === id ? null : id);
   }, []);
 
+  const minimizePane = useCallback((id: string) => {
+    setMinimized(prev => new Set(prev).add(id));
+    if (maximized === id) setMaximized(null);
+  }, [maximized]);
+
+  const restorePane = useCallback((id: string) => {
+    setMinimized(prev => { const next = new Set(prev); next.delete(id); return next; });
+  }, []);
+
+  // ─── Drag to reorder ──────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setPanes(prev => {
+      const oldIndex = prev.findIndex(p => p.id === active.id);
+      const newIndex = prev.findIndex(p => p.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      const reordered = arrayMove(prev, oldIndex, newIndex);
+      // Persist sort order
+      reordered.forEach((p, i) => {
+        if (p.sortOrder !== i) {
+          fetch(api(`/api/panes/${p.id}`), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sortOrder: i }),
+          }).catch(() => {});
+        }
+      });
+      return reordered.map((p, i) => ({ ...p, sortOrder: i }));
+    });
+  }, []);
+
   // ─── Popout ────────────────────────────────────────────────
 
   const openPopoutWindow = useCallback((pane: PaneData) => {
@@ -419,7 +475,8 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
 
   // ─── Render ────────────────────────────────────────────────
 
-  const visiblePanes = panes.filter(p => !poppedOut.has(p.id));
+  const visiblePanes = panes.filter(p => !poppedOut.has(p.id) && !minimized.has(p.id));
+  const minimizedPanes = panes.filter(p => minimized.has(p.id));
 
   // ─── Workspace chooser (before entering) ─────────────────
 
@@ -1108,35 +1165,63 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
             </div>
           </div>
         ) : (
-          <div
-            className="flex-1 p-2 gap-2 overflow-auto h-full relative"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: visiblePanes.length === 1 ? '1fr'
-                : visiblePanes.length <= 2 ? 'repeat(2, 1fr)'
-                : visiblePanes.length <= 4 ? 'repeat(2, 1fr)'
-                : 'repeat(3, 1fr)',
-              gridAutoRows: visiblePanes.length <= 2 ? '1fr' : 'minmax(300px, 1fr)',
-            }}
-          >
-            {visiblePanes.map((pane) => (
-              maximized && maximized !== pane.id ? null : (
-                <TerminalPane
-                  key={pane.id}
-                  pane={pane}
-                  onClose={closePane}
-                  onUpdate={updatePane}
-                  isMaximized={maximized === pane.id}
-                  onToggleMaximize={toggleMaximize}
-                  onPopout={handlePopout}
-                  onBrowse={handleBrowse}
-                  terminalToken={terminalToken}
-                  workspaceCollaboration={activeWorkspace?.collaboration}
-                />
-              )
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={visiblePanes.map(p => p.id)} strategy={verticalListSortingStrategy}>
+              <div
+                className="flex-1 p-2 gap-2 overflow-auto h-full relative"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: visiblePanes.length === 1 ? '1fr'
+                    : visiblePanes.length <= 2 ? 'repeat(2, 1fr)'
+                    : visiblePanes.length <= 4 ? 'repeat(2, 1fr)'
+                    : 'repeat(3, 1fr)',
+                  gridAutoRows: visiblePanes.length <= 2 ? '1fr' : 'minmax(300px, 1fr)',
+                }}
+              >
+                {visiblePanes.map((pane) => (
+                  maximized && maximized !== pane.id ? null : (
+                    <SortablePane key={pane.id} id={pane.id}>
+                      {(dragHandleProps) => (
+                        <TerminalPane
+                          pane={pane}
+                          onClose={closePane}
+                          onUpdate={updatePane}
+                          isMaximized={maximized === pane.id}
+                          onToggleMaximize={toggleMaximize}
+                          onMinimize={minimizePane}
+                          onPopout={handlePopout}
+                          onBrowse={handleBrowse}
+                          terminalToken={terminalToken}
+                          workspaceCollaboration={activeWorkspace?.collaboration}
+                          dragHandleProps={dragHandleProps}
+                        />
+                      )}
+                    </SortablePane>
+                  )
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        )}
+
+        {/* Minimized panes dock */}
+        {minimizedPanes.length > 0 && (
+          <div className="flex items-center gap-1.5 px-2 py-1.5 border-t border-zinc-800 flex-shrink-0 overflow-x-auto">
+            {minimizedPanes.map(pane => (
+              <button
+                key={pane.id}
+                onClick={() => restorePane(pane.id)}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md border border-zinc-700 hover:border-zinc-500 bg-zinc-800/50 hover:bg-zinc-700/50 text-zinc-400 hover:text-white transition-colors flex-shrink-0"
+                title={`Restore ${pane.title}`}
+              >
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pane.color }} />
+                <span className="truncate max-w-[100px]">{pane.title}</span>
+                <Maximize2 className="w-2.5 h-2.5 text-zinc-500" />
+              </button>
             ))}
           </div>
         )}
+
         {activeWorkspace?.collaboration && (
           <ActivityPanel
             workspaceId={activeWorkspace?.id ?? null}

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users, Mic, MicOff, Upload, AudioLines } from 'lucide-react';
+import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users, Mic, MicOff, Upload, AudioLines, Minus, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AGENT_TYPES } from '@/lib/agents';
 import { useTier } from '@/hooks/use-tier';
@@ -19,14 +19,16 @@ interface TerminalPaneProps {
   onUpdate: (id: string, data: Partial<PaneData>) => void;
   isMaximized: boolean;
   onToggleMaximize: (id: string) => void;
+  onMinimize?: (id: string) => void;
   onPopout?: (id: string) => void;
   onBrowse?: (cwd: string) => void;
   isPopout?: boolean;
   terminalToken?: string;
   workspaceCollaboration?: boolean;
+  dragHandleProps?: Record<string, any>;
 }
 
-export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMaximize, onPopout, onBrowse, isPopout, terminalToken, workspaceCollaboration }: TerminalPaneProps) {
+export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMaximize, onMinimize, onPopout, onBrowse, isPopout, terminalToken, workspaceCollaboration, dragHandleProps }: TerminalPaneProps) {
   const { hasCortex } = useTier();
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<any>(null);
@@ -902,6 +904,12 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         className="flex items-center gap-2 px-3 py-1.5 text-xs select-none flex-shrink-0"
         style={{ backgroundColor: `${pane.color}30`, borderBottom: `1px solid ${pane.color}40` }}
       >
+        {/* Drag handle */}
+        {dragHandleProps && !isPopout && (
+          <div {...dragHandleProps} className="flex-shrink-0 cursor-grab active:cursor-grabbing text-zinc-500 hover:text-zinc-300 -ml-1">
+            <GripVertical className="w-3.5 h-3.5" />
+          </div>
+        )}
         <div ref={colorPickerRef} className="flex-shrink-0">
           <button
             onClick={(e) => {
@@ -1038,6 +1046,16 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             title="Pop out to new window"
           >
             <ExternalLink className="w-3 h-3" />
+          </button>
+        )}
+
+        {onMinimize && !isPopout && (
+          <button
+            onClick={() => onMinimize(pane.id)}
+            className="text-zinc-300 hover:text-yellow-400"
+            title="Minimize"
+          >
+            <Minus className="w-3 h-3" />
           </button>
         )}
 
