@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     const layerDirs = ['personal', 'workspace', 'team'];
     const layerLabels: Record<string, string> = {
       personal: 'Personal',
-      workspace: 'Shared (legacy)',
+      workspace: 'Shared (unscoped)',
       team: 'Team',
     };
 
