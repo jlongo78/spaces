@@ -13,3 +13,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ nodeId: st
   const pro = getPro();
   return pro?.network.api.proxy.POST(req, ctx) ?? notAvailable();
 }
+
+export async function PUT(req: NextRequest, ctx: { params: Promise<{ nodeId: string; path: string[] }> }) {
+  const pro = getPro();
+  return pro?.network.api.proxy.PUT(req, ctx) ?? notAvailable();
+}
+
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ nodeId: string; path: string[] }> }) {
+  const pro = getPro();
+  return pro?.network.api.proxy.DELETE(req, ctx) ?? notAvailable();
+}

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getPro } from '@/lib/pro';
 import { ensureInitialized } from '@/lib/db/init';
 import { getDb } from '@/lib/db/schema';
+import { createWorkspace } from '@/lib/db/queries';
 
 const notAvailable = () =>
   Response.json({ error: 'Requires @spaces/pro' }, { status: 404 });
@@ -32,6 +33,29 @@ export async function GET(req: NextRequest) {
 
   await ensureInitialized();
   return buildWorkspaceResponse();
+}
+
+export async function POST(req: NextRequest) {
+  const pro = getPro();
+  if (!pro) return notAvailable();
+
+  let keyRecord;
+  try {
+    keyRecord = pro.network.requireNetworkAuth(req);
+  } catch (e: any) {
+    if (e.name === 'NetworkAuthError') return Response.json({ error: e.message }, { status: 401 });
+    throw e;
+  }
+  if (keyRecord?.permissions !== 'admin') {
+    return Response.json({ error: 'Admin permission required' }, { status: 403 });
+  }
+
+  await ensureInitialized();
+  const body = await req.json();
+  if (!body.name) return Response.json({ error: 'name is required' }, { status: 400 });
+
+  const workspace = createWorkspace(body.name, body.description, body.color);
+  return Response.json(workspace);
 }
 
 function buildWorkspaceResponse() {

@@ -91,9 +91,50 @@ function RemoteWorkspaceInner({
       });
   }, [nodeId, workspaceId]);
 
-  // No-op handlers for remote panes (read-only, can't modify remote DB)
-  const handleClose = useCallback(() => {}, []);
-  const handleUpdate = useCallback(() => {}, []);
+  // Remote pane operations — go through the proxy to the remote node
+  const handleClose = useCallback(async (id: string) => {
+    try {
+      await fetch(api(`/api/network/proxy/${nodeId}/panes/${id}`), { method: 'DELETE' });
+      setPanes(prev => prev.filter(p => p.id !== id));
+    } catch (e: any) {
+      console.error('[Remote] Failed to close pane:', e.message);
+    }
+  }, [nodeId]);
+
+  const handleUpdate = useCallback(async (id: string, data: Partial<PaneData>) => {
+    try {
+      await fetch(api(`/api/network/proxy/${nodeId}/panes/${id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      setPanes(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
+    } catch (e: any) {
+      console.error('[Remote] Failed to update pane:', e.message);
+    }
+  }, [nodeId]);
+
+  const addRemotePane = useCallback(async () => {
+    try {
+      const res = await fetch(api(`/api/network/proxy/${nodeId}/panes`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Terminal',
+          color: '#6366f1',
+          cwd: '~',
+          agentType: 'shell',
+          workspaceId: parseInt(workspaceId!, 10),
+        }),
+      });
+      if (res.ok) {
+        const pane = await res.json();
+        setPanes(prev => [...prev, { ...pane, nodeId }]);
+      }
+    } catch (e: any) {
+      console.error('[Remote] Failed to create pane:', e.message);
+    }
+  }, [nodeId, workspaceId]);
   const toggleMaximize = useCallback((id: string) => {
     setMaximized(prev => prev === id ? null : id);
   }, []);
@@ -150,6 +191,14 @@ function RemoteWorkspaceInner({
             {visiblePanes.length} pane{visiblePanes.length !== 1 ? 's' : ''}
           </span>
         </div>
+        <button
+          onClick={addRemotePane}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700 rounded-lg transition-colors"
+          title="Add pane on remote node"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Add Pane
+        </button>
       </div>
 
       {/* Terminal grid */}
@@ -158,6 +207,13 @@ function RemoteWorkspaceInner({
           <div className="text-center space-y-2">
             <Terminal className="w-10 h-10 text-zinc-700 mx-auto" />
             <p className="text-zinc-500 text-sm">This remote workspace has no panes.</p>
+            <button
+              onClick={addRemotePane}
+              className="mt-2 flex items-center gap-1.5 mx-auto px-3 py-1.5 text-xs text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700 rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Create Pane
+            </button>
           </div>
         </div>
       ) : (
