@@ -591,8 +591,25 @@ function startServer() {
         headers: req.headers,
       },
       (proxyRes) => {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
-        proxyRes.pipe(res);
+        // Log cortex context API calls
+        if (urlPath.startsWith('/api/cortex/context')) {
+          const chunks = [];
+          proxyRes.on('data', (chunk) => chunks.push(chunk));
+          proxyRes.on('end', () => {
+            const body = Buffer.concat(chunks);
+            try {
+              const d = JSON.parse(body.toString());
+              const q = decodeURIComponent((req.url.match(/q=([^&]+)/) || [])[1] || '?').slice(0, 60);
+              const hits = d.results?.length || 0;
+              console.log(`[Cortex Context] q="${q}" → ${hits} results (${d.timing?.totalMs || '?'}ms)`);
+            } catch {}
+            res.writeHead(proxyRes.statusCode, proxyRes.headers);
+            res.end(body);
+          });
+        } else {
+          res.writeHead(proxyRes.statusCode, proxyRes.headers);
+          proxyRes.pipe(res);
+        }
       }
     );
     proxyReq.on('error', () => {
