@@ -115,6 +115,7 @@ function RemoteWorkspaceInner({
   }, [nodeId]);
 
   const addRemotePane = useCallback(async () => {
+    if (!nodeId || !workspaceId) return;
     try {
       const res = await fetch(api(`/api/network/proxy/${nodeId}/panes`), {
         method: 'POST',
@@ -124,15 +125,18 @@ function RemoteWorkspaceInner({
           color: '#6366f1',
           cwd: '~',
           agentType: 'shell',
-          workspaceId: parseInt(workspaceId!, 10),
+          workspaceId: parseInt(workspaceId, 10),
         }),
       });
       if (res.ok) {
         const pane = await res.json();
         setPanes(prev => [...prev, { ...pane, nodeId }]);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Failed to create pane: ${err.error || res.statusText}`);
       }
     } catch (e: any) {
-      console.error('[Remote] Failed to create pane:', e.message);
+      alert(`Failed to create pane: ${e.message}`);
     }
   }, [nodeId, workspaceId]);
   const toggleMaximize = useCallback((id: string) => {
