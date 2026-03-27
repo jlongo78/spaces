@@ -1,14 +1,26 @@
 import { NextResponse } from 'next/server';
+import { readCortexConfig } from '@/lib/cortex/config';
+import { getUserPaths } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/whisper/config — returns Groq/OpenAI key + endpoint for direct browser calls.
- * Only accessible from localhost/LAN (enforced by middleware).
+ * Checks cortex config first (user settings), then falls back to env vars.
  */
 export async function GET() {
-  const groqKey = process.env.GROQ_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
+  // Try cortex config first (user-configured keys in settings)
+  let configGroq = '';
+  let configOpenai = '';
+  try {
+    const { configPath } = getUserPaths('admin');
+    const cortexCfg = readCortexConfig(configPath);
+    configGroq = cortexCfg.groq_api_key || '';
+    configOpenai = cortexCfg.openai_api_key || '';
+  } catch {}
+
+  const groqKey = configGroq || process.env.GROQ_API_KEY;
+  const openaiKey = configOpenai || process.env.OPENAI_API_KEY;
 
   if (groqKey) {
     return NextResponse.json({

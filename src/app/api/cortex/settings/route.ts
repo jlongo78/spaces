@@ -15,6 +15,8 @@ export async function GET(request: NextRequest) {
       ...config,
       anthropic_api_key: config.anthropic_api_key ? `…${config.anthropic_api_key.slice(-4)}` : '',
       openai_api_key: config.openai_api_key ? `…${config.openai_api_key.slice(-4)}` : '',
+      voyage_api_key: config.voyage_api_key ? `…${config.voyage_api_key.slice(-4)}` : '',
+      groq_api_key: config.groq_api_key ? `…${config.groq_api_key.slice(-4)}` : '',
     };
     return NextResponse.json(safe);
   });

@@ -8,7 +8,7 @@ export function CortexSettings() {
   const [bootstrapStatus, setBootstrapStatus] = useState<any>(null);
   const [usage, setUsage] = useState<any>(null);
   const [saving, setSaving] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetch(api('/api/cortex/settings')).then(r => r.json()).then(setConfig).catch(() => {});
@@ -26,8 +26,9 @@ export function CortexSettings() {
       if (res.ok) {
         // For API keys, the server returns masked values — update display accordingly
         const masked: Record<string, any> = { ...updates };
-        if (masked.anthropic_api_key) masked.anthropic_api_key = `…${masked.anthropic_api_key.slice(-4)}`;
-        if (masked.openai_api_key) masked.openai_api_key = `…${masked.openai_api_key.slice(-4)}`;
+        for (const k of ['anthropic_api_key', 'openai_api_key', 'voyage_api_key', 'groq_api_key']) {
+          if (masked[k]) masked[k] = `…${masked[k].slice(-4)}`;
+        }
         setConfig((prev: any) => ({ ...prev, ...masked }));
       }
     } catch { /* network error — UI stays unchanged */ }
@@ -71,30 +72,42 @@ export function CortexSettings() {
       {!config && <p className="text-[10px] text-gray-500">Loading…</p>}
 
       {/* API Keys */}
-      <div className="space-y-2">
-        <span className="text-xs text-gray-400">Anthropic API key</span>
-        {config?.anthropic_api_key ? (
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-500 font-mono">sk-ant-{config.anthropic_api_key}</span>
-            <button onClick={() => save({ anthropic_api_key: '' })} className="text-[10px] text-gray-600 hover:text-red-400">remove</button>
+      <div className="space-y-3">
+        <span className="text-xs text-gray-300 font-medium">API Keys</span>
+        <p className="text-[10px] text-gray-600 -mt-2">Keys configured here override environment variables. Stored in ~/.spaces/config.json.</p>
+
+        {[
+          { key: 'anthropic_api_key', label: 'Anthropic', placeholder: 'sk-ant-…', hint: 'LLM distillation (Claude Haiku)' },
+          { key: 'voyage_api_key', label: 'Voyage AI', placeholder: 'pa-…', hint: 'Embeddings — best for code/technical retrieval' },
+          { key: 'openai_api_key', label: 'OpenAI', placeholder: 'sk-proj-…', hint: 'Embeddings fallback + transcription fallback' },
+          { key: 'groq_api_key', label: 'Groq', placeholder: 'gsk_…', hint: 'Speech transcription (Quest voice input)' },
+        ].map(({ key, label, placeholder, hint }) => (
+          <div key={key} className="space-y-1">
+            <span className="text-xs text-gray-400">{label}</span>
+            {config?.[key] ? (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500 font-mono">{config[key]}</span>
+                <button onClick={() => save({ [key]: '' })} className="text-[10px] text-gray-600 hover:text-red-400">remove</button>
+              </div>
+            ) : (
+              <div className="flex gap-1">
+                <input
+                  type="password"
+                  value={keyInputs[key] || ''}
+                  onChange={e => setKeyInputs(prev => ({ ...prev, [key]: e.target.value }))}
+                  placeholder={placeholder}
+                  className="flex-1 text-xs bg-white/5 border border-white/10 rounded px-2 py-1 text-gray-300 placeholder-gray-600"
+                />
+                <button
+                  onClick={() => { if (keyInputs[key]) { save({ [key]: keyInputs[key] }); setKeyInputs(prev => ({ ...prev, [key]: '' })); } }}
+                  disabled={!keyInputs[key]}
+                  className="text-xs px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded disabled:opacity-30"
+                >Save</button>
+              </div>
+            )}
+            <p className="text-[10px] text-gray-600">{hint}</p>
           </div>
-        ) : (
-          <div className="flex gap-1">
-            <input
-              type="password"
-              value={apiKeyInput}
-              onChange={e => setApiKeyInput(e.target.value)}
-              placeholder="sk-ant-…"
-              className="flex-1 text-xs bg-white/5 border border-white/10 rounded px-2 py-1 text-gray-300 placeholder-gray-600"
-            />
-            <button
-              onClick={() => { if (apiKeyInput) { save({ anthropic_api_key: apiKeyInput }); setApiKeyInput(''); } }}
-              disabled={!apiKeyInput}
-              className="text-xs px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded disabled:opacity-30"
-            >Save</button>
-          </div>
-        )}
-        <p className="text-[10px] text-gray-600">Used for LLM distillation. Falls back to ANTHROPIC_API_KEY env var.</p>
+        ))}
       </div>
 
       {/* Debug logging */}
@@ -112,9 +125,26 @@ export function CortexSettings() {
       </label>
 
       {/* Embedding provider */}
-      <div className={`flex items-center justify-between ${dim}`}>
+      <div className={`block ${dim}`}>
         <span className="text-xs text-gray-400">Embedding provider</span>
-        <span className="text-xs text-gray-300">{config?.embedding?.provider || 'auto'}</span>
+        <p className="text-[10px] text-gray-600 mb-1">Changing provider requires re-indexing all knowledge (existing embeddings will be cleared)</p>
+        <select
+          value={config?.embedding?.provider || 'auto'}
+          onChange={e => {
+            const provider = e.target.value;
+            if (provider !== (config?.embedding?.provider || 'auto')) {
+              if (confirm('Changing embedding provider will clear all existing embeddings. Knowledge will be re-embedded on next ingestion. Continue?')) {
+                save({ embedding: { provider } });
+              }
+            }
+          }}
+          className="w-full text-xs bg-white/5 border border-white/10 rounded px-2 py-1 text-gray-300"
+        >
+          <option value="auto">Auto-detect (Voyage → OpenAI → Local)</option>
+          <option value="voyage">Voyage AI — best for code (512-dim, requires key)</option>
+          <option value="openai">OpenAI — general purpose (1536-dim, requires key)</option>
+          <option value="local">Local — free, no API needed (384-dim, lower quality)</option>
+        </select>
       </div>
 
       {/* Injection token budget */}
