@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Loader2, Terminal, Search, MessageSquare, FolderOpen,
   Clock, ChevronDown, ChevronRight, Save, FolderInput, Trash2, Pencil, Check, X,
@@ -11,6 +11,7 @@ import { TerminalPane } from '@/components/terminal/terminal-pane';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { ColorPicker } from '@/components/common/color-picker';
 import { DevDirectoryPicker } from '@/components/common/dev-directory-picker';
 import { NodeSelector } from '@/components/network/node-selector';
@@ -27,6 +28,73 @@ import { LobeSettings } from '@/components/cortex/lobe-settings';
 import { FileExplorer } from '@/components/files/file-explorer';
 import { useTier } from '@/hooks/use-tier';
 
+function ResizablePaneGrid({ panes, renderPane }: {
+  panes: PaneData[];
+  renderPane: (pane: PaneData, dragHandleProps: Record<string, any>) => React.ReactNode;
+}) {
+  if (panes.length === 0) return null;
+
+  // Single pane — no resize handles needed
+  if (panes.length === 1) {
+    return (
+      <div className="flex-1 p-1 overflow-hidden">
+        <SortablePane id={panes[0].id}>
+          {(dragHandleProps) => renderPane(panes[0], dragHandleProps)}
+        </SortablePane>
+      </div>
+    );
+  }
+
+  // Split panes into rows: 2 per row for 2-4 panes, 3 per row for 5+
+  const cols = panes.length <= 4 ? 2 : 3;
+  const rows: PaneData[][] = [];
+  for (let i = 0; i < panes.length; i += cols) {
+    rows.push(panes.slice(i, i + cols));
+  }
+
+  return (
+    <PanelGroup direction="vertical" className="flex-1 p-1">
+      {rows.map((row, rowIdx) => (
+        <React.Fragment key={`row-${rowIdx}`}>
+          {rowIdx > 0 && (
+            <PanelResizeHandle className="h-1.5 flex items-center justify-center group cursor-row-resize">
+              <div className="w-8 h-0.5 rounded-full bg-zinc-700 group-hover:bg-zinc-500 group-active:bg-indigo-500 transition-colors" />
+            </PanelResizeHandle>
+          )}
+          <Panel minSize={15}>
+            {row.length === 1 ? (
+              <div className="h-full p-0.5">
+                <SortablePane id={row[0].id}>
+                  {(dragHandleProps) => renderPane(row[0], dragHandleProps)}
+                </SortablePane>
+              </div>
+            ) : (
+              <PanelGroup direction="horizontal" className="h-full">
+                {row.map((pane, colIdx) => (
+                  <React.Fragment key={pane.id}>
+                    {colIdx > 0 && (
+                      <PanelResizeHandle className="w-1.5 flex items-center justify-center group cursor-col-resize">
+                        <div className="h-8 w-0.5 rounded-full bg-zinc-700 group-hover:bg-zinc-500 group-active:bg-indigo-500 transition-colors" />
+                      </PanelResizeHandle>
+                    )}
+                    <Panel minSize={15}>
+                      <div className="h-full p-0.5">
+                        <SortablePane id={pane.id}>
+                          {(dragHandleProps) => renderPane(pane, dragHandleProps)}
+                        </SortablePane>
+                      </div>
+                    </Panel>
+                  </React.Fragment>
+                ))}
+              </PanelGroup>
+            )}
+          </Panel>
+        </React.Fragment>
+      ))}
+    </PanelGroup>
+  );
+}
+
 function SortablePane({ id, children }: { id: string; children: (dragHandleProps: Record<string, any>) => React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
@@ -36,7 +104,7 @@ function SortablePane({ id, children }: { id: string; children: (dragHandleProps
     zIndex: isDragging ? 50 : 'auto' as any,
   };
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={setNodeRef} style={style} className="h-full">
       {children({ ...attributes, ...listeners })}
     </div>
   );
@@ -1165,60 +1233,47 @@ function TerminalPageInner({ terminalToken }: { terminalToken: string }) {
             </div>
           </div>
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={visiblePanes.map(p => p.id)} strategy={verticalListSortingStrategy}>
-              <div
-                className="flex-1 p-2 gap-2 overflow-auto h-full relative"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: visiblePanes.length === 1 ? '1fr'
-                    : visiblePanes.length <= 2 ? 'repeat(2, 1fr)'
-                    : visiblePanes.length <= 4 ? 'repeat(2, 1fr)'
-                    : 'repeat(3, 1fr)',
-                  gridAutoRows: visiblePanes.length <= 2 ? '1fr' : 'minmax(300px, 1fr)',
-                }}
-              >
-                {visiblePanes.map((pane) => (
-                  maximized && maximized !== pane.id ? null : (
-                    <SortablePane key={pane.id} id={pane.id}>
-                      {(dragHandleProps) => (
-                        <TerminalPane
-                          pane={pane}
-                          onClose={closePane}
-                          onUpdate={updatePane}
-                          isMaximized={maximized === pane.id}
-                          onToggleMaximize={toggleMaximize}
-                          onMinimize={minimizePane}
-                          onPopout={handlePopout}
-                          onBrowse={handleBrowse}
-                          terminalToken={terminalToken}
-                          workspaceCollaboration={activeWorkspace?.collaboration}
-                          dragHandleProps={dragHandleProps}
-                        />
-                      )}
-                    </SortablePane>
-                  )
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={visiblePanes.map(p => p.id)} strategy={verticalListSortingStrategy}>
+                <ResizablePaneGrid
+                  panes={maximized ? visiblePanes.filter(p => p.id === maximized) : visiblePanes}
+                  renderPane={(pane, dragHandleProps) => (
+                    <TerminalPane
+                      pane={pane}
+                      onClose={closePane}
+                      onUpdate={updatePane}
+                      isMaximized={maximized === pane.id}
+                      onToggleMaximize={toggleMaximize}
+                      onMinimize={minimizePane}
+                      onPopout={handlePopout}
+                      onBrowse={handleBrowse}
+                      terminalToken={terminalToken}
+                      workspaceCollaboration={activeWorkspace?.collaboration}
+                      dragHandleProps={dragHandleProps}
+                    />
+                  )}
+                />
+              </SortableContext>
+            </DndContext>
+
+            {/* Minimized panes dock */}
+            {minimizedPanes.length > 0 && (
+              <div className="flex items-center gap-1.5 px-2 py-1.5 border-t border-zinc-800 flex-shrink-0 overflow-x-auto bg-zinc-950">
+                {minimizedPanes.map(pane => (
+                  <button
+                    key={pane.id}
+                    onClick={() => restorePane(pane.id)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md border border-zinc-700 hover:border-zinc-500 bg-zinc-800/50 hover:bg-zinc-700/50 text-zinc-400 hover:text-white transition-colors flex-shrink-0"
+                    title={`Restore ${pane.title}`}
+                  >
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pane.color }} />
+                    <span className="truncate max-w-[100px]">{pane.title}</span>
+                    <Maximize2 className="w-2.5 h-2.5 text-zinc-500" />
+                  </button>
                 ))}
               </div>
-            </SortableContext>
-          </DndContext>
-        )}
-
-        {/* Minimized panes dock */}
-        {minimizedPanes.length > 0 && (
-          <div className="flex items-center gap-1.5 px-2 py-1.5 border-t border-zinc-800 flex-shrink-0 overflow-x-auto">
-            {minimizedPanes.map(pane => (
-              <button
-                key={pane.id}
-                onClick={() => restorePane(pane.id)}
-                className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md border border-zinc-700 hover:border-zinc-500 bg-zinc-800/50 hover:bg-zinc-700/50 text-zinc-400 hover:text-white transition-colors flex-shrink-0"
-                title={`Restore ${pane.title}`}
-              >
-                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: pane.color }} />
-                <span className="truncate max-w-[100px]">{pane.title}</span>
-                <Maximize2 className="w-2.5 h-2.5 text-zinc-500" />
-              </button>
-            ))}
+            )}
           </div>
         )}
 
