@@ -64,9 +64,9 @@ export async function GET(request: NextRequest) {
         try {
           const table = await cortex.store.getTable?.(layer) ?? null;
           const count = table ? await table.countRows() : 0;
-          lobes[layer] = { count, sizeBytes: dirSize(layerDir), label: layerLabels[layer] || layer };
+          lobes[layer] = { count, sizeBytes: dirSize(lancePath), label: layerLabels[layer] || layer };
         } catch {
-          lobes[layer] = { count: 0, sizeBytes: dirSize(layerDir), label: layer };
+          lobes[layer] = { count: 0, sizeBytes: dirSize(lancePath), label: layer };
         }
       }
 
