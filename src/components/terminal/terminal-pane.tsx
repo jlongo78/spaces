@@ -84,6 +84,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const [questMicStatus, setQuestMicStatus] = useState<'off' | 'listening' | 'transcribing'>('off');
   const questRecorderRef = useRef<MediaRecorder | null>(null);
   const [questKeyboardOpen, setQuestKeyboardOpen] = useState(false);
+  const questWheelThrottleRef = useRef(0);
   const [questImmersive, setQuestImmersive] = useState(false);
   const questImmersiveRef = useRef(false);
   const questWhisperCfgRef = useRef<any>(null);
@@ -1084,6 +1085,15 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         className="flex-1 relative bg-[#0a0a0a]"
         style={{ minHeight: isMaximized ? (isQuest ? 'calc(100vh - 180px)' : 'calc(100vh - 100px)') : '300px' }}
         onClick={isQuest ? (e) => { e.preventDefault(); } : undefined}
+        onWheel={isQuest ? (e) => {
+          // Quest joystick fires wheel events — translate to ↑/↓ arrow keys
+          e.preventDefault();
+          const now = Date.now();
+          if (Math.abs(e.deltaY) > 10 && now - questWheelThrottleRef.current > 200) {
+            questWheelThrottleRef.current = now;
+            sendKey(e.deltaY < 0 ? '\x1b[A' : '\x1b[B');
+          }
+        } : undefined}
       >
 
         {/* Drag overlay */}
