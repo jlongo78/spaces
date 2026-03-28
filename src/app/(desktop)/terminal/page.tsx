@@ -11,7 +11,7 @@ import { TerminalPane } from '@/components/terminal/terminal-pane';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import { ColorPicker } from '@/components/common/color-picker';
 import { DevDirectoryPicker } from '@/components/common/dev-directory-picker';
 import { NodeSelector } from '@/components/network/node-selector';
@@ -53,7 +53,7 @@ function ResizablePaneGrid({ panes, renderPane }: {
   }
 
   return (
-    <PanelGroup direction="vertical" className="flex-1 p-1">
+    <PanelGroup orientation="vertical" className="flex-1 p-1">
       {rows.map((row, rowIdx) => (
         <React.Fragment key={`row-${rowIdx}`}>
           {rowIdx > 0 && (
@@ -69,7 +69,7 @@ function ResizablePaneGrid({ panes, renderPane }: {
                 </SortablePane>
               </div>
             ) : (
-              <PanelGroup direction="horizontal" className="h-full">
+              <PanelGroup orientation="horizontal" className="h-full">
                 {row.map((pane, colIdx) => (
                   <React.Fragment key={pane.id}>
                     {colIdx > 0 && (

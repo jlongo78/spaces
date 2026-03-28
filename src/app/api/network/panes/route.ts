@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { randomUUID } from 'crypto';
 import { getPro } from '@/lib/pro';
 import { ensureInitialized } from '@/lib/db/init';
 import { getPanesByWorkspace, getActivePanes, createPane } from '@/lib/db/queries';
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
   await ensureInitialized();
   const body = await req.json();
   const pane = createPane({
+    id: body.id || randomUUID(),
     title: body.title || 'Terminal',
     color: body.color || '#6366f1',
     cwd: body.cwd || '~',

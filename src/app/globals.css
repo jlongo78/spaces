@@ -1,4 +1,7 @@
 @import "tailwindcss";
+@source not "../../**/*.{gif,png,jpg,jpeg,webp,avif,ico,svg,mp4,woff,woff2,ttf,eot,pdf}";
+@source not "../../certs/**";
+@source not "../../.spaces/**";
 
 @custom-variant dark (&:is(.dark *));
 

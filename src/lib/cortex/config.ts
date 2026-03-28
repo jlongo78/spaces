@@ -6,6 +6,8 @@ export interface CortexConfig {
   debug: boolean;
   anthropic_api_key?: string;
   openai_api_key?: string;
+  voyage_api_key?: string;
+  groq_api_key?: string;
   embedding: any;
   injection: any;
   ingestion: any;
