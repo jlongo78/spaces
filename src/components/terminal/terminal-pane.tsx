@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users, Mic, MicOff, Upload, AudioLines, Minus, GripVertical } from 'lucide-react';
+import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users, Mic, MicOff, Upload, AudioLines, Minus, GripVertical, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AGENT_TYPES } from '@/lib/agents';
 import { useTier } from '@/hooks/use-tier';
@@ -92,6 +92,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const immersiveSensitivityRef = useRef(35);
   const [immersivePause, setImmersivePause] = useState(2000);
   const immersivePauseRef = useRef(2000);
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
 
   useEffect(() => {
     const ua = navigator.userAgent || '';
@@ -1188,45 +1189,74 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             >
               <AudioLines className="w-4 h-4" />
             </button>
-            {/* Immersive controls — only visible when immersive is active */}
+            {/* Voice settings gear — opens popover with sensitivity + pause sliders */}
             {questImmersive && (
-              <>
-                <div className="flex flex-col items-center gap-0.5">
-                  <span className="text-[8px] text-zinc-500 font-normal leading-none">Sensitivity</span>
-                  <input
-                    type="range"
-                    min={10}
-                    max={120}
-                    value={immersiveSensitivity}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setImmersiveSensitivity(val);
-                      immersiveSensitivityRef.current = val;
-                    }}
-                    className="w-14 h-1.5 accent-green-500"
-                    title={`Sensitivity threshold: ${immersiveSensitivity}`}
-                  />
-                  <span className="text-[8px] text-zinc-500 font-normal font-mono leading-none">{immersiveSensitivity}</span>
-                </div>
-                <div className="flex flex-col items-center gap-0.5">
-                  <span className="text-[8px] text-zinc-500 font-normal leading-none">Pause</span>
-                  <input
-                    type="range"
-                    min={1000}
-                    max={5000}
-                    step={250}
-                    value={immersivePause}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setImmersivePause(val);
-                      immersivePauseRef.current = val;
-                    }}
-                    className="w-14 h-1.5 accent-green-500"
-                    title={`Silence before send: ${(immersivePause / 1000).toFixed(1)}s`}
-                  />
-                  <span className="text-[8px] text-zinc-500 font-normal font-mono leading-none">{(immersivePause / 1000).toFixed(1)}s</span>
-                </div>
-              </>
+              <div className="relative">
+                <button
+                  onClick={() => setShowVoiceSettings(!showVoiceSettings)}
+                  className={cn(
+                    'p-1.5 rounded border transition-all',
+                    showVoiceSettings
+                      ? 'bg-zinc-700 border-zinc-600 text-zinc-200'
+                      : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                  )}
+                  title="Voice settings"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                </button>
+                {showVoiceSettings && (
+                  <div className="absolute bottom-full right-0 mb-2 p-3 bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl z-50 min-w-[180px]">
+                    <div className="text-[10px] text-zinc-400 font-medium mb-2">Voice Settings</div>
+                    <div className="space-y-3">
+                      <div>
+                        <div className="flex justify-between text-[9px] text-zinc-500 mb-1">
+                          <span>Sensitivity</span>
+                          <span className="font-mono">{immersiveSensitivity}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={10}
+                          max={120}
+                          value={immersiveSensitivity}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setImmersiveSensitivity(val);
+                            immersiveSensitivityRef.current = val;
+                          }}
+                          className="w-full h-1.5 accent-green-500"
+                        />
+                        <div className="flex justify-between text-[8px] text-zinc-600">
+                          <span>Quiet</span>
+                          <span>Loud</span>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[9px] text-zinc-500 mb-1">
+                          <span>Pause before send</span>
+                          <span className="font-mono">{(immersivePause / 1000).toFixed(1)}s</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={1000}
+                          max={5000}
+                          step={250}
+                          value={immersivePause}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setImmersivePause(val);
+                            immersivePauseRef.current = val;
+                          }}
+                          className="w-full h-1.5 accent-green-500"
+                        />
+                        <div className="flex justify-between text-[8px] text-zinc-600">
+                          <span>Fast</span>
+                          <span>Patient</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
             <button
               onClick={() => {
