@@ -571,11 +571,13 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
         try { audioCtx.close(); } catch {}
         questRecorderRef.current = null;
 
-        if (!questImmersiveRef.current) { setQuestMicStatus('off'); return; }
+        if (!questImmersiveRef.current && !questDrainingRef.current) { setQuestMicStatus('off'); return; }
 
-        // No speech — restart quickly
+        // No speech — restart or clean up
         if (!hasSpeech || chunks.length === 0) {
-          setTimeout(startImmersiveCycle, 300);
+          questDrainingRef.current = false;
+          if (questImmersiveRef.current) setTimeout(startImmersiveCycle, 300);
+          else setQuestMicStatus('off');
           return;
         }
 
@@ -604,13 +606,14 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             const res = await fetch('/api/whisper', { method: 'POST', body: form });
             if (res.ok) text = (await res.json()).text || '';
           }
-          if (text.trim() && questImmersiveRef.current) {
+          if (text.trim() && (questImmersiveRef.current || questDrainingRef.current)) {
             // Auto-send: type text + Enter
             sendKey(text.trim() + '\r');
           }
         } catch {}
 
-        // Loop: restart listening if still immersive
+        // Loop: restart listening if still immersive, or clean up if draining
+        questDrainingRef.current = false;
         if (questImmersiveRef.current) {
           setTimeout(startImmersiveCycle, 800);
         } else {
@@ -663,16 +666,22 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
     }
   };
 
+  const questDrainingRef = useRef(false);
+
   const toggleQuestImmersive = () => {
     if (questImmersiveRef.current) {
-      // Exit immersive
+      // Exit immersive — but let current recording finish sending
       questImmersiveRef.current = false;
       setQuestImmersive(false);
-      setQuestMicStatus('off');
-      questWhisperCfgRef.current = null;
       if (questRecorderRef.current?.state === 'recording') {
+        // Flag as draining so onstop still sends but doesn't restart
+        questDrainingRef.current = true;
+        setQuestMicStatus('transcribing');
         try { questRecorderRef.current.stop(); } catch {}
+      } else {
+        setQuestMicStatus('off');
       }
+      questWhisperCfgRef.current = null;
     } else {
       // Enter immersive
       questImmersiveRef.current = true;
