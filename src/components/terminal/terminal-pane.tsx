@@ -90,6 +90,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const questWhisperCfgRef = useRef<any>(null);
   const [immersiveSensitivity, setImmersiveSensitivity] = useState(35);
   const immersiveSensitivityRef = useRef(35);
+  const [immersivePause, setImmersivePause] = useState(2000);
+  const immersivePauseRef = useRef(2000);
 
   useEffect(() => {
     const ua = navigator.userAgent || '';
@@ -619,7 +621,8 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
           speechFrames = 0;
         }
 
-        if (hasSpeech && Date.now() - lastSpeechTime > 1500) {
+        // Configurable silence timeout for immersive mode
+        if (hasSpeech && Date.now() - lastSpeechTime > immersivePauseRef.current) {
           questRecorderRef.current.stop();
           return;
         }
@@ -1185,25 +1188,45 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             >
               <AudioLines className="w-4 h-4" />
             </button>
-            {/* Sensitivity slider — only visible when immersive is active */}
+            {/* Immersive controls — only visible when immersive is active */}
             {questImmersive && (
-              <div className="flex flex-col items-center gap-0.5">
-                <span className="text-[8px] text-zinc-500 font-normal leading-none">Sensitivity</span>
-                <input
-                  type="range"
-                  min={10}
-                  max={120}
-                  value={immersiveSensitivity}
-                  onChange={(e) => {
-                    const val = Number(e.target.value);
-                    setImmersiveSensitivity(val);
-                    immersiveSensitivityRef.current = val;
-                  }}
-                  className="w-14 h-1.5 accent-green-500"
-                  title={`Sensitivity threshold: ${immersiveSensitivity}`}
-                />
-                <span className="text-[8px] text-zinc-500 font-normal font-mono leading-none">{immersiveSensitivity}</span>
-              </div>
+              <>
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="text-[8px] text-zinc-500 font-normal leading-none">Sensitivity</span>
+                  <input
+                    type="range"
+                    min={10}
+                    max={120}
+                    value={immersiveSensitivity}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setImmersiveSensitivity(val);
+                      immersiveSensitivityRef.current = val;
+                    }}
+                    className="w-14 h-1.5 accent-green-500"
+                    title={`Sensitivity threshold: ${immersiveSensitivity}`}
+                  />
+                  <span className="text-[8px] text-zinc-500 font-normal font-mono leading-none">{immersiveSensitivity}</span>
+                </div>
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="text-[8px] text-zinc-500 font-normal leading-none">Pause</span>
+                  <input
+                    type="range"
+                    min={1000}
+                    max={5000}
+                    step={250}
+                    value={immersivePause}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setImmersivePause(val);
+                      immersivePauseRef.current = val;
+                    }}
+                    className="w-14 h-1.5 accent-green-500"
+                    title={`Silence before send: ${(immersivePause / 1000).toFixed(1)}s`}
+                  />
+                  <span className="text-[8px] text-zinc-500 font-normal font-mono leading-none">{(immersivePause / 1000).toFixed(1)}s</span>
+                </div>
+              </>
             )}
             <button
               onClick={() => {
