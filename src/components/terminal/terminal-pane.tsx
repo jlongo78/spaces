@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users, Mic, MicOff, Upload, AudioLines, Minus, GripVertical, Settings } from 'lucide-react';
+import { X, Pencil, Check, RotateCcw, Maximize2, Minimize2, ExternalLink, Globe, Users, Mic, MicOff, Upload, AudioLines, Minus, GripVertical, Settings, GitCompareArrows } from 'lucide-react';
+import { PaneDiffPanel } from './pane-diff-panel';
 import { cn } from '@/lib/utils';
 import { AGENT_TYPES } from '@/lib/agents';
 import { useTier } from '@/hooks/use-tier';
@@ -93,11 +94,27 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const [immersivePause, setImmersivePause] = useState(2000);
   const immersivePauseRef = useRef(2000);
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
+  const [diffCount, setDiffCount] = useState<number | null>(null);
 
   useEffect(() => {
     const ua = navigator.userAgent || '';
     setIsQuest(/Quest|Oculus|Pacific/i.test(ua));
   }, []);
+
+  // Poll for diff file count badge (only if pane has a git baseline)
+  useEffect(() => {
+    if (!pane.diffBaselineSha) return;
+    const poll = () => {
+      fetch(`/api/panes/${pane.id}/diff?countOnly=true`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.fileCount !== undefined) setDiffCount(d.fileCount); })
+        .catch(() => {});
+    };
+    poll();
+    const id = setInterval(poll, 30000);
+    return () => clearInterval(id);
+  }, [pane.id, pane.diffBaselineSha]);
 
   // Use refs for props so the connect function never needs to re-create.
   // This prevents all terminals from reconnecting when parent state changes.
@@ -1054,6 +1071,21 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
           </button>
         )}
 
+        {pane.diffBaselineSha && (
+          <button
+            onClick={() => setShowDiff(!showDiff)}
+            className={cn('relative text-zinc-300 hover:text-white', showDiff && 'text-indigo-400')}
+            title={showDiff ? 'Hide diff' : 'Review changes'}
+          >
+            <GitCompareArrows className="w-3 h-3" />
+            {diffCount != null && diffCount > 0 && !showDiff && (
+              <span className="absolute -top-1.5 -right-1.5 text-[8px] bg-indigo-500 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
+                {diffCount > 9 ? '9+' : diffCount}
+              </span>
+            )}
+          </button>
+        )}
+
         {onMinimize && !isPopout && (
           <button
             onClick={() => onMinimize(pane.id)}
@@ -1117,6 +1149,9 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
           </div>
         )}
       </div>
+
+      {/* Diff panel — shown below terminal when toggled */}
+      {showDiff && <PaneDiffPanel paneId={pane.id} onClose={() => setShowDiff(false)} />}
 
       {/* Quest: input field + virtual keys — prevents xterm hidden textarea layout issues */}
       {isQuest && (

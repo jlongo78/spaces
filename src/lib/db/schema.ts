@@ -148,6 +148,9 @@ function initSchema(db: Database.Database) {
   addCol('workspaces', 'collaboration', 'INTEGER DEFAULT 0');
   addCol('panes', 'is_collaborating', 'INTEGER DEFAULT 0');
 
+  // Diff review baseline
+  addCol('panes', 'diff_baseline_sha', 'TEXT');
+
   // Index for filtering by agent type
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_agent_type ON sessions(agent_type)'); } catch { /* */ }
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_projects_agent_type ON projects(agent_type)'); } catch { /* */ }

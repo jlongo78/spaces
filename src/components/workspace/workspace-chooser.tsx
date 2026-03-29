@@ -4,8 +4,9 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import {
   Plus, Loader2, Terminal, Search, ChevronDown, ChevronRight,
   Layers, Home, Globe, AlertCircle, LayoutGrid, List, Monitor,
-  Users, Zap, Clock, Filter, X, Orbit, Settings2,
+  Users, Zap, Clock, Filter, X, Orbit, Settings2, Wand2,
 } from 'lucide-react';
+import { ProjectWizard } from '@/components/wizard/project-wizard';
 import dynamic from 'next/dynamic';
 import type { Workspace } from '@/types/claude';
 import { api } from '@/lib/api';
@@ -92,6 +93,7 @@ export function WorkspaceChooser({
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [filterSource, setFilterSource] = useState<FilterSource>('all');
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [showWizard, setShowWizard] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const [universeError, setUniverseError] = useState(false);
   const [universeToast, setUniverseToast] = useState<string | null>(null);
@@ -319,6 +321,13 @@ export function WorkspaceChooser({
                   <Plus className="w-3.5 h-3.5" />
                   New Workspace
                 </button>
+                <button
+                  onClick={() => setShowWizard(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-xs border border-dashed border-indigo-700/50 text-indigo-400/70 rounded-lg hover:text-indigo-300 hover:border-indigo-500/50 transition-colors"
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                  Plan a Project
+                </button>
               </div>
 
               {/* ── Network Spaces ────────────────────────────── */}
@@ -433,6 +442,15 @@ export function WorkspaceChooser({
           {universeToast}
         </div>
       )}
+
+      <ProjectWizard
+        isOpen={showWizard}
+        onClose={() => setShowWizard(false)}
+        onLaunch={(wsId) => {
+          setShowWizard(false);
+          onSwitchWorkspace(wsId);
+        }}
+      />
     </div>
   );
 }

@@ -492,6 +492,7 @@ export interface PaneData {
   winHeight: number | null;
   nodeId: string | null;
   isCollaborating: boolean;
+  diffBaselineSha: string | null;
 }
 
 const PANE_SELECT = `
@@ -502,7 +503,8 @@ const PANE_SELECT = `
   is_popout as isPopout, win_x as winX, win_y as winY,
   win_width as winWidth, win_height as winHeight,
   node_id as nodeId,
-  is_collaborating as isCollaborating
+  is_collaborating as isCollaborating,
+  diff_baseline_sha as diffBaselineSha
 `;
 
 function mapPane(row: any): PaneData {
@@ -552,10 +554,17 @@ export function createPane(pane: {
     wsId = activeWs?.id;
   }
 
+  // Capture git HEAD as diff baseline if cwd is a git repo
+  let baselineSha: string | null = null;
+  try {
+    const { execFileSync } = require('child_process');
+    baselineSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: pane.cwd, encoding: 'utf-8', timeout: 3000 }).trim();
+  } catch { /* not a git repo or git not available */ }
+
   db.prepare(`
-    INSERT INTO panes (id, title, color, cwd, claude_session_id, agent_type, custom_command, sort_order, workspace_id, node_id, is_collaborating)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(pane.id, pane.title, pane.color, pane.cwd, pane.claudeSessionId || null, pane.agentType || 'shell', pane.customCommand || null, order, wsId || null, pane.nodeId || null, pane.isCollaborating ? 1 : 0);
+    INSERT INTO panes (id, title, color, cwd, claude_session_id, agent_type, custom_command, sort_order, workspace_id, node_id, is_collaborating, diff_baseline_sha)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(pane.id, pane.title, pane.color, pane.cwd, pane.claudeSessionId || null, pane.agentType || 'shell', pane.customCommand || null, order, wsId || null, pane.nodeId || null, pane.isCollaborating ? 1 : 0, baselineSha);
 
   return getPaneById(pane.id)!;
 }
@@ -583,6 +592,7 @@ export function updatePane(id: string, data: {
   winWidth?: number | null;
   winHeight?: number | null;
   isCollaborating?: boolean;
+  diffBaselineSha?: string | null;
 }) {
   const db = getDb();
   const sets: string[] = [];
@@ -605,6 +615,7 @@ export function updatePane(id: string, data: {
   if (data.winHeight !== undefined) { sets.push('win_height = ?'); vals.push(data.winHeight); }
   if ((data as any).nodeId !== undefined) { sets.push('node_id = ?'); vals.push((data as any).nodeId); }
   if (data.isCollaborating !== undefined) { sets.push('is_collaborating = ?'); vals.push(data.isCollaborating ? 1 : 0); }
+  if (data.diffBaselineSha !== undefined) { sets.push('diff_baseline_sha = ?'); vals.push(data.diffBaselineSha); }
 
   if (sets.length === 0) return;
   vals.push(id);
