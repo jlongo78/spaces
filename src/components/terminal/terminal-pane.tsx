@@ -897,7 +897,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   return (
     <div className={cn(
       'flex flex-col border rounded-lg overflow-hidden',
-      isMaximized ? 'absolute inset-0 z-40 !rounded-none' : '',
+      isMaximized ? 'h-full !rounded-none' : 'h-full',
       'border-zinc-700'
     )} style={{ borderColor: `${pane.color}60` }}>
       {/* Title bar */}
@@ -1083,7 +1083,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       <div
         ref={termRef}
         className="flex-1 relative bg-[#0a0a0a]"
-        style={{ minHeight: isMaximized ? (isQuest ? 'calc(100vh - 180px)' : 'calc(100vh - 100px)') : '300px' }}
+        style={{ minHeight: 0, flex: 1 }}
         onClick={isQuest ? (e) => { e.preventDefault(); } : undefined}
         onWheel={isQuest ? (e) => {
           // Quest joystick fires wheel events — translate to ↑/↓ arrow keys
