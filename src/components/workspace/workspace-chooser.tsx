@@ -313,7 +313,7 @@ export function WorkspaceChooser({
               )}
 
               {/* ── Create new ────────────────────────────────── */}
-              <div className="flex justify-center my-4">
+              <div className="flex justify-center gap-3 my-4">
                 <button
                   onClick={onCreateWorkspace}
                   className="flex items-center gap-2 px-4 py-2 text-xs border border-dashed border-zinc-700 text-zinc-500 rounded-lg hover:text-white hover:border-zinc-500 transition-colors"
@@ -323,7 +323,7 @@ export function WorkspaceChooser({
                 </button>
                 <button
                   onClick={() => setShowWizard(true)}
-                  className="flex items-center gap-2 px-4 py-2 text-xs border border-dashed border-indigo-700/50 text-indigo-400/70 rounded-lg hover:text-indigo-300 hover:border-indigo-500/50 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-xs border border-dashed border-indigo-500/50 text-indigo-400 rounded-lg hover:text-indigo-300 hover:border-indigo-400 hover:bg-indigo-500/10 transition-colors"
                 >
                   <Wand2 className="w-3.5 h-3.5" />
                   Plan a Project
