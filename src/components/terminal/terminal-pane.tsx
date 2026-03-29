@@ -1144,12 +1144,12 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
               }}
               onBlur={() => setQuestKeyboardOpen(false)}
               placeholder={
-                questImmersive && questMicStatus === 'listening' ? '🎙️ Immersive — speak now...' :
-                questImmersive && questMicStatus === 'transcribing' ? '⏳ Sending...' :
-                questImmersive ? '🎙️ Immersive mode active' :
-                questMicStatus === 'listening' ? '🎤 Listening...' :
-                questMicStatus === 'transcribing' ? '⏳ Transcribing...' :
-                questKeyboardOpen ? 'Type here...' : 'Use 🎤 or 🎙️ or tap ⌨ to type'
+                questImmersive && questMicStatus === 'listening' ? 'Speak now...' :
+                questImmersive && questMicStatus === 'transcribing' ? 'Sending...' :
+                questImmersive ? 'Immersive mode active' :
+                questMicStatus === 'listening' ? 'Listening...' :
+                questMicStatus === 'transcribing' ? 'Transcribing...' :
+                questKeyboardOpen ? 'Type here...' : 'Tap mic, keyboard, or type'
               }
               className={cn(
                 'flex-1 text-zinc-200 text-sm px-3 py-2 rounded border focus:outline-none font-mono',
