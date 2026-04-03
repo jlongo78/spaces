@@ -5,7 +5,7 @@ export type KnowledgeType = typeof KNOWLEDGE_TYPES[number];
 export const LAYERS = ['personal', 'workspace', 'team'] as const;
 export type Layer = typeof LAYERS[number];
 
-export type AgentType = 'claude' | 'codex' | 'gemini' | 'aider';
+export type AgentType = 'claude' | 'codex' | 'gemini' | 'aider' | 'forge';
 
 export function isValidKnowledgeType(t: string): t is KnowledgeType {
   return KNOWLEDGE_TYPES.includes(t as any);

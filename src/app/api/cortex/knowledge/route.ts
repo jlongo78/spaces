@@ -24,7 +24,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'text and type are required' }, { status: 400 });
     }
     if (!layer && !scope) {
-      return NextResponse.json({ error: 'layer or scope is required' }, { status: 400 });
+      if (workspace_id) {
+        layer = 'workspace';
+      } else {
+        return NextResponse.json({ error: 'layer or scope is required' }, { status: 400 });
+      }
     }
     if (!isValidKnowledgeType(type)) {
       return NextResponse.json({ error: `Invalid type: ${type}` }, { status: 400 });

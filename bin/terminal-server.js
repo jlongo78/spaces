@@ -478,10 +478,11 @@ const AGENTS = {
   codex:  { command: 'codex',  resumeFlag: 'resume',   resumeStyle: 'subcommand' },
   gemini: { command: 'gemini', resumeFlag: '--resume', resumeStyle: 'flag' },
   aider:  { command: 'aider',  resumeFlag: '',         resumeStyle: '' },
+  forge:  { command: 'forge',  resumeFlag: '--cid',    resumeStyle: 'flag' },
   custom: { command: '',       resumeFlag: '',         resumeStyle: '' },
 };
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const SESSION_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9\-_.]*$/;
 
 // ─── Remove Cortex hooks from Claude Code config ─────────
 function removeCortexHookConfig(cwd) {
@@ -540,15 +541,18 @@ function writeCortexHookConfig(cwd, paneId) {
       try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')); } catch {}
     }
 
-    // Resolve hook paths from @spaces/cortex addon or legacy bin/
-    let ragHook, learnHook;
-    try {
-      const cortexDir = path.dirname(require.resolve('@spaces/cortex'));
-      ragHook = path.join(cortexDir, 'hooks', 'cortex-hook.js');
-      learnHook = path.join(cortexDir, 'hooks', 'cortex-learn-hook.js');
-    } catch {
-      ragHook = path.resolve(__dirname, 'cortex-hook.js');
-      learnHook = path.resolve(__dirname, 'cortex-learn-hook.js');
+    // Resolve hook paths from workspace bin/ first, then fall back to managed package
+    let ragHook = path.resolve(__dirname, 'cortex-hook.js');
+    let learnHook = path.resolve(__dirname, 'cortex-learn-hook.js');
+
+    if (!fs.existsSync(ragHook) || !fs.existsSync(learnHook)) {
+      try {
+        const cortexDir = path.dirname(require.resolve('@spaces/cortex'));
+        if (!fs.existsSync(ragHook)) ragHook = path.join(cortexDir, 'hooks', 'cortex-hook.js');
+        if (!fs.existsSync(learnHook)) learnHook = path.join(cortexDir, 'hooks', 'cortex-learn-hook.js');
+      } catch {
+        // Fallback to __dirname (already set above)
+      }
     }
 
     // Merge — don't clobber existing hooks for other events
@@ -564,8 +568,8 @@ function writeCortexHookConfig(cwd, paneId) {
         hooks: [
           {
             type: 'command',
-            command: `${hookEnv} node "${ragHook}"`,
-            timeout: 5,
+            command: `node "${ragHook}"`,
+            timeout: 15,
           },
         ],
       },
@@ -577,7 +581,7 @@ function writeCortexHookConfig(cwd, paneId) {
         hooks: [
           {
             type: 'command',
-            command: `${hookEnv} node "${learnHook}"`,
+            command: `node "${learnHook}"`,
             timeout: 10,
           },
         ],
@@ -623,6 +627,276 @@ function writeCortexHookConfig(cwd, paneId) {
   }
 }
 
+// ─── Remove Cortex config from Gemini CLI ────────────────
+function removeGeminiCortexConfig(cwd) {
+  try {
+    const settingsPath = path.join(cwd, '.gemini', 'settings.json');
+    if (!fs.existsSync(settingsPath)) return;
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    let changed = false;
+
+    // Remove cortex hooks from BeforeAgent and SessionEnd
+    if (settings.hooks?.BeforeAgent) {
+      settings.hooks.BeforeAgent = settings.hooks.BeforeAgent.filter(
+        (g) => !g.hooks?.some((h) => h.command?.includes('cortex-hook'))
+      );
+      if (settings.hooks.BeforeAgent.length === 0) delete settings.hooks.BeforeAgent;
+      changed = true;
+    }
+    if (settings.hooks?.SessionEnd) {
+      settings.hooks.SessionEnd = settings.hooks.SessionEnd.filter(
+        (g) => !g.hooks?.some((h) => h.command?.includes('cortex-learn-hook'))
+      );
+      if (settings.hooks.SessionEnd.length === 0) delete settings.hooks.SessionEnd;
+      changed = true;
+    }
+
+    if (settings.mcpServers?.cortex) {
+      delete settings.mcpServers.cortex;
+      changed = true;
+    }
+
+    if (changed) {
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+      console.log(`[Cortex] Removed hooks and MCP from ${settingsPath}`);
+    }
+
+    const envFile = path.join(cwd, '.gemini', 'spaces-env.json');
+    if (fs.existsSync(envFile)) fs.unlinkSync(envFile);
+  } catch (err) {
+    console.error(`[Cortex] Failed to remove Gemini config:`, err.message);
+  }
+}
+
+// ─── Cortex Gemini CLI config ────────────────────────────
+// Write BeforeAgent hook (Gemini's UserPromptSubmit equivalent)
+// + SessionEnd hook (learn) + Cortex MCP server into .gemini/settings.json.
+// The same cortex-hook.js works — Gemini ignores the extra hookEventName field.
+function writeGeminiCortexConfig(cwd) {
+  try {
+    const geminiDir = path.join(cwd, '.gemini');
+    if (!fs.existsSync(geminiDir)) fs.mkdirSync(geminiDir, { recursive: true });
+
+    const settingsPath = path.join(geminiDir, 'settings.json');
+    let settings = {};
+    if (fs.existsSync(settingsPath)) {
+      try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')); } catch {}
+    }
+
+    // Resolve hook paths from workspace bin/ first, then fall back to managed package
+    let ragHook = path.resolve(__dirname, 'cortex-hook.js');
+    let learnHook = path.resolve(__dirname, 'cortex-learn-hook.js');
+
+    if (!fs.existsSync(ragHook) || !fs.existsSync(learnHook)) {
+      try {
+        const cortexDir = path.dirname(require.resolve('@spaces/cortex'));
+        if (!fs.existsSync(ragHook)) ragHook = path.join(cortexDir, 'hooks', 'cortex-hook.js');
+        if (!fs.existsSync(learnHook)) learnHook = path.join(cortexDir, 'hooks', 'cortex-learn-hook.js');
+      } catch {
+        // Fallback to __dirname (already set above)
+      }
+    }
+
+    const isWin = process.platform === 'win32';
+    const secret = process.env.SPACES_SESSION_SECRET || '';
+    const hookEnv = isWin
+      ? `set SPACES_PORT=${API_PORT} && set SPACES_SESSION_SECRET=${secret} &&`
+      : `SPACES_PORT=${API_PORT} SPACES_SESSION_SECRET="${secret}"`;
+
+    if (!settings.hooks) settings.hooks = {};
+
+    // BeforeAgent: fires after user submits prompt, before Gemini plans — injects RAG context
+    settings.hooks.BeforeAgent = [
+      {
+        matcher: '*',
+        hooks: [
+          {
+            type: 'command',
+            command: `node "${ragHook}"`,
+            timeout: 15000,  // Gemini uses milliseconds
+          },
+        ],
+      },
+    ];
+
+    // AfterAgent: fires once per turn after the agent generates its response — learn from the turn
+    settings.hooks.AfterAgent = [
+      {
+        hooks: [
+          {
+            type: 'command',
+            command: `node "${learnHook}"`,
+            timeout: 10000,
+          },
+        ],
+      },
+    ];
+
+    // SessionEnd: fires when session ends — final ingestion safety net
+    settings.hooks.SessionEnd = [
+      {
+        hooks: [
+          {
+            type: 'command',
+            command: `node "${learnHook}"`,
+            timeout: 10000,
+          },
+        ],
+      },
+    ];
+
+    // Register Cortex MCP server (for on-demand tool access)
+    const mcpServer = path.resolve(__dirname, 'cortex-mcp.js');
+    if (!settings.mcpServers) settings.mcpServers = {};
+    settings.mcpServers.cortex = {
+      command: 'node',
+      args: [mcpServer],
+      env: {
+        SPACES_URL: `http://localhost:${API_PORT}`,
+        SPACES_INTERNAL_TOKEN: (process.env.SPACES_SESSION_SECRET || '').slice(0, 16),
+      },
+    };
+
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+    console.log(`[Cortex] Wrote Gemini CLI hooks (BeforeAgent + SessionEnd) + MCP to ${settingsPath}`);
+  } catch (err) {
+    console.error(`[Cortex] Failed to write Gemini config:`, err.message);
+  }
+}
+
+// ─── Remove Cortex config from Codex CLI ─────────────────
+function removeCodexCortexConfig(cwd) {
+  try {
+    // Remove hooks from hooks.json (Codex stores hooks separately)
+    const hooksPath = path.join(cwd, '.codex', 'hooks.json');
+    if (fs.existsSync(hooksPath)) {
+      const hooksConfig = JSON.parse(fs.readFileSync(hooksPath, 'utf-8'));
+      let changed = false;
+      if (hooksConfig.hooks?.UserPromptSubmit) {
+        hooksConfig.hooks.UserPromptSubmit = hooksConfig.hooks.UserPromptSubmit.filter(
+          (g) => !g.hooks?.some((h) => h.command?.includes('cortex-hook'))
+        );
+        if (hooksConfig.hooks.UserPromptSubmit.length === 0) delete hooksConfig.hooks.UserPromptSubmit;
+        changed = true;
+      }
+      if (hooksConfig.hooks?.Stop) {
+        hooksConfig.hooks.Stop = hooksConfig.hooks.Stop.filter(
+          (g) => !g.hooks?.some((h) => h.command?.includes('cortex-learn-hook'))
+        );
+        if (hooksConfig.hooks.Stop.length === 0) delete hooksConfig.hooks.Stop;
+        changed = true;
+      }
+      if (changed) {
+        fs.writeFileSync(hooksPath, JSON.stringify(hooksConfig, null, 2), 'utf-8');
+      }
+    }
+
+    // Remove MCP from config.json
+    const configPath = path.join(cwd, '.codex', 'config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (config.mcpServers?.cortex) {
+        delete config.mcpServers.cortex;
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+      }
+    }
+
+    const envFile = path.join(cwd, '.codex', 'spaces-env.json');
+    if (fs.existsSync(envFile)) fs.unlinkSync(envFile);
+
+    console.log(`[Cortex] Removed Codex CLI hooks and MCP config`);
+  } catch (err) {
+    console.error(`[Cortex] Failed to remove Codex config:`, err.message);
+  }
+}
+
+// ─── Cortex Codex CLI config ─────────────────────────────
+// Write UserPromptSubmit + Stop hooks into .codex/hooks.json (Codex uses
+// the SAME event names and I/O format as Claude Code — the cortex-hook.js
+// output is directly compatible).  MCP server goes in .codex/config.json.
+// NOTE: Codex hooks are not yet supported on Windows — the MCP server
+// and .spaces/cortex-context.md serve as fallbacks there.
+function writeCodexCortexConfig(cwd) {
+  try {
+    const codexDir = path.join(cwd, '.codex');
+    if (!fs.existsSync(codexDir)) fs.mkdirSync(codexDir, { recursive: true });
+
+    // Resolve hook paths from workspace bin/ first, then fall back to managed package
+    let ragHook = path.resolve(__dirname, 'cortex-hook.js');
+    let learnHook = path.resolve(__dirname, 'cortex-learn-hook.js');
+
+    if (!fs.existsSync(ragHook) || !fs.existsSync(learnHook)) {
+      try {
+        const cortexDir = path.dirname(require.resolve('@spaces/cortex'));
+        if (!fs.existsSync(ragHook)) ragHook = path.join(cortexDir, 'hooks', 'cortex-hook.js');
+        if (!fs.existsSync(learnHook)) learnHook = path.join(cortexDir, 'hooks', 'cortex-learn-hook.js');
+      } catch {
+        // Fallback to __dirname (already set above)
+      }
+    }
+
+    const hookEnv = `SPACES_PORT=${API_PORT} SPACES_SESSION_SECRET="${process.env.SPACES_SESSION_SECRET || ''}"`;
+
+    // ── Hooks (separate hooks.json — Codex convention) ──
+    const hooksPath = path.join(codexDir, 'hooks.json');
+    let hooksConfig = {};
+    if (fs.existsSync(hooksPath)) {
+      try { hooksConfig = JSON.parse(fs.readFileSync(hooksPath, 'utf-8')); } catch {}
+    }
+    if (!hooksConfig.hooks) hooksConfig.hooks = {};
+
+    // UserPromptSubmit — same event name as Claude Code
+    hooksConfig.hooks.UserPromptSubmit = [
+      {
+        hooks: [
+          {
+            type: 'command',
+            command: `node "${ragHook}"`,
+            timeout: 5,  // Codex uses seconds
+          },
+        ],
+      },
+    ];
+
+    // Stop — same event name as Claude Code
+    hooksConfig.hooks.Stop = [
+      {
+        hooks: [
+          {
+            type: 'command',
+            command: `node "${learnHook}"`,
+            timeout: 10,
+          },
+        ],
+      },
+    ];
+
+    fs.writeFileSync(hooksPath, JSON.stringify(hooksConfig, null, 2), 'utf-8');
+
+    // ── MCP server (config.json) ──
+    const configPath = path.join(codexDir, 'config.json');
+    let config = {};
+    if (fs.existsSync(configPath)) {
+      try { config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch {}
+    }
+    const mcpServer = path.resolve(__dirname, 'cortex-mcp.js');
+    if (!config.mcpServers) config.mcpServers = {};
+    config.mcpServers.cortex = {
+      command: 'node',
+      args: [mcpServer],
+      env: {
+        SPACES_URL: `http://localhost:${API_PORT}`,
+        SPACES_INTERNAL_TOKEN: (process.env.SPACES_SESSION_SECRET || '').slice(0, 16),
+      },
+    };
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+
+    console.log(`[Cortex] Wrote Codex CLI hooks (UserPromptSubmit + Stop) + MCP to ${codexDir}`);
+  } catch (err) {
+    console.error(`[Cortex] Failed to write Codex config:`, err.message);
+  }
+}
+
 // ─── Cortex context injection ────────────────────────────
 // Fetch relevant knowledge from Cortex API and write a context file
 // in the workspace before the agent launches.
@@ -648,7 +922,7 @@ async function injectCortexContext(cwd, workspaceId, ws) {
     // Use internal auth bypass (x-spaces-internal header) to skip session middleware
     const internalToken = (process.env.SPACES_SESSION_SECRET || '').slice(0, 16);
     const options = {
-      timeout: 5000,
+      timeout: 15000,
       headers: {
         'x-spaces-internal': internalToken,
       },
@@ -861,7 +1135,7 @@ function handleConnection(wss, ws, req) {
   const cwd = url.searchParams.get('cwd') || process.env.HOME || process.env.USERPROFILE || 'C:\\';
   const agentType = url.searchParams.get('agentType') || 'shell';
   const rawAgentSession = url.searchParams.get('agentSession') || '';
-  const agentSession = (rawAgentSession === 'new' || UUID_RE.test(rawAgentSession)) ? rawAgentSession : '';
+  const agentSession = (rawAgentSession === 'new' || SESSION_ID_RE.test(rawAgentSession)) ? rawAgentSession : '';
   const rawCustomCommand = url.searchParams.get('customCommand') || '';
   // Sanitize: reject shell metacharacters that enable injection (;, |, &, $, `, etc.)
   const customCommand = /[;&|`$(){}]/.test(rawCustomCommand) ? '' : rawCustomCommand;
@@ -1114,8 +1388,8 @@ function handleConnection(wss, ws, req) {
 
   console.log(`[Spawn] user=${username} shell=${shell} args=${JSON.stringify(args)} cwd=${safeCwd} agentType=${agentType}`);
 
-  // Write Cortex RAG hook for Claude Code before spawning (only if Cortex is enabled)
-  if (agentType === 'claude' && (SPACES_TIER === 'team' || SPACES_TIER === 'federation')) {
+  // Write Cortex config before spawning (hooks for Claude, MCP for Gemini/Codex)
+  if (['claude', 'gemini', 'codex'].includes(agentType) && (SPACES_TIER === 'team' || SPACES_TIER === 'federation')) {
     try {
       const userHome = getUserHome(username);
       const configPath = path.join(userHome, '.spaces', 'config.json');
@@ -1125,9 +1399,10 @@ function handleConnection(wss, ws, req) {
         cortexEnabled = cfg.cortex?.enabled === true;
       }
       if (!cortexEnabled) {
-        removeCortexHookConfig(safeCwd);
+        if (agentType === 'claude') removeCortexHookConfig(safeCwd);
+        else if (agentType === 'gemini') removeGeminiCortexConfig(safeCwd);
+        else if (agentType === 'codex') removeCodexCortexConfig(safeCwd);
       } else {
-        writeCortexHookConfig(safeCwd, paneId);
         // Resolve workspace ID: from collab config, or look up from pane DB
         let wsId = env.SPACES_WORKSPACE_ID || null;
         if (!wsId) {
@@ -1140,14 +1415,36 @@ function handleConnection(wss, ws, req) {
           } catch { /* non-fatal */ }
         }
         if (wsId) env.SPACES_WORKSPACE_ID = wsId;
-        // Write workspace ID for hooks to read (they can't inherit PTY env)
-        try {
-          const envFile = path.join(safeCwd, '.claude', 'spaces-env.json');
-          fs.writeFileSync(envFile, JSON.stringify({
-            workspaceId: wsId,
-            port: API_PORT,
-          }), 'utf-8');
-        } catch { /* non-fatal */ }
+
+        if (agentType === 'claude') {
+          writeCortexHookConfig(safeCwd, paneId);
+          // Write workspace ID for hooks to read (they can't inherit PTY env)
+          try {
+            const envFile = path.join(safeCwd, '.claude', 'spaces-env.json');
+            fs.writeFileSync(envFile, JSON.stringify({
+              workspaceId: wsId,
+              port: API_PORT,
+            }), 'utf-8');
+          } catch { /* non-fatal */ }
+        } else if (agentType === 'gemini') {
+          writeGeminiCortexConfig(safeCwd);
+          try {
+            const envFile = path.join(safeCwd, '.gemini', 'spaces-env.json');
+            fs.writeFileSync(envFile, JSON.stringify({
+              workspaceId: wsId,
+              port: API_PORT,
+            }), 'utf-8');
+          } catch { /* non-fatal */ }
+        } else if (agentType === 'codex') {
+          writeCodexCortexConfig(safeCwd);
+          try {
+            const envFile = path.join(safeCwd, '.codex', 'spaces-env.json');
+            fs.writeFileSync(envFile, JSON.stringify({
+              workspaceId: wsId,
+              port: API_PORT,
+            }), 'utf-8');
+          } catch { /* non-fatal */ }
+        }
       }
     } catch (e) {
       console.error('[Cortex] Config check failed (non-fatal):', e.message);
@@ -1344,12 +1641,13 @@ function handleConnection(wss, ws, req) {
   // Confirm actual collaboration state so browser syncs with backend
   ws.send(JSON.stringify({ type: 'collab-updated', isCollaborating }));
 
-  // ─── Session ID detection for Claude sessions ────────────
-  // Always run detection for Claude panes — even when resuming, because
-  // the resume may fail (stale/expired session) and Claude will start fresh,
-  // creating a new session ID that we need to capture.
+  // ─── Session ID detection ────────────────────────────────
   if (agentType === 'claude') {
     detectNewClaudeSession(paneId, cwd, ws, session, username);
+  } else if (agentType === 'gemini') {
+    detectNewGeminiSession(paneId, cwd, ws, session, username);
+  } else if (agentType === 'forge') {
+    detectNewForgeSession(paneId, cwd, ws, session, username);
   }
 }
 
@@ -1804,4 +2102,142 @@ if (require.main === module) {
   console.log(`Terminal WebSocket server running on ws://localhost:${PORT}`);
 }
 
+function detectNewGeminiSession(paneId, cwd, ws, session, username) {
+  const homeDir = getUserHome(username);
+  const geminiDir = path.join(homeDir, '.gemini');
+  const registryPath = path.join(geminiDir, 'projects.json');
+  const tmpDir = path.join(geminiDir, 'tmp');
+
+  // Find project slug from CWD
+  let slug = null;
+  try {
+    if (fs.existsSync(registryPath)) {
+      const registry = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
+      const isWin = process.platform === 'win32';
+      const resolvedCwd = path.resolve(cwd);
+      
+      for (const [p, entry] of Object.entries(registry)) {
+        const resolvedP = path.resolve(p);
+        if (isWin) {
+          if (resolvedP.toLowerCase() === resolvedCwd.toLowerCase()) {
+            slug = entry.id || entry;
+            break;
+          }
+        } else {
+          if (resolvedP === resolvedCwd) {
+            slug = entry.id || entry;
+            break;
+          }
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  if (!slug) {
+    console.log(`[Session Detect] Gemini: No project slug found for ${cwd}`);
+    return;
+  }
+
+  const chatsDir = path.join(tmpDir, slug, 'chats');
+  const knownIds = new Set();
+  try {
+    if (fs.existsSync(chatsDir)) {
+      for (const file of fs.readdirSync(chatsDir)) {
+        if (file.startsWith('session-') && file.endsWith('.json')) {
+          knownIds.add(path.basename(file, '.json'));
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  console.log(`[Session Detect] Gemini: scanning ${slug} — snapshot ${knownIds.size} existing sessions`);
+
+  let attempts = 0;
+  const maxAttempts = 45;
+  const interval = setInterval(() => {
+    attempts++;
+    if (attempts > maxAttempts || session.exited) {
+      clearInterval(interval);
+      return;
+    }
+
+    try {
+      if (!fs.existsSync(chatsDir)) return;
+      for (const file of fs.readdirSync(chatsDir)) {
+        if (file.startsWith('session-') && file.endsWith('.json')) {
+          const id = path.basename(file, '.json');
+          if (!knownIds.has(id)) {
+            console.log(`[Session Detect] Gemini: detected new session file ${file}`);
+            try {
+              const sessionData = JSON.parse(fs.readFileSync(path.join(chatsDir, file), 'utf-8'));
+              const realId = sessionData.sessionId;
+              if (realId) {
+                clearInterval(interval);
+                console.log(`[Session Detect] Gemini: detected session UUID ${realId}`);
+                session.detectedSessionId = realId;
+                persistSessionToDb(paneId, realId);
+                if (session.ws && session.ws.readyState === 1) {
+                  session.ws.send(JSON.stringify({ type: 'session-detected', sessionId: realId, paneId }));
+                }
+                return;
+              }
+            } catch (err) {
+              console.error(`[Session Detect] Gemini: failed to read session file ${file}:`, err.message);
+            }
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }, 2000);
+}
+
+function detectNewForgeSession(paneId, cwd, ws, session, username) {
+  const homeDir = getUserHome(username);
+  const forgeDir = path.join(homeDir, '.forge');
+  const convDir = path.join(forgeDir, 'conversations');
+
+  const knownIds = new Set();
+  try {
+    if (fs.existsSync(convDir)) {
+      for (const file of fs.readdirSync(convDir)) {
+        if (file.endsWith('.json')) {
+          knownIds.add(path.basename(file, '.json'));
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  console.log(`[Session Detect] Forge: scanning conversations — snapshot ${knownIds.size} existing sessions`);
+
+  let attempts = 0;
+  const maxAttempts = 45;
+  const interval = setInterval(() => {
+    attempts++;
+    if (attempts > maxAttempts || session.exited) {
+      clearInterval(interval);
+      return;
+    }
+
+    try {
+      if (!fs.existsSync(convDir)) return;
+      for (const file of fs.readdirSync(convDir)) {
+        if (file.endsWith('.json')) {
+          const id = path.basename(file, '.json');
+          if (!knownIds.has(id)) {
+            clearInterval(interval);
+            console.log(`[Session Detect] Forge: detected session ${id}`);
+            session.detectedSessionId = id;
+            persistSessionToDb(paneId, id);
+            if (session.ws && session.ws.readyState === 1) {
+              session.ws.send(JSON.stringify({ type: 'session-detected', sessionId: id, paneId }));
+            }
+            return;
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }, 2000);
+}
+
 module.exports = { createTerminalServer };
+

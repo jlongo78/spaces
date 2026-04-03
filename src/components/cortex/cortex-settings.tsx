@@ -127,24 +127,7 @@ export function CortexSettings() {
       {/* Embedding provider */}
       <div className={`block ${dim}`}>
         <span className="text-xs text-gray-400">Embedding provider</span>
-        <p className="text-[10px] text-gray-600 mb-1">Changing provider requires re-indexing all knowledge (existing embeddings will be cleared)</p>
-        <select
-          value={config?.embedding?.provider || 'auto'}
-          onChange={e => {
-            const provider = e.target.value;
-            if (provider !== (config?.embedding?.provider || 'auto')) {
-              if (confirm('Changing embedding provider will clear all existing embeddings. Knowledge will be re-embedded on next ingestion. Continue?')) {
-                save({ embedding: { provider } });
-              }
-            }
-          }}
-          className="w-full text-xs bg-white/5 border border-white/10 rounded px-2 py-1 text-gray-300"
-        >
-          <option value="auto">Auto-detect (Voyage → OpenAI → Local)</option>
-          <option value="voyage">Voyage AI — best for code (512-dim, requires key)</option>
-          <option value="openai">OpenAI — general purpose (1536-dim, requires key)</option>
-          <option value="local">Local — free, no API needed (384-dim, lower quality)</option>
-        </select>
+        <p className="text-[10px] text-gray-500">Voyage AI — voyage-3-lite (512-dim)</p>
       </div>
 
       {/* Injection token budget */}

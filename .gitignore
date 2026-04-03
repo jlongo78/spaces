@@ -46,9 +46,10 @@ next-env.d.ts
 /dist-electron/
 /electron/dist/
 
-# claude code
+# agent CLI config (written dynamically by terminal server)
 .claude/
 .claude-flow/
+.gemini/
 vectors.db
 
 # local CI/CD workflows (server-specific)

@@ -38,6 +38,8 @@ export async function GET(request: NextRequest) {
       limit,
     });
 
+    console.log(`[Cortex Search] q="${query.slice(0, 60)}" → ${results.length} results (ws=${workspaceId || 'all'})`);
+
     return NextResponse.json({ results });
   });
 }

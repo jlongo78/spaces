@@ -19,9 +19,11 @@ export async function POST(request: NextRequest) {
     const { spacesDir } = getUserPaths(user);
     const cortexDir = path.join(spacesDir, 'cortex');
 
+    console.log(`[Cortex Ingest] Starting bootstrap for ${user} in ${cortexDir}`);
+
     // Run bootstrap asynchronously
     runBootstrap(cortex.pipeline, cortexDir).catch(err => {
-      console.error('Bootstrap error:', err);
+      console.error('[Cortex Ingest] Bootstrap error:', err);
     });
 
     return NextResponse.json({ status: 'started' });
