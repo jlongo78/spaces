@@ -765,6 +765,108 @@ function writeGeminiCortexConfig(cwd) {
 }
 
 // ─── Remove Cortex config from Codex CLI ─────────────────
+function normalizeTomlSpacing(content) {
+  return content
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .concat('\n');
+}
+
+function stripTomlSection(lines, tableName) {
+  const out = [];
+  let skipping = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isHeader = trimmed.startsWith('[') && trimmed.endsWith(']');
+    const isTargetHeader = trimmed === `[${tableName}]` || trimmed.startsWith(`[${tableName}.`);
+
+    if (isTargetHeader) {
+      skipping = true;
+      continue;
+    }
+
+    if (skipping && isHeader) {
+      skipping = false;
+    }
+
+    if (!skipping) out.push(line);
+  }
+
+  return out;
+}
+
+function removeTomlTableTree(content, tableName) {
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
+  return stripTomlSection(lines, tableName).join('\n');
+}
+
+function upsertTomlTable(content, tableName, body) {
+  const cleaned = removeTomlTableTree(content, tableName).trim();
+  const block = [`[${tableName}]`, ...body, ''].join('\n');
+  return cleaned ? `${cleaned}\n\n${block}` : `${block}\n`;
+}
+
+function removeTomlKey(content, tableName, key) {
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+  let inTable = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isHeader = trimmed.startsWith('[') && trimmed.endsWith(']');
+
+    if (isHeader) {
+      inTable = trimmed === `[${tableName}]`;
+      out.push(line);
+      continue;
+    }
+
+    if (inTable && new RegExp(`^${key}\\s*=`).test(trimmed)) continue;
+    out.push(line);
+  }
+
+  return out.join('\n');
+}
+
+function upsertTomlKey(content, tableName, key, value) {
+  let toml = removeTomlKey(content, tableName, key);
+  const lines = toml.replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+  let inTable = false;
+  let inserted = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isHeader = trimmed.startsWith('[') && trimmed.endsWith(']');
+
+    if (isHeader) {
+      if (inTable && !inserted) {
+        out.push(`${key} = ${value}`);
+        inserted = true;
+      }
+      inTable = trimmed === `[${tableName}]`;
+      out.push(line);
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  if (!inserted) {
+    if (lines.some((line) => line.trim() === `[${tableName}]`)) {
+      out.push(`${key} = ${value}`);
+    } else {
+      if (out.length && out[out.length - 1].trim() !== '') out.push('');
+      out.push(`[${tableName}]`);
+      out.push(`${key} = ${value}`);
+    }
+  }
+
+  return out.join('\n');
+}
+
 function removeCodexCortexConfig(cwd) {
   try {
     // Remove hooks from hooks.json (Codex stores hooks separately)
@@ -791,15 +893,18 @@ function removeCodexCortexConfig(cwd) {
       }
     }
 
-    // Remove MCP from config.json
-    const configPath = path.join(cwd, '.codex', 'config.json');
+    // Remove MCP + hooks feature flag from project-scoped config.toml
+    const configPath = path.join(cwd, '.codex', 'config.toml');
     if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      if (config.mcpServers?.cortex) {
-        delete config.mcpServers.cortex;
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
-      }
+      let toml = fs.readFileSync(configPath, 'utf-8');
+      toml = removeTomlTableTree(toml, 'mcp_servers.cortex');
+      toml = removeTomlKey(toml, 'features', 'codex_hooks');
+      fs.writeFileSync(configPath, normalizeTomlSpacing(toml), 'utf-8');
     }
+
+    // Remove legacy MCP config.json written by older Spaces builds.
+    const legacyConfigPath = path.join(cwd, '.codex', 'config.json');
+    if (fs.existsSync(legacyConfigPath)) fs.unlinkSync(legacyConfigPath);
 
     const envFile = path.join(cwd, '.codex', 'spaces-env.json');
     if (fs.existsSync(envFile)) fs.unlinkSync(envFile);
@@ -834,8 +939,6 @@ function writeCodexCortexConfig(cwd) {
         // Fallback to __dirname (already set above)
       }
     }
-
-    const hookEnv = `SPACES_PORT=${API_PORT} SPACES_SESSION_SECRET="${process.env.SPACES_SESSION_SECRET || ''}"`;
 
     // ── Hooks (separate hooks.json — Codex convention) ──
     const hooksPath = path.join(codexDir, 'hooks.json');
@@ -874,24 +977,24 @@ function writeCodexCortexConfig(cwd) {
     fs.writeFileSync(hooksPath, JSON.stringify(hooksConfig, null, 2), 'utf-8');
 
     // ── MCP server (config.json) ──
-    const configPath = path.join(codexDir, 'config.json');
-    let config = {};
-    if (fs.existsSync(configPath)) {
-      try { config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch {}
+    const tomlPath = path.join(codexDir, 'config.toml');
+    let toml = '';
+    if (fs.existsSync(tomlPath)) {
+      toml = fs.readFileSync(tomlPath, 'utf-8');
     }
     const mcpServer = path.resolve(__dirname, 'cortex-mcp.js');
-    if (!config.mcpServers) config.mcpServers = {};
-    config.mcpServers.cortex = {
-      command: 'node',
-      args: [mcpServer],
-      env: {
-        SPACES_URL: `http://localhost:${API_PORT}`,
-        SPACES_INTERNAL_TOKEN: (process.env.SPACES_SESSION_SECRET || '').slice(0, 16),
-      },
-    };
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    toml = upsertTomlKey(toml, 'features', 'codex_hooks', 'true');
+    toml = upsertTomlTable(toml, 'mcp_servers.cortex', [
+      'command = "node"',
+      `args = ["${mcpServer.replace(/\\/g, '\\\\')}"]`,
+      `env = { SPACES_URL = "http://localhost:${API_PORT}", SPACES_INTERNAL_TOKEN = "${(process.env.SPACES_SESSION_SECRET || '').slice(0, 16)}" }`,
+    ]);
+    fs.writeFileSync(tomlPath, normalizeTomlSpacing(toml), 'utf-8');
 
-    console.log(`[Cortex] Wrote Codex CLI hooks (UserPromptSubmit + Stop) + MCP to ${codexDir}`);
+    const legacyConfigPath = path.join(codexDir, 'config.json');
+    if (fs.existsSync(legacyConfigPath)) fs.unlinkSync(legacyConfigPath);
+
+    console.log(`[Cortex] Wrote Codex CLI hooks + MCP to ${codexDir}`);
   } catch (err) {
     console.error(`[Cortex] Failed to write Codex config:`, err.message);
   }
@@ -1644,6 +1747,8 @@ function handleConnection(wss, ws, req) {
   // ─── Session ID detection ────────────────────────────────
   if (agentType === 'claude') {
     detectNewClaudeSession(paneId, cwd, ws, session, username);
+  } else if (agentType === 'codex' && (!agentSession || agentSession === 'new')) {
+    detectNewCodexSession(paneId, cwd, ws, session, username);
   } else if (agentType === 'gemini') {
     detectNewGeminiSession(paneId, cwd, ws, session, username);
   } else if (agentType === 'forge') {
@@ -2186,6 +2291,118 @@ function detectNewGeminiSession(paneId, cwd, ws, session, username) {
             }
           }
         }
+      }
+    } catch { /* ignore */ }
+  }, 2000);
+}
+
+function readFileHead(filePath, bytes) {
+  let fd = null;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(bytes);
+    const bytesRead = fs.readSync(fd, buf, 0, bytes, 0);
+    return buf.toString('utf-8', 0, bytesRead);
+  } catch {
+    return '';
+  } finally {
+    if (fd !== null) {
+      try { fs.closeSync(fd); } catch { /* ignore */ }
+    }
+  }
+}
+
+function collectCodexRolloutFiles(dir, results) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectCodexRolloutFiles(fullPath, results);
+    } else if (entry.isFile() && /^rollout-.*\.jsonl$/i.test(entry.name)) {
+      results.push(fullPath);
+    }
+  }
+}
+
+function readCodexSessionMeta(filePath) {
+  try {
+    const head = readFileHead(filePath, 4096);
+    const firstLine = head.split('\n').find((line) => line.trim().length > 0);
+    if (!firstLine) return null;
+    const parsed = JSON.parse(firstLine);
+    const payload = parsed.payload || {};
+    const sessionId = payload.id || parsed.session_id || null;
+    const cwd = payload.cwd || parsed.cwd || null;
+    return sessionId && cwd ? { sessionId, cwd } : null;
+  } catch {
+    return null;
+  }
+}
+
+function detectNewCodexSession(paneId, cwd, ws, session, username) {
+  const homeDir = getUserHome(username);
+  const sessionsDir = path.join(homeDir, '.codex', 'sessions');
+  const isWin = process.platform === 'win32';
+  const resolvedCwd = path.resolve(cwd);
+  const knownFiles = new Set();
+  const startedAt = session.startedAt || Date.now();
+  const recentFileSlackMs = 5000;
+
+  try {
+    const rolloutFiles = [];
+    collectCodexRolloutFiles(sessionsDir, rolloutFiles);
+    for (const file of rolloutFiles) knownFiles.add(file);
+  } catch { /* ignore */ }
+
+  console.log(`[Session Detect] Codex: scanning ${resolvedCwd} — snapshot ${knownFiles.size} existing rollout files`);
+
+  let attempts = 0;
+  const maxAttempts = 45;
+  const interval = setInterval(() => {
+    attempts++;
+    if (attempts > maxAttempts || session.exited) {
+      clearInterval(interval);
+      return;
+    }
+
+    try {
+      const rolloutFiles = [];
+      collectCodexRolloutFiles(sessionsDir, rolloutFiles);
+
+      for (const file of rolloutFiles) {
+        const alreadyKnown = knownFiles.has(file);
+        if (!alreadyKnown) knownFiles.add(file);
+
+        let stat;
+        try {
+          stat = fs.statSync(file);
+        } catch {
+          continue;
+        }
+
+        // Codex can create the rollout file before the detector's initial snapshot
+        // runs. Treat files touched right after this pane started as candidates too.
+        const touchedAfterStart = stat.mtimeMs >= (startedAt - recentFileSlackMs);
+        if (alreadyKnown && !touchedAfterStart) continue;
+
+        const meta = readCodexSessionMeta(file);
+        if (!meta) continue;
+
+        const resolvedMetaCwd = path.resolve(meta.cwd);
+        const sameCwd = isWin
+          ? resolvedMetaCwd.toLowerCase() === resolvedCwd.toLowerCase()
+          : resolvedMetaCwd === resolvedCwd;
+
+        if (!sameCwd) continue;
+
+        clearInterval(interval);
+        console.log(`[Session Detect] Codex: detected session ${meta.sessionId} for ${resolvedCwd}`);
+        session.detectedSessionId = meta.sessionId;
+        persistSessionToDb(paneId, meta.sessionId);
+        if (session.ws && session.ws.readyState === 1) {
+          session.ws.send(JSON.stringify({ type: 'session-detected', sessionId: meta.sessionId, paneId }));
+        }
+        return;
       }
     } catch { /* ignore */ }
   }, 2000);

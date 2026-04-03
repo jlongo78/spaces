@@ -124,10 +124,12 @@ function parseRolloutFile(filePath: string, filename: string): CodexSessionMeta 
 
       // First valid JSON line: extract session metadata
       if (i === 0 || (!id && !cwd && !timestamp)) {
+        const payload = parsed.payload as Record<string, unknown> | undefined;
         // Session ID: try item.id, id, session_id
         const item = parsed.item as Record<string, unknown> | undefined;
         id = (
           (item?.id as string) ||
+          (payload?.id as string) ||
           (parsed.id as string) ||
           (parsed.session_id as string) ||
           ''
@@ -135,14 +137,17 @@ function parseRolloutFile(filePath: string, filename: string): CodexSessionMeta 
         // CWD: try item.cwd, cwd
         cwd = (
           (item?.cwd as string) ||
+          (payload?.cwd as string) ||
           (parsed.cwd as string) ||
           ''
         );
         // Timestamp: try item.timestamp, timestamp, created_at, created
         timestamp = (
           (item?.timestamp as string) ||
+          (payload?.timestamp as string) ||
           (parsed.timestamp as string) ||
           (item?.created_at as string) ||
+          (payload?.created_at as string) ||
           (parsed.created_at as string) ||
           (parsed.created as string) ||
           ''

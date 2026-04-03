@@ -623,8 +623,9 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
             if (res.ok) text = (await res.json()).text || '';
           }
           if (text.trim() && (questImmersiveRef.current || questDrainingRef.current)) {
-            // Auto-send: type text + Enter
-            sendKey(text.trim() + '\r');
+            // Auto-send: paste text + Enter
+            sendPaste(text.trim());
+            sendKey('\r');
           }
         } catch {}
 
@@ -735,7 +736,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       if (finalText.length > lastFinalLength) {
         const newText = finalText.slice(lastFinalLength);
         if (autoSend) {
-          sendKey(newText.trim() + '\r');
+          sendKey(newText.trim() + '\r\n');
         } else {
           sendPaste(newText);
         }
