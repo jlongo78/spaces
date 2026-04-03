@@ -3,6 +3,7 @@ import { getAuthUser, withUser } from '@/lib/auth';
 import { ensureInitialized } from '@/lib/db/init';
 import { getSessionById } from '@/lib/db/queries';
 import { readMessages } from '@/lib/claude/parser';
+import { readGeminiMessages } from '@/lib/gemini/parser';
 
 export async function GET(
   request: NextRequest,
@@ -20,6 +21,11 @@ export async function GET(
     const session = getSessionById(id);
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+
+    if (session.agentType === 'gemini') {
+      const result = await readGeminiMessages(session.fullPath, offset, limit);
+      return NextResponse.json(result);
     }
 
     const result = await readMessages(session.fullPath, offset, limit);

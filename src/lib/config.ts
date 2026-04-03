@@ -59,6 +59,8 @@ export function getUserPaths(username: string) {
     geminiDir: path.join(homeDir, '.gemini'),
     geminiChatsBaseDir: path.join(homeDir, '.gemini', 'tmp'),
     geminiProjectsRegistry: path.join(homeDir, '.gemini', 'projects.json'),
+    forgeDir: path.join(homeDir, '.forge'),
+    forgeConversationsDir: path.join(homeDir, '.forge', 'conversations'),
     spacesDir,
     dbPath: path.join(spacesDir, 'spaces.db'),
     configPath: path.join(spacesDir, 'config.json'),
@@ -72,11 +74,24 @@ export function ensureUserSpacesDir(username: string) {
   }
 }
 
+export interface CustomModelConfig {
+  id: string;           // 'qwen-72b'
+  name: string;         // 'Qwen 2.5 72B'
+  provider: 'gcp';
+  gcpProject: string;
+  gcpZone: string;
+  gcpInstance: string;
+  apiUrl: string;       // 'http://<VM_IP>:8000/v1'
+  apiKey?: string;
+  timeoutMinutes: number; // default: 15
+}
+
 export interface SpacesConfig {
   installId: string;
   telemetryOptOut: boolean;
   devDirectories: string[];
   cortex?: CortexConfig;
+  customModels?: CustomModelConfig[];
 }
 
 export function readConfig(username: string): SpacesConfig {
@@ -89,6 +104,7 @@ export function readConfig(username: string): SpacesConfig {
         telemetryOptOut: !!raw.telemetryOptOut,
         devDirectories: Array.isArray(raw.devDirectories) ? raw.devDirectories.filter((d: unknown) => typeof d === 'string') : [],
         ...(raw.cortex && typeof raw.cortex === 'object' ? { cortex: raw.cortex } : {}),
+        customModels: Array.isArray(raw.customModels) ? raw.customModels : [],
       };
     }
   } catch { /* corrupt file, recreate */ }
@@ -101,6 +117,7 @@ export function readConfig(username: string): SpacesConfig {
     installId: crypto.randomUUID(),
     telemetryOptOut: false,
     devDirectories: [],
+    customModels: [],
   };
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   return config;

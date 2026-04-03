@@ -141,12 +141,12 @@ function parseSessionFile(
     for (const msg of messages) {
       if (!msg || typeof msg !== 'object') continue;
 
-      const role = (msg as { role?: string }).role;
-      if (role === 'user' || role === 'model' || role === 'assistant') {
+      const type = (msg as { type?: string }).type;
+      if (type === 'user' || type === 'gemini' || type === 'model' || type === 'assistant') {
         messageCount++;
       }
 
-      if (role === 'user' && !firstPrompt) {
+      if (type === 'user' && !firstPrompt) {
         const content = (msg as { content?: unknown }).content;
         const text = extractContentText(content);
         if (text) {
@@ -170,6 +170,48 @@ function parseSessionFile(
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Read messages from a Gemini session file.
+ */
+export async function readGeminiMessages(
+  filePath: string,
+  offset: number = 0,
+  limit: number = 50
+): Promise<{ messages: any[]; total: number; hasMore: boolean }> {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const record = JSON.parse(raw);
+    const rawMessages: any[] = Array.isArray(record.messages) ? record.messages : [];
+
+    // Filter to conversation messages and map to shared shape
+    const messages = rawMessages
+      .filter(msg => msg && typeof msg === 'object' && (msg.type === 'user' || msg.type === 'gemini' || msg.type === 'model' || msg.type === 'assistant'))
+      .map(msg => {
+        const text = extractContentText(msg.content);
+        const type = msg.type || msg.role; // handle both for compatibility
+        return {
+          type: type === 'user' ? 'user' : 'assistant',
+          timestamp: msg.timestamp || '',
+          message: {
+            content: type === 'user' ? text : [{ type: 'text', text }],
+            model: msg.model || record.model || '',
+          },
+          thoughts: msg.thoughts || [],
+          toolCalls: msg.toolCalls || [],
+        };
+      });
+
+    return {
+      messages: messages.slice(offset, offset + limit),
+      total: messages.length,
+      hasMore: messages.length > offset + limit,
+    };
+  } catch (err) {
+    console.error(`Failed to read Gemini messages from ${filePath}:`, err);
+    return { messages: [], total: 0, hasMore: false };
   }
 }
 

@@ -6,8 +6,10 @@ import { parseSessionIndex, scanJSONLMetadata, extractAllText } from '../claude/
 import { scanCodexSessions } from '../codex/parser';
 import { scanGeminiSessions } from '../gemini/parser';
 import { scanAiderSessions, aiderSessionId, aiderProjectId } from '../aider/parser';
+import { scanForgeSessions } from '../forge/parser';
 import { upsertProject, upsertSession, upsertFtsContent } from '../db/queries';
 import { getDb } from '../db/schema';
+
 
 // ─── Per-agent sync helpers ────────────────────────────────
 
@@ -28,7 +30,7 @@ function syncClaude(projectsDir: string): { projects: number; sessions: number }
 
     // Decode project name from directory name as fallback
     let projectName = decodeProjectName(dir.name);
-    let projectRealPath = projectName;
+    let projectRealPath = decodeProjectPath(dir.name);
 
     // Try sessions-index.json first
     const indexPath = path.join(projectDir, 'sessions-index.json');
@@ -279,7 +281,61 @@ function syncAider(projectDirs: string[]): { projects: number; sessions: number 
   return { projects: projectCount, sessions: sessionCount };
 }
 
+function syncForge(conversationsDir: string): { projects: number; sessions: number } {
+  const sessions = scanForgeSessions(conversationsDir);
+  if (sessions.length === 0) return { projects: 0, sessions: 0 };
+
+  // Group by CWD to create projects
+  const byCwd = new Map<string, typeof sessions>();
+  for (const s of sessions) {
+    const key = s.metadata?.cwd || 'unknown';
+    if (!byCwd.has(key)) byCwd.set(key, []);
+    byCwd.get(key)!.push(s);
+  }
+
+  let projectCount = 0;
+  let sessionCount = 0;
+
+  for (const [cwd, cwdSessions] of byCwd) {
+    const projectId = 'forge-' + (cwd !== 'unknown' ? cwd.replace(/[^a-zA-Z0-9]/g, '-').slice(0, 80) : 'unknown');
+    const projectName = cwd !== 'unknown' ? path.basename(cwd) : 'Forge (unknown)';
+
+    upsertProject({
+      id: projectId,
+      name: projectName,
+      path: cwd !== 'unknown' ? cwd : '',
+      claudePath: '',
+      agentType: 'forge',
+    });
+    projectCount++;
+
+    for (const s of cwdSessions) {
+      const firstMsg = s.context?.messages?.find(m => m.role === 'user');
+      const firstPrompt = typeof firstMsg?.content === 'string' ? firstMsg.content : '';
+
+      upsertSession({
+        id: s.id,
+        sessionId: s.id,
+        projectId,
+        firstPrompt: firstPrompt.slice(0, 500),
+        summary: s.title || '',
+        messageCount: s.context?.messages?.length || 0,
+        created: s.metrics?.started_at || '',
+        modified: s.metrics?.ended_at || '',
+        gitBranch: '',
+        projectPath: cwd !== 'unknown' ? cwd : '',
+        fullPath: s.fullPath,
+        agentType: 'forge',
+      });
+      sessionCount++;
+    }
+  }
+
+  return { projects: projectCount, sessions: sessionCount };
+}
+
 // ─── Public API ────────────────────────────────────────────
+
 
 /**
  * Full sync: scan all agent data directories and upsert into DB.
@@ -313,6 +369,10 @@ export async function fullSync(): Promise<{ projects: number; sessions: number }
     const aider = syncAider(aiderDirs);
     projectCount += aider.projects;
     sessionCount += aider.sessions;
+
+    const forge = syncForge(paths.forgeConversationsDir);
+    projectCount += forge.projects;
+    sessionCount += forge.sessions;
   });
 
   insertMany();
@@ -392,37 +452,52 @@ export async function buildFtsIndex(onProgress?: (done: number, total: number) =
  * We extract just the last meaningful path segment as the display name.
  */
 function decodeProjectName(dirName: string): string {
-  // Split by -- to get drive and path parts
   const parts = dirName.split('--');
   if (parts.length < 2) return dirName;
 
-  // Get the last path segment(s) after "projects-" prefix
   const pathPart = parts.slice(1).join('/');
-
-  // If it's like "projects-buddhas-bbq", extract "buddhas-bbq"
-  // If it's like "projects", just show "projects"
   const segments = pathPart.split('-');
   if (segments[0] === 'projects' && segments.length > 1) {
     return segments.slice(1).join('-');
   }
-
   return pathPart;
 }
 
 /**
- * Check if sync is needed by comparing file mtimes
+ * Reconstruct an absolute OS path from a Claude project directory name.
+ * e.g. "C--projects-spaces" -> "C:\projects\spaces"
+ * e.g. "-home-user-projects" -> "/home/user/projects"
  */
-export function isSyncNeeded(): boolean {
-  const { claudeProjectsDir: projectsDir } = getUserPaths(getCurrentUser());
-  if (!fs.existsSync(projectsDir)) return false;
+function decodeProjectPath(dirName: string): string {
+  // Windows: "C--projects-spaces"
+  const winDriveMatch = dirName.match(/^([A-Za-z])--(.*)/);
+  if (winDriveMatch) {
+    return winDriveMatch[1] + ':\\' + winDriveMatch[2].replace(/-/g, '\\');
+  }
+  // Unix: "-home-user-projects"
+  if (dirName.startsWith('-')) {
+    return '/' + dirName.substring(1).replace(/-/g, '/');
+  }
+  return dirName;
+}
 
+export function isSyncNeeded(): boolean {
+  const paths = getUserPaths(getCurrentUser());
+  const checkDirs = [paths.claudeProjectsDir, paths.forgeConversationsDir];
+  
   try {
-    const stat = fs.statSync(projectsDir);
     const db = getDb();
     const lastSync = db.prepare('SELECT MAX(last_synced) as lastSynced FROM sync_state').get() as { lastSynced: string } | undefined;
-
     if (!lastSync?.lastSynced) return true;
-    return stat.mtimeMs > new Date(lastSync.lastSynced).getTime();
+    const lastSyncTime = new Date(lastSync.lastSynced).getTime();
+
+    for (const dir of checkDirs) {
+      if (fs.existsSync(dir)) {
+        const stat = fs.statSync(dir);
+        if (stat.mtimeMs > lastSyncTime) return true;
+      }
+    }
+    return false;
   } catch {
     return true;
   }

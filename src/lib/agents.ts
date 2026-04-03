@@ -47,6 +47,15 @@ export const AGENT_TYPES: Record<string, AgentType> = {
     color: '#8b5cf6',
     description: 'AI pair programming in your terminal',
   },
+  forge: {
+    id: 'forge',
+    name: 'Forge',
+    command: 'forge',
+    resumeFlag: '--cid',
+    supportsResume: true,
+    color: '#f43f5e',
+    description: 'ForgeCode.dev agentic CLI',
+  },
   shell: {
     id: 'shell',
     name: 'Shell',

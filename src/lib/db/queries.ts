@@ -1,3 +1,4 @@
+import path from 'path';
 import crypto from 'crypto';
 import { getDb } from './schema';
 import type { SessionWithMeta, Project, Workspace, Tag, SearchResult } from '@/types/claude';
@@ -493,6 +494,7 @@ export interface PaneData {
   nodeId: string | null;
   isCollaborating: boolean;
   diffBaselineSha: string | null;
+  customModelId: string | null;
 }
 
 const PANE_SELECT = `
@@ -504,7 +506,8 @@ const PANE_SELECT = `
   win_width as winWidth, win_height as winHeight,
   node_id as nodeId,
   is_collaborating as isCollaborating,
-  diff_baseline_sha as diffBaselineSha
+  diff_baseline_sha as diffBaselineSha,
+  custom_model_id as customModelId
 `;
 
 function mapPane(row: any): PaneData {
@@ -542,6 +545,7 @@ export function createPane(pane: {
   workspaceId?: number;
   nodeId?: string;
   isCollaborating?: boolean;
+  customModelId?: string | null;
 }): PaneData {
   const db = getDb();
   const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM panes').get() as { m: number | null };
@@ -561,10 +565,25 @@ export function createPane(pane: {
     baselineSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: pane.cwd, encoding: 'utf-8', timeout: 3000 }).trim();
   } catch { /* not a git repo or git not available */ }
 
+  // Automatically find the most recent session for this agent+project if not specified
+  let sessId = pane.claudeSessionId || null;
+  if (!sessId || sessId === 'new') {
+    try {
+      // Find the project ID for this CWD (inefficient but works for small DBs)
+      const proj = db.prepare('SELECT id FROM projects WHERE path = ? OR path = ?').get(pane.cwd, path.resolve(pane.cwd)) as { id: string } | undefined;
+      if (proj) {
+        const latest = db.prepare('SELECT session_id FROM sessions WHERE project_id = ? AND agent_type = ? ORDER BY created DESC LIMIT 1').get(proj.id, pane.agentType || 'shell') as { session_id: string } | undefined;
+        if (latest) {
+          sessId = latest.session_id;
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
   db.prepare(`
-    INSERT INTO panes (id, title, color, cwd, claude_session_id, agent_type, custom_command, sort_order, workspace_id, node_id, is_collaborating, diff_baseline_sha)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(pane.id, pane.title, pane.color, pane.cwd, pane.claudeSessionId || null, pane.agentType || 'shell', pane.customCommand || null, order, wsId || null, pane.nodeId || null, pane.isCollaborating ? 1 : 0, baselineSha);
+    INSERT INTO panes (id, title, color, cwd, claude_session_id, agent_type, custom_command, sort_order, workspace_id, node_id, is_collaborating, diff_baseline_sha, custom_model_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(pane.id, pane.title, pane.color, pane.cwd, sessId, pane.agentType || 'shell', pane.customCommand || null, order, wsId || null, pane.nodeId || null, pane.isCollaborating ? 1 : 0, baselineSha, pane.customModelId || null);
 
   return getPaneById(pane.id)!;
 }
@@ -593,6 +612,7 @@ export function updatePane(id: string, data: {
   winHeight?: number | null;
   isCollaborating?: boolean;
   diffBaselineSha?: string | null;
+  customModelId?: string | null;
 }) {
   const db = getDb();
   const sets: string[] = [];
@@ -616,6 +636,7 @@ export function updatePane(id: string, data: {
   if ((data as any).nodeId !== undefined) { sets.push('node_id = ?'); vals.push((data as any).nodeId); }
   if (data.isCollaborating !== undefined) { sets.push('is_collaborating = ?'); vals.push(data.isCollaborating ? 1 : 0); }
   if (data.diffBaselineSha !== undefined) { sets.push('diff_baseline_sha = ?'); vals.push(data.diffBaselineSha); }
+  if (data.customModelId !== undefined) { sets.push('custom_model_id = ?'); vals.push(data.customModelId); }
 
   if (sets.length === 0) return;
   vals.push(id);

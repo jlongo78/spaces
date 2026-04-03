@@ -1,6 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import * as pty from 'node-pty';
 import { IncomingMessage } from 'http';
+import crypto from 'crypto';
+import { AGENT_TYPES } from '../agents';
 
 interface TermSession {
   pty: pty.IPty;
@@ -9,7 +11,7 @@ interface TermSession {
 }
 
 const sessions = new Map<string, TermSession>();
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const SESSION_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9\-_.]*$/;
 
 export function startTerminalServer(port = 3458) {
   const wss = new WebSocketServer({
@@ -31,32 +33,48 @@ export function startTerminalServer(port = 3458) {
     const url = new URL(req.url || '/', `http://localhost:${port}`);
     const paneId = url.searchParams.get('paneId') || crypto.randomUUID();
     const cwd = url.searchParams.get('cwd') || process.env.HOME || process.env.USERPROFILE || 'C:\\';
-    const rawClaudeSession = url.searchParams.get('claudeSession') || '';
-    const claudeSessionId = (rawClaudeSession === 'new' || UUID_RE.test(rawClaudeSession)) ? rawClaudeSession : '';
+    const agentType = url.searchParams.get('agentType') || 'shell';
+    const rawSession = url.searchParams.get('agentSession') || url.searchParams.get('claudeSession') || '';
+    const sessionId = (rawSession === 'new' || SESSION_ID_RE.test(rawSession)) ? rawSession : '';
     const cols = parseInt(url.searchParams.get('cols') || '120', 10);
     const rows = parseInt(url.searchParams.get('rows') || '30', 10);
+    const customModelId = url.searchParams.get('customModelId') || '';
 
     // Determine shell and args
     const isWindows = process.platform === 'win32';
     let shell: string;
     let args: string[];
 
-    if (claudeSessionId) {
-      // Resume an agent session
-      shell = isWindows ? 'cmd.exe' : '/bin/bash';
-      const claudeCmd = claudeSessionId === 'new'
-        ? 'claude'
-        : `claude --resume ${claudeSessionId}`;
-      args = isWindows ? ['/c', claudeCmd] : ['-c', claudeCmd];
-    } else {
-      // Plain shell
+    const agent = AGENT_TYPES[agentType];
+
+    if (agent && agent.command) {
+      // Resume or start an agent session
       shell = isWindows ? 'cmd.exe' : (process.env.SHELL || '/bin/bash');
-      args = [];
+      let cmd = agent.command;
+      if (sessionId && sessionId !== 'new' && agent.supportsResume) {
+        cmd = `${agent.command} ${agent.resumeFlag} ${sessionId}`;
+      }
+      args = isWindows ? ['/c', cmd] : ['-c', cmd];
+    } else {
+      // Plain shell or custom command
+      const customCommand = url.searchParams.get('customCommand');
+      shell = isWindows ? 'cmd.exe' : (process.env.SHELL || '/bin/bash');
+      if (customCommand) {
+        args = isWindows ? ['/c', customCommand] : ['-c', customCommand];
+      } else {
+        args = [];
+      }
     }
 
     // Strip CLAUDECODE to avoid nesting detection
     const env = { ...process.env } as Record<string, string>;
     delete env.CLAUDECODE;
+
+    if (customModelId) {
+      const port = process.env.SPACES_PORT || '3457';
+      env.OPENAI_URL = `http://localhost:${port}/api/proxy/models/${customModelId}/v1`;
+      env.OPENAI_API_KEY = 'sk-custom';
+    }
 
     let term: pty.IPty;
     try {

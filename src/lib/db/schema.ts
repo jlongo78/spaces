@@ -150,6 +150,7 @@ function initSchema(db: Database.Database) {
 
   // Diff review baseline
   addCol('panes', 'diff_baseline_sha', 'TEXT');
+  addCol('panes', 'custom_model_id', 'TEXT');
 
   // Index for filtering by agent type
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_agent_type ON sessions(agent_type)'); } catch { /* */ }

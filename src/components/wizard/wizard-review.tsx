@@ -1,13 +1,16 @@
 'use client';
 
 import { ArrowLeft, Plus, Trash2, Rocket } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import type { ProjectPlan } from './project-wizard';
+import { api } from '@/lib/api';
 
 const AGENT_TYPES = [
   { value: 'claude', label: 'Claude Code' },
   { value: 'codex', label: 'Codex' },
   { value: 'gemini', label: 'Gemini' },
   { value: 'aider', label: 'Aider' },
+  { value: 'forge', label: 'Forge' },
   { value: 'shell', label: 'Shell' },
   { value: 'custom', label: 'Custom' },
 ];
@@ -18,6 +21,11 @@ const COLORS = [
   '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7',
   '#d946ef', '#ec4899', '#f43f5e', '#78716c',
 ];
+
+interface CustomModel {
+  id: string;
+  name: string;
+}
 
 export function WizardReview({
   plan,
@@ -30,6 +38,17 @@ export function WizardReview({
   onBack: () => void;
   onLaunch: () => void;
 }) {
+  const [customModels, setCustomModels] = useState<CustomModel[]>([]);
+
+  useEffect(() => {
+    fetch(api('/api/config'))
+      .then(r => r.json())
+      .then(d => {
+        if (d.customModels) setCustomModels(d.customModels);
+      })
+      .catch(() => {});
+  }, []);
+
   const updateWorkspace = (key: string, value: string) => {
     onUpdate({ ...plan, workspace: { ...plan.workspace, [key]: value } });
   };
@@ -142,6 +161,21 @@ export function WizardReview({
                       ))}
                     </select>
                   </div>
+                  {pane.agentType === 'forge' && customModels.length > 0 && (
+                    <div className="w-40">
+                      <label className="text-[10px] text-zinc-500 block mb-1">Custom Model</label>
+                      <select
+                        value={pane.customModelId || ''}
+                        onChange={(e) => updatePane(i, 'customModelId', e.target.value)}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200"
+                      >
+                        <option value="">Default</option>
+                        {customModels.map(m => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-[10px] text-zinc-500 block mb-1">Working Directory</label>

@@ -15,10 +15,11 @@ export interface ProjectPlan {
   };
   panes: Array<{
     title: string;
-    agentType: 'claude' | 'codex' | 'gemini' | 'aider' | 'shell' | 'custom';
+    agentType: 'claude' | 'codex' | 'gemini' | 'aider' | 'forge' | 'shell' | 'custom';
     cwd: string;
     initialPrompt?: string;
     customCommand?: string;
+    customModelId?: string;
     description: string;
   }>;
   summary: string;
@@ -95,6 +96,7 @@ export function ProjectWizard({
             cwd: pane.cwd,
             customCommand: pane.customCommand,
             workspaceId: wsId,
+            customModelId: pane.customModelId,
           }),
         });
       }

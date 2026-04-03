@@ -96,11 +96,26 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [diffCount, setDiffCount] = useState<number | null>(null);
+  const [vmStatus, setVmStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const ua = navigator.userAgent || '';
     setIsQuest(/Quest|Oculus|Pacific/i.test(ua));
   }, []);
+
+  // Poll for custom model VM status
+  useEffect(() => {
+    if (!pane.customModelId) return;
+    const poll = () => {
+      fetch(`/api/proxy/models/${pane.customModelId}/status`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.status) setVmStatus(d.status); })
+        .catch(() => {});
+    };
+    poll();
+    const id = setInterval(poll, 15000);
+    return () => clearInterval(id);
+  }, [pane.customModelId]);
 
   // Poll for diff file count badge (only if pane has a git baseline)
   useEffect(() => {
@@ -253,6 +268,7 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
       if (p.claudeSessionId) params.set('agentSession', p.claudeSessionId);
       if (p.customCommand) params.set('customCommand', p.customCommand);
       if (p.nodeId) params.set('nodeId', p.nodeId);
+      if ((p as any).customModelId) params.set('customModelId', (p as any).customModelId);
       const token = terminalTokenRef.current;
       if (token) params.set('terminalToken', token);
       const basePath = process.env.SPACES_BASE_PATH || '';
@@ -1022,13 +1038,25 @@ export function TerminalPane({ pane, onClose, onUpdate, isMaximized, onToggleMax
 
         {pane.agentType && pane.agentType !== 'shell' && (
           <span
-            className="text-[9px] px-1.5 py-0.5 rounded font-medium"
+            className="text-[9px] px-1.5 py-0.5 rounded font-medium flex items-center gap-1"
             style={{
               backgroundColor: `${AGENT_TYPES[pane.agentType]?.color || '#6366f1'}20`,
               color: AGENT_TYPES[pane.agentType]?.color || '#6366f1',
             }}
           >
             {AGENT_TYPES[pane.agentType]?.name || pane.agentType}
+            {pane.customModelId && (
+              <span className="flex items-center gap-1 border-l border-current pl-1 ml-0.5">
+                <span
+                  className={cn("w-1.5 h-1.5 rounded-full",
+                    vmStatus === 'RUNNING' ? 'bg-green-500' :
+                    vmStatus === 'PROVISIONING' || vmStatus === 'STAGING' ? 'bg-yellow-500 animate-pulse' :
+                    'bg-red-500'
+                  )}
+                  title={vmStatus || 'UNKNOWN'}
+                />
+              </span>
+            )}
           </span>
         )}
 
