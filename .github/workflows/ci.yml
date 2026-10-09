@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
 
@@ -156,7 +156,7 @@ jobs:
       # job installs otherwise. Guarded the same as the integration step
       # itself so the macOS/Windows matrix legs don't pay for a Node install
       # they never use.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         if: runner.os == 'Linux'
         with:
           node-version: 20
