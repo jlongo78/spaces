@@ -239,7 +239,7 @@ jobs:
             tar -czf "$out" spaces-tui
           fi
           tar -tzvf "$out"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.pkg }}
           path: ${{ runner.temp }}/${{ matrix.pkg }}.tar.gz
