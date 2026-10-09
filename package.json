@@ -98,7 +98,7 @@
     "clsx": "^2.1.1",
     "cross-env": "^10.1.0",
     "date-fns": "^4.1.0",
-    "eslint": "^9",
+    "eslint": "^10",
     "eslint-config-next": "16.4.0",
     "geist": "^1.4.1",
     "lucide-react": "^0.575.0",
