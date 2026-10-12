@@ -136,7 +136,7 @@ jobs:
       # Keep this version in sync with the repo-root rust-toolchain.toml: it
       # overrides `rustup default` for every step below (working-directory: tui),
       # so pinning stable here would install a toolchain that never actually runs.
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.120.0
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
@@ -206,7 +206,7 @@ jobs:
       # silently re-download 1.97.1 on every job — a download rust-cache
       # does not cache, since it only covers ~/.cargo and target/, not
       # ~/.rustup/toolchains.
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.120.0
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
