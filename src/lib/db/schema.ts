@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { getUserPaths, ensureUserSpacesDir } from '../config';
 import { getCurrentUser } from '../auth';
+import { claimDatabase } from './ownership';
 
 const _dbs = new Map<string, Database.Database>();
 
@@ -14,6 +15,12 @@ export function getDb(): Database.Database {
   const { dbPath } = getUserPaths(username);
 
   const db = new Database(dbPath);
+  try {
+    claimDatabase(db, dbPath);
+  } catch (err) {
+    db.close();
+    throw err;
+  }
   db.pragma('journal_mode = WAL');
   db.pragma('synchronous = NORMAL');
   db.pragma('foreign_keys = ON');

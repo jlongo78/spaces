@@ -3,6 +3,22 @@
 
 const fs = require('fs');
 
+// "SPCS": the mark the web app puts on spaces.db (src/lib/db/ownership.ts).
+// Another macOS app also called "Spaces" keeps a spaces.db of its own in
+// ~/.spaces (issue #38); writing our rows into its tables fails with
+// "table workspaces has no column named name", so say what is wrong instead.
+const SPACES_APPLICATION_ID = 0x53504353;
+
+/** Why `db` is not ours, or null when it is (or may be: unmarked but ours-shaped). */
+function foreignReason(db) {
+  const id = db.pragma('application_id', { simple: true });
+  if (id === SPACES_APPLICATION_ID) return null;
+  if (id !== 0) return `application_id ${id}`;
+  const cols = db.prepare('PRAGMA table_info(workspaces)').all();
+  if (cols.length > 0 && !cols.some(c => c.name === 'name')) return 'no workspaces.name column';
+  return null;
+}
+
 /**
  * Read-write access to the session database. Distinct from the runtime's
  * read-only snapshot handle: creating panes and workspaces has to write.
@@ -17,6 +33,7 @@ function createSessionStore({ dbPath } = {}) {
   // and silently reopened — leaking a handle that (on Windows) blocks
   // deleting/renaming the underlying DB file until a second close() call.
   let closed = false;
+  let openError = null;
 
   function open() {
     if (closed) return null;
@@ -24,7 +41,15 @@ function createSessionStore({ dbPath } = {}) {
     if (!dbPath || !fs.existsSync(dbPath)) return null;
     try {
       const Database = require('better-sqlite3');
-      db = new Database(dbPath);
+      const d = new Database(dbPath);
+      const reason = foreignReason(d);
+      if (reason) {
+        d.close();
+        openError = `${dbPath} belongs to another application (${reason}). ` +
+          'Spaces will not change it. Move or rename that file, then start Spaces again.';
+        return null;
+      }
+      db = d;
       // NOTE: panes.workspace_id has NO declared FK in production (it was added
       // via a bare ALTER TABLE ADD COLUMN), so closeWorkspace() below deletes
       // panes explicitly rather than relying on a cascade that doesn't exist
@@ -41,7 +66,7 @@ function createSessionStore({ dbPath } = {}) {
   function withDb(fn) {
     if (closed) return { ok: false, error: 'session store is closed' };
     const d = open();
-    if (!d) return { ok: false, error: 'session database unavailable' };
+    if (!d) return { ok: false, error: openError || 'session database unavailable' };
     try {
       return fn(d);
     } catch (err) {

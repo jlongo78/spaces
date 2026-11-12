@@ -3,6 +3,15 @@
 All notable changes to Spaces are recorded here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Spaces no longer takes over a `~/.spaces/spaces.db` that another
+  application created. Another macOS app also named "Spaces" keeps its data
+  there, and Spaces used to add its columns to that app's tables, after
+  which creating a space failed with "table workspaces has no column named
+  name" (#38). Spaces now marks its database as its own, and when it finds
+  one it did not create, it says which file and leaves it unchanged.
+
 ## 1.0.9
 
 - `spaces web` opens the web app in your browser, signed in, and

@@ -243,3 +243,35 @@ describe('createSessionStore', () => {
     expect(fs.existsSync(ownDir)).toBe(false);
   });
 });
+
+// Issue #38: another macOS app named "Spaces" also keeps ~/.spaces/spaces.db,
+// with its own `workspaces` table. The store must say so instead of failing
+// with "table workspaces has no column named name".
+describe('createSessionStore with another app\'s spaces.db', () => {
+  const seed = (sql: string) => {
+    fs.rmSync(dbPath, { force: true });
+    const db = new Database(dbPath);
+    db.exec(sql);
+    db.close();
+  };
+
+  it('refuses an unmarked database whose workspaces table is not ours', () => {
+    seed('CREATE TABLE workspaces (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, dir TEXT NOT NULL);');
+    const store = createSessionStore({ dbPath });
+    const res = store.createWorkspace({ name: 'x' }) as any;
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/another application/);
+    expect(res.error).toContain(dbPath);
+    store.close();
+  });
+
+  it('refuses a database marked by a different application', () => {
+    seed(`CREATE TABLE workspaces (id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT, color TEXT);
+          PRAGMA application_id = 12345;`);
+    const store = createSessionStore({ dbPath });
+    const res = store.createWorkspace({ name: 'x' }) as any;
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/another application/);
+    store.close();
+  });
+});
