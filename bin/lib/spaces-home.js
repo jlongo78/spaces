@@ -9,7 +9,7 @@ function spacesHome(home) {
   const raw = (process.env.SPACES_HOME || '').trim();
   if (!raw) return path.join(home || os.homedir(), '.spaces');
 
-  const expanded = /^~(?:[\/]|$)/.test(raw) ? path.join(os.homedir(), raw.slice(1)) : raw;
+  const expanded = /^~(?:[\\/]|$)/.test(raw) ? path.join(os.homedir(), raw.slice(2)) : raw;
   const resolved = path.resolve(expanded);
 
   let stat = null;

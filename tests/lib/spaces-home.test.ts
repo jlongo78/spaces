@@ -51,6 +51,11 @@ describe.each([
     expect(spacesHome()).toBe(os.homedir());
   });
 
+  it('expands a leading ~\\ on every platform', () => {
+    vi.stubEnv('SPACES_HOME', '~\\sp');
+    expect(spacesHome()).toBe(path.join(os.homedir(), 'sp'));
+  });
+
   it('resolves a relative path against the cwd', () => {
     vi.stubEnv('SPACES_HOME', 'rel/dir');
     expect(spacesHome()).toBe(path.resolve('rel/dir'));
