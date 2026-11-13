@@ -20,6 +20,7 @@ const { dispatchFile, FILE_METHODS } = require('./files');
 const { spawnPane, buildLaunchCommand, buildPaneEnv, canResume } = require('./spawn-pane');
 const { encodePrompt, PROMPT_STALL_MS } = require('./agent-control');
 const crypto = require('crypto');
+const { spacesHome } = require('../spaces-home');
 
 // The async ones are intercepted by the control channel before dispatch()
 // ever sees them; dispatch()'s own case for each returns an honest "call it
@@ -210,8 +211,8 @@ function createRuntime({ nodeId = 'local', spacesDbPath, getApiPort, federationD
 
   const detectRegistry = createRegistry({
     bundledDir: path.join(__dirname, 'detect', 'manifests'),
-    userDir: path.join(os.homedir(), '.spaces', 'detection'),
-    cacheDir: path.join(os.homedir(), '.spaces', 'detection', '.cache'),
+    userDir: path.join(spacesHome(), 'detection'),
+    cacheDir: path.join(spacesHome(), 'detection', '.cache'),
     log: msg => console.warn(msg),
   });
   const detect = createScheduler({
@@ -222,7 +223,7 @@ function createRuntime({ nodeId = 'local', spacesDbPath, getApiPort, federationD
   });
   detect.start();
 
-  const detectCacheDir = path.join(os.homedir(), '.spaces', 'detection', '.cache');
+  const detectCacheDir = path.join(spacesHome(), 'detection', '.cache');
   const detectIndexUrl = process.env.SPACES_DETECTION_INDEX_URL || DEFAULT_INDEX_URL;
   function refreshDetectionManifests() {
     if (process.env.SPACES_NO_DETECTION_UPDATE === '1') {
@@ -249,7 +250,7 @@ function createRuntime({ nodeId = 'local', spacesDbPath, getApiPort, federationD
 
   const sessionStore = createSessionStore({ dbPath: spacesDbPath });
   // config.json lives beside spaces.db; see readDevRoots.
-  const devRoots = () => readDevRoots(spacesDbPath ? path.dirname(spacesDbPath) : path.join(os.homedir(), '.spaces'));
+  const devRoots = () => readDevRoots(spacesDbPath ? path.dirname(spacesDbPath) : spacesHome());
   // Replays other processes' writes to spaces.db (the web app's, chiefly)
   // as hub events, so every /proto client sees them live. See db-watch.js.
   // Opt-in: watching holds the store's connection open from the start, which

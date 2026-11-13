@@ -9,10 +9,10 @@
 
 const { execFileSync } = require('child_process');
 const path = require('path');
-const os = require('os');
 const fs = require('fs');
+const { spacesHome } = require('./lib/spaces-home');
 
-const SPACES_DIR = path.join(os.homedir(), '.spaces');
+const SPACES_DIR = spacesHome();
 
 // Skip during local dev `npm install` (no global flag, not inside global node_modules)
 if (!process.env.npm_config_global) {

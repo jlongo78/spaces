@@ -20,8 +20,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spacesHome } = require('../spaces-home');
 
-const DEFAULT_DIR = path.join(os.homedir(), '.spaces');
+const DEFAULT_DIR = spacesHome();
 const NODE_JSON = 'node.json';
 const NODE_KEY = 'node_key';
 

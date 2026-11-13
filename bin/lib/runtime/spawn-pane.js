@@ -3,10 +3,11 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { spacesHome } = require('../spaces-home');
 
 // Shared SSH service key path — used to spawn shells as other OS users when
 // no per-user key is supplied. Mirrors bin/terminal-server.js's SERVICE_KEY.
-const SERVICE_KEY = path.join(os.homedir(), '.spaces', 'service_key');
+const SERVICE_KEY = path.join(spacesHome(), 'service_key');
 
 /**
  * Agent launch table. Moved here from terminal-server.js so both the legacy
@@ -177,7 +178,7 @@ function resolveShell(agentType, { shellUser, sshKeyPath } = {}) {
       args: [
         '-4', // Force IPv4 — localhost may resolve to ::1 which sshd can reject
         '-o', 'StrictHostKeyChecking=accept-new',
-        '-o', `UserKnownHostsFile=${path.join(os.homedir(), '.spaces', 'known_hosts')}`,
+        '-o', `UserKnownHostsFile=${path.join(spacesHome(), 'known_hosts')}`,
         '-i', sshKey,
         '-t',
         `${shellUser}@localhost`,

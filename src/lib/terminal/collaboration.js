@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const http = require('http');
+const { spacesHome } = require('../../../bin/lib/spaces-home');
 
 // Repo root: this file lives at src/lib/terminal/collaboration.js, so four
 // levels up reaches the spaces/ project root where bin/ and node_modules live.
@@ -32,8 +33,8 @@ exports.getCollabConfig = function getCollabConfig(paneId, username) {
     // Try per-user DB first (multi-user server), then fall back to main DB
     const processOwner = os.userInfo().username;
     const isLocal = username === processOwner;
-    const perUserDir = path.join(os.homedir(), '.spaces', 'users', username);
-    const mainDir = path.join(os.homedir(), '.spaces');
+    const perUserDir = path.join(spacesHome(), 'users', username);
+    const mainDir = spacesHome();
     let dbPath;
     if (!isLocal && fs.existsSync(path.join(perUserDir, 'spaces.db'))) {
       dbPath = path.join(perUserDir, 'spaces.db');
@@ -77,7 +78,7 @@ exports.writeAgentConfig = function writeAgentConfig(agentType, cwd, env) {
   // The MCP server runs as an isolated subprocess spawned by Claude Code.
   // It needs NODE_PATH to resolve @modelcontextprotocol/sdk, better-sqlite3, etc.
   // Include: managed packages dir, spaces' own node_modules, and inherited NODE_PATH.
-  const managedNodeModules = path.join(os.homedir(), '.spaces', 'packages', 'node_modules');
+  const managedNodeModules = path.join(spacesHome(), 'packages', 'node_modules');
   const spacesOwnModules = path.join(PACKAGE_ROOT, 'node_modules');
   const existingNodePath = process.env.NODE_PATH || '';
   const mcpNodePaths = [managedNodeModules, spacesOwnModules];
@@ -109,7 +110,7 @@ exports.writeAgentConfig = function writeAgentConfig(agentType, cwd, env) {
     // Write env to a JSON config file so the hook works cross-platform
     // (inline KEY='val' syntax is bash-only and breaks on Windows).
     const hookPath = path.join(PACKAGE_ROOT, 'bin', 'spaces-hook.js');
-    const hookEnvDir = path.join(os.homedir(), '.spaces', 'hook-env');
+    const hookEnvDir = path.join(spacesHome(), 'hook-env');
     if (!fs.existsSync(hookEnvDir)) fs.mkdirSync(hookEnvDir, { recursive: true });
     const paneId = env.SPACES_PANE_ID || '';
     if (paneId) {

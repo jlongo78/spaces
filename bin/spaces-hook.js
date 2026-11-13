@@ -3,13 +3,12 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
 // Load env from config file if a paneId arg is provided (cross-platform)
 const paneIdArg = process.argv[2];
 if (paneIdArg && !process.env.SPACES_PANE_ID) {
   try {
-    const envFile = path.join(os.homedir(), '.spaces', 'hook-env', `${paneIdArg}.json`);
+    const envFile = path.join(spacesHome(), 'hook-env', `${paneIdArg}.json`);
     const envData = JSON.parse(fs.readFileSync(envFile, 'utf-8'));
     for (const [k, v] of Object.entries(envData)) {
       if (!process.env[k]) process.env[k] = v;
@@ -24,10 +23,11 @@ const API_URL = process.env.SPACES_API_URL || 'http://localhost:3457';
 // the owner, so it can sign a short-lived token with the owner's secret; the
 // secret itself never goes on the wire, and nothing goes off this machine.
 const authHeaders = () => require('./lib/desktop-auth').clientAuthHeaders(API_URL);
+const { spacesHome } = require('./lib/spaces-home');
 const PANE_NAME = process.env.SPACES_PANE_NAME || 'Claude';
 const BASE_PATH = process.env.SPACES_BASE_PATH || '';
 
-const STATE_DIR = path.join(os.homedir(), '.spaces', 'hook-state');
+const STATE_DIR = path.join(spacesHome(), 'hook-state');
 const STATE_FILE = PANE_ID ? path.join(STATE_DIR, `${PANE_ID}.json`) : null;
 
 function apiRequest(method, apiPath, body) {

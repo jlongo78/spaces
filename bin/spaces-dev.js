@@ -6,7 +6,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const SPACES_DIR = path.join(os.homedir(), '.spaces');
+const SPACES_DIR = spacesHome();
 const CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
 const SESSION_SECRET_PATH = path.join(SPACES_DIR, 'session_secret');
 const INTERNAL_TOKEN_PATH = path.join(SPACES_DIR, 'internal_token');
@@ -55,6 +55,7 @@ require('module').Module._initPaths();
 
 // Require terminal-server AFTER env is set so it reads the correct SPACES_MULTIUSER
 const { createTerminalServer } = require('./terminal-server');
+const { spacesHome } = require('./lib/spaces-home');
 
 // ─── Multiuser prerequisites — auto-setup if needed ──────────
 if (isMultiuser) {

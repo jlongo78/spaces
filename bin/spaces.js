@@ -22,6 +22,7 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const crypto = require('crypto');
+const { spacesHome } = require('./lib/spaces-home');
 
 // Load .env.local into process.env so Next.js API routes see the keys
 const _envLocalPath = path.join(__dirname, '..', '.env.local');
@@ -53,7 +54,7 @@ function logMemory(label) {
 }
 setInterval(() => logMemory(), 60000);
 
-const SPACES_DIR = path.join(os.homedir(), '.spaces');
+const SPACES_DIR = spacesHome();
 const CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
 const SESSION_SECRET_PATH = path.join(SPACES_DIR, 'session_secret');
 const INTERNAL_TOKEN_PATH = path.join(SPACES_DIR, 'internal_token');

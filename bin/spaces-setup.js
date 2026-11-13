@@ -9,8 +9,9 @@ const readline = require('readline');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { spacesHome } = require('./lib/spaces-home');
 
-const SPACES_DIR = path.join(os.homedir(), '.spaces');
+const SPACES_DIR = spacesHome();
 const CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
 const ADMIN_DB_PATH = path.join(SPACES_DIR, 'admin.db');
 const SESSION_SECRET_PATH = path.join(SPACES_DIR, 'session_secret');

@@ -1,12 +1,11 @@
 // Guard: no code under src/ may hardcode the '.spaces' folder name; the data
-// folder must come from spacesHome(). (bin/, scripts/ and collaboration.js are
-// added to the scan by a later task.)
+// folder must come from spacesHome().
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.resolve(__dirname, '../..');
-const SCAN_DIRS = ['src'];
+const SCAN_DIRS = ['src', 'bin', 'scripts'];
 const EXTS = new Set(['.ts', '.tsx', '.js']);
 const ALLOW = new Set([
   'bin/lib/spaces-home.js',
@@ -14,8 +13,10 @@ const ALLOW = new Set([
   'src/lib/file-policy.ts',
   'bin/lib/runtime/files.js',
   'bin/scrub-standalone.js',
+  // Target-user installs deliberately ignore SPACES_HOME and keep <target home>/.spaces.
+  'bin/spaces-install.js',
+  'bin/spaces-service.js',
 ]);
-const EXCLUDE = new Set(['src/lib/terminal/collaboration.js']);
 
 function walk(dir: string, out: string[]) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -33,7 +34,7 @@ describe('spaces-home sweep', () => {
     const offenders: string[] = [];
     for (const f of files) {
       const rel = path.relative(ROOT, f).split(path.sep).join('/');
-      if (ALLOW.has(rel) || EXCLUDE.has(rel)) continue;
+      if (ALLOW.has(rel)) continue;
       fs.readFileSync(f, 'utf8').split(/\r?\n/).forEach((line, i) => {
         if (/['"]\.spaces['"]/.test(line)) offenders.push(`${rel}:${i + 1}`);
       });

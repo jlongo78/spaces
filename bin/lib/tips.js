@@ -8,9 +8,10 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spacesHome } = require('./spaces-home');
 
 function prefsPath(home = os.homedir()) {
-  return path.join(home, '.spaces', 'tui.json');
+  return path.join(spacesHome(home), 'tui.json');
 }
 
 function readPrefs(file) {

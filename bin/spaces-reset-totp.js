@@ -2,9 +2,9 @@
 
 const Database = require('better-sqlite3');
 const path = require('path');
-const os = require('os');
+const { spacesHome } = require('./lib/spaces-home');
 
-const SPACES_DIR = path.join(os.homedir(), '.spaces');
+const SPACES_DIR = spacesHome();
 const ADMIN_DB_PATH = path.join(SPACES_DIR, 'admin.db');
 
 const args = process.argv.slice(2);

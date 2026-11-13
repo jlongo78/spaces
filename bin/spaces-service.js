@@ -7,8 +7,9 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const readline = require('readline');
+const { spacesHome } = require('./lib/spaces-home');
 
-let SPACES_DIR = path.join(os.homedir(), '.spaces');
+let SPACES_DIR = spacesHome();
 let CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
 let LOGS_DIR = path.join(SPACES_DIR, 'logs');
 const SERVICE_NAME = 'spaces';
@@ -17,7 +18,14 @@ const TASK_NAME = 'Spaces';
 
 // Override SPACES_DIR to point to a different user's home
 function setTargetHome(homedir) {
-  SPACES_DIR = path.join(homedir, '.spaces');
+  if (path.resolve(homedir) === path.resolve(os.homedir())) {
+    SPACES_DIR = spacesHome();
+  } else {
+    SPACES_DIR = path.join(homedir, '.spaces');
+    if (process.env.SPACES_HOME && process.env.SPACES_HOME.trim()) {
+      log(`! SPACES_HOME is ignored when installing for another user; using ${SPACES_DIR}`);
+    }
+  }
   CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
   LOGS_DIR = path.join(SPACES_DIR, 'logs');
 }
