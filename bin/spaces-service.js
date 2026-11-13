@@ -17,12 +17,26 @@ const SERVICE_NAME = 'spaces';
 const LABEL = 'com.agentspaces.spaces';
 const TASK_NAME = 'Spaces';
 
+// Home of the user the service runs as. Linux/macOS system units run as the
+// installer (User=/UserName); a Windows system task may target another user.
+let TARGET_HOME = os.homedir();
+let TARGET_IS_SELF = true;
+
+function sameHome(a, b) {
+  const x = path.resolve(a);
+  const y = path.resolve(b);
+  return process.platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y;
+}
+
 // Override SPACES_DIR to point to a different user's home
 function setTargetHome(homedir) {
-  if (path.resolve(homedir) === path.resolve(os.homedir())) {
+  TARGET_IS_SELF = sameHome(homedir, os.homedir());
+  if (TARGET_IS_SELF) {
     SPACES_DIR = spacesHome();
+    TARGET_HOME = os.homedir();
   } else {
     SPACES_DIR = path.join(homedir, '.spaces');
+    TARGET_HOME = path.dirname(SPACES_DIR);
     if (process.env.SPACES_HOME && process.env.SPACES_HOME.trim()) {
       log(`! SPACES_HOME is ignored when installing for another user; using ${SPACES_DIR}`);
     }
@@ -413,10 +427,11 @@ function linuxServicePath(level) {
   return path.join(userDir, `${SERVICE_NAME}.service`);
 }
 
-// Only user-level installs carry SPACES_HOME (SPACES_DIR is already resolved);
-// system-level services use the target user's <home>/.spaces.
-function persistsSpacesHome(level) {
-  return level !== 'system' && !!(process.env.SPACES_HOME || '').trim();
+// A service that runs as the installing user carries SPACES_HOME (SPACES_DIR is
+// already resolved), at user or system level. Only an install for another user
+// ignores it and uses that user's <home>/.spaces (see setTargetHome).
+function persistsSpacesHome() {
+  return TARGET_IS_SELF && !!(process.env.SPACES_HOME || '').trim();
 }
 
 function linuxUnitFile(level) {
@@ -439,7 +454,7 @@ function linuxUnitFile(level) {
   if (config.allowedOrigins) {
     envLines.push(`Environment=SPACES_ALLOWED_ORIGINS=${config.allowedOrigins}`);
   }
-  if (persistsSpacesHome(level)) {
+  if (persistsSpacesHome()) {
     envLines.push(systemdEnv('SPACES_HOME', SPACES_DIR));
   }
 
@@ -676,7 +691,7 @@ function darwinPlistContent(level) {
     envEntries.push(`      <key>SPACES_ALLOWED_ORIGINS</key>`);
     envEntries.push(`      <string>${config.allowedOrigins}</string>`);
   }
-  if (persistsSpacesHome(level)) {
+  if (persistsSpacesHome()) {
     envEntries.push(...plistEnv('SPACES_HOME', SPACES_DIR));
   }
 
@@ -906,9 +921,10 @@ function win32WrapperScript(level) {
     '@echo off',
   ];
   // When running as SYSTEM, override USERPROFILE so os.homedir() resolves
-  // to the target user's home directory (where .spaces/ config lives).
+  // to the target user's home directory (not the parent of a custom
+  // SPACES_HOME folder).
   if (level === 'system') {
-    const homedir = path.dirname(SPACES_DIR); // use resolved target, not os.homedir()
+    const homedir = TARGET_HOME;
     const drive = path.parse(homedir).root.slice(0, -1);
     const rest = homedir.slice(drive.length);
     lines.push(`set USERPROFILE=${homedir}`);
@@ -927,7 +943,7 @@ function win32WrapperScript(level) {
   if (config.allowedOrigins) {
     lines.push(`set SPACES_ALLOWED_ORIGINS=${config.allowedOrigins}`);
   }
-  if (persistsSpacesHome(level)) {
+  if (persistsSpacesHome()) {
     lines.push(cmdSet('SPACES_HOME', SPACES_DIR));
   }
   lines.push(`"${nodePath}" "${spacesPath}" >> "${outLog}" 2>&1`);
@@ -1130,7 +1146,12 @@ async function main() {
   await dispatch[action]();
 }
 
-main().catch((err) => {
-  logErr(err.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    logErr(err.message);
+    process.exit(1);
+  });
+}
+
+// Exported for tests only; the CLI entry point is main() above.
+module.exports = { setTargetHome, persistsSpacesHome, linuxUnitFile, darwinPlistContent, win32WrapperScript };
