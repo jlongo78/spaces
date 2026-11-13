@@ -89,6 +89,8 @@ exports.writeAgentConfig = function writeAgentConfig(agentType, cwd, env) {
     SPACES_BASE_PATH: env.SPACES_BASE_PATH || '',
     NODE_PATH: mcpNodePaths.join(path.delimiter),
   };
+  // MCP servers get only this env, so pass the resolved data folder along.
+  if ((process.env.SPACES_HOME || '').trim()) mcpEnvVars.SPACES_HOME = spacesHome();
 
   // ─── Claude: .mcp.json + hooks ─────────────────────────
   if (agentType === 'claude') {
