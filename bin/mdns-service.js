@@ -6,9 +6,10 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { spacesHome } = require('./lib/spaces-home');
 
-const NODE_JSON_PATH = path.join(os.homedir(), '.spaces', 'node.json');
-const NETWORK_DB_PATH = path.join(os.homedir(), '.spaces', 'network.db');
+const NODE_JSON_PATH = path.join(spacesHome(), 'node.json');
+const NETWORK_DB_PATH = path.join(spacesHome(), 'network.db');
 
 function getNodeIdentity() {
   try {

@@ -3,8 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import type { NodeIdentity } from '../../types/network';
+import { spacesHome } from '@/lib/spaces-home';
 
-const NODE_JSON_PATH = path.join(os.homedir(), '.spaces', 'node.json');
+const NODE_JSON_PATH = path.join(spacesHome(), 'node.json');
 
 let _cached: NodeIdentity | null = null;
 

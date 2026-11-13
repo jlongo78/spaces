@@ -5,6 +5,7 @@
 const { execFileSync } = require('child_process');
 const path = require('path');
 const os = require('os');
+const { spacesHome } = require('./lib/spaces-home');
 const fs = require('fs');
 
 const CORE_PACKAGE = '@jlongo78/agent-spaces';
@@ -28,7 +29,13 @@ function resolveTargetHome() {
 }
 
 const TARGET_HOME = resolveTargetHome();
-const SPACES_DIR = path.join(TARGET_HOME, '.spaces');
+const IS_OWN_HOME = process.platform === 'win32'
+  ? path.resolve(TARGET_HOME).toLowerCase() === path.resolve(os.homedir()).toLowerCase()
+  : path.resolve(TARGET_HOME) === path.resolve(os.homedir());
+const SPACES_DIR = IS_OWN_HOME ? spacesHome() : path.join(TARGET_HOME, '.spaces');
+if (!IS_OWN_HOME && process.env.SPACES_HOME && process.env.SPACES_HOME.trim()) {
+  logWarn(`SPACES_HOME is ignored when installing for another user; using ${SPACES_DIR}`);
+}
 
 // ─── Helpers ──────────────────────────────────────────────────
 function log(msg) { console.log(`  ${msg}`); }
@@ -229,7 +236,7 @@ function uninstall() {
     return;
   }
   logOk('Spaces uninstalled');
-  log('User data remains at ~/.spaces/ — remove manually if desired');
+  log(`User data remains at ${SPACES_DIR} — remove manually if desired`);
   console.log('');
 }
 

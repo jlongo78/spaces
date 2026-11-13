@@ -11,6 +11,12 @@ All notable changes to Spaces are recorded here. The project follows
   which creating a space failed with "table workspaces has no column named
   name" (#38). Spaces now marks its database as its own, and when it finds
   one it did not create, it says which file and leaves it unchanged.
+- New `SPACES_HOME` setting moves Spaces' data folder away from `~/.spaces`.
+  Set it to a folder path before you run `spaces`, or before
+  `spaces service install` to have a service use it. This is the way around
+  another application that already uses `~/.spaces` (#38), and the error for
+  that case now suggests it. Nothing changes if you leave it unset, and
+  existing data is not moved.
 
 ## 1.0.9
 

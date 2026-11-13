@@ -46,7 +46,7 @@ function createSessionStore({ dbPath } = {}) {
       if (reason) {
         d.close();
         openError = `${dbPath} belongs to another application (${reason}). ` +
-          'Spaces will not change it. Move or rename that file, then start Spaces again.';
+          'Spaces will not change it. Move or rename that file, or set SPACES_HOME to keep Spaces\' data in another folder, then start Spaces again.';
         return null;
       }
       db = d;

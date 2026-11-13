@@ -22,6 +22,7 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const crypto = require('crypto');
+const { pinSpacesHome } = require('./lib/spaces-home');
 
 // Load .env.local into process.env so Next.js API routes see the keys
 const _envLocalPath = path.join(__dirname, '..', '.env.local');
@@ -53,7 +54,11 @@ function logMemory(label) {
 }
 setInterval(() => logMemory(), 60000);
 
-const SPACES_DIR = path.join(os.homedir(), '.spaces');
+const SPACES_DIR = (() => {
+  // Resolve once and pin SPACES_HOME to the absolute path, so children started
+  // in another cwd (Next, panes) use the same folder. A bad value is one line.
+  try { return pinSpacesHome(); } catch (e) { console.error(`  ${e.message}`); process.exit(1); }
+})();
 const CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
 const SESSION_SECRET_PATH = path.join(SPACES_DIR, 'session_secret');
 const INTERNAL_TOKEN_PATH = path.join(SPACES_DIR, 'internal_token');
@@ -532,7 +537,7 @@ function launchTui(tuiArgs, { fallbackToBrowser }) {
     // Multiuser mode refuses /proto, so a server started now could never
     // serve this client. Say why instead of stranding one in the background.
     console.error('  The terminal client needs desktop mode, but multiuser mode is on');
-    console.error('  (SPACES_MULTIUSER=1 or "multiuser": true in ~/.spaces/server.json).');
+    console.error(`  (SPACES_MULTIUSER=1 or "multiuser": true in ${CONFIG_PATH}).`);
     console.error('  Run "spaces tui --desktop" to use the terminal client anyway.');
     if (fallbackToBrowser) {
       console.log('  Opening the browser instead.');
@@ -803,7 +808,7 @@ function launchRemote(dest, tuiArgs) {
   const { serverArgs, clientArgs } = splitServerFlags(tuiArgs);
   if (serverArgs.length || cliFlags.port) {
     console.error('  --port, --desktop, --multiuser and --experimental describe this machine\'s server, not the remote\'s.');
-    console.error(`  The remote uses its own ~/.spaces/server.json; change it there (ssh ${dest}).`);
+    console.error(`  The remote uses its own server.json (~/.spaces, or its SPACES_HOME folder); change it there (ssh ${dest}).`);
     process.exit(2);
   }
   if (clientArgs.includes('--url')) {
@@ -884,7 +889,7 @@ function connectRemote(dest, { login = false, localPort: wantedPort = null } = {
   if (remotePort === null) {
     if (r.status === 0 && /^SPACES_MULTIUSER=1/m.test(r.stdout)) {
       console.error(`  Spaces on ${dest} runs in multiuser mode, which the terminal client cannot use.`);
-      console.error('  Set "multiuser": false in ~/.spaces/server.json there and restart it.');
+      console.error('  Set "multiuser": false in its server.json (~/.spaces, or its SPACES_HOME folder) and restart it.');
       process.exit(1);
     }
     const kind = remote.classifyStartFailure(r.status, r.stderr);
@@ -1195,9 +1200,12 @@ function startServer() {
 
   // The secret is only as good as the permissions on it. It is created
   // owner-only, but a file or directory loosened since (a restore, a copy,
-  // a umask) would hand it to every account on the machine. Windows keeps
-  // ~/.spaces inside the owner's profile, whose ACL already does this.
-  if (process.platform !== 'win32') {
+  // a umask) would hand it to every account on the machine. On Windows a
+  // folder inside the owner's profile inherits its owner-only ACL; one
+  // elsewhere (SPACES_HOME) gets owner-only ACLs set explicitly.
+  if (process.platform === 'win32') {
+    require('./lib/data-dir-acl').hardenDataDir(SPACES_DIR);
+  } else {
     try {
       const dirStat = fs.statSync(SPACES_DIR);
       const fileStat = fs.statSync(INTERNAL_TOKEN_PATH);

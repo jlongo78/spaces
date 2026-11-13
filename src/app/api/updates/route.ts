@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
+import { spacesHome } from '@/lib/spaces-home';
 
 
 /** True when `candidate` is later than `current`, by number (see bin/lib/version.js). */
@@ -25,7 +25,7 @@ function isNewer(candidate: string, current: string): boolean {
 
 export const dynamic = 'force-dynamic';
 
-const UPDATE_CHECK_PATH = path.join(os.homedir(), '.spaces', 'update-check.json');
+const UPDATE_CHECK_PATH = path.join(spacesHome(), 'update-check.json');
 const CACHE_TTL = 4 * 3600_000; // 4 hours
 
 async function freshCheck(): Promise<any> {

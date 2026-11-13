@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { spawnPane, buildLaunchCommand, AGENTS, findSshBinary, buildPaneEnv } from '../../bin/lib/runtime/spawn-pane.js';
 
 describe('AGENTS table', () => {
@@ -66,6 +66,23 @@ describe('buildPaneEnv', () => {
     expect(env.SPACES_PANE_ID).toBe('pane-abc');
     expect(env.SPACES_API_URL).toBe('http://localhost:4000');
     expect(env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION).toBe('true');
+  });
+
+  // The hook and MCP server run inside the pane and must find the same data
+  // folder as the server (hook-env, internal_token, hook-state).
+  it('carries the resolved SPACES_HOME when it is set', () => {
+    vi.stubEnv('SPACES_HOME', 'rel-spaces-home');
+    try {
+      const env = buildPaneEnv({ paneId: 'p1', apiPort: 4000, sourceEnv: process.env });
+      expect(env.SPACES_HOME).toBe(path.resolve('rel-spaces-home'));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('omits SPACES_HOME when it is unset or blank', () => {
+    expect(buildPaneEnv({ paneId: 'p1', apiPort: 4000, sourceEnv: {} }).SPACES_HOME).toBeUndefined();
+    expect(buildPaneEnv({ paneId: 'p1', apiPort: 4000, sourceEnv: { SPACES_HOME: '  ' } }).SPACES_HOME).toBeUndefined();
   });
 });
 

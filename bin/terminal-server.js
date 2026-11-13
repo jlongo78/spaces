@@ -13,6 +13,7 @@ const { createRuntime } = require('./lib/runtime');
 const { attachControlChannel } = require('./lib/runtime/control-channel');
 const { attachPaneSocket } = require('./lib/runtime/pane-socket');
 const { spawnPane, AGENTS, buildPaneEnv } = require('./lib/runtime/spawn-pane');
+const { spacesHome } = require('./lib/spaces-home');
 
 const PORT = parseInt(process.env.SPACES_WS_PORT || '3458', 10);
 const IS_MULTIUSER = process.env.SPACES_MULTIUSER === '1';
@@ -36,7 +37,7 @@ function getRuntime() {
   if (!_runtime) {
     _runtime = createRuntime({
       nodeId: os.hostname(),
-      spacesDbPath: path.join(os.homedir(), '.spaces', 'spaces.db'),
+      spacesDbPath: path.join(spacesHome(), 'spaces.db'),
       // A getter, not the current value: API_PORT is a `let` that attached
       // mode updates after the HTTP server starts listening, and this
       // runtime can be created before that happens.
@@ -85,7 +86,7 @@ function waitForApi(get = http.get) {
 
 // ─── Terminal token verification ──────────────────────────
 
-const SECRET_PATH = path.join(os.homedir(), '.spaces', 'terminal_secret');
+const SECRET_PATH = path.join(spacesHome(), 'terminal_secret');
 
 function getTerminalSecret() {
   if (fs.existsSync(SECRET_PATH)) {
@@ -139,7 +140,7 @@ function verifyTerminalToken(token) {
 
 // ─── Session token verification (for self-contained auth) ──
 
-const SESSION_SECRET_PATH = path.join(os.homedir(), '.spaces', 'session_secret');
+const SESSION_SECRET_PATH = path.join(spacesHome(), 'session_secret');
 
 function getSessionSecret() {
   if (fs.existsSync(SESSION_SECRET_PATH)) {
@@ -188,7 +189,7 @@ function verifySessionToken(token) {
 
 // ─── Admin DB for shell user lookup ─────────────────────────
 
-const ADMIN_DB_PATH = path.join(os.homedir(), '.spaces', 'admin.db');
+const ADMIN_DB_PATH = path.join(spacesHome(), 'admin.db');
 let _adminDb = null;
 
 function getAdminDb() {
@@ -216,7 +217,7 @@ function lookupShellUser(appUsername) {
 
 // ─── Network DB for federation ───────────────────────────────
 
-const NETWORK_DB_PATH = path.join(os.homedir(), '.spaces', 'network.db');
+const NETWORK_DB_PATH = path.join(spacesHome(), 'network.db');
 let _networkDb = null;
 
 function getNetworkDb() {
@@ -417,7 +418,7 @@ function allowedHosts() {
 
 // ─── SSH service key path (used to spawn shells as other OS users) ──
 
-const SERVICE_KEY = path.join(os.homedir(), '.spaces', 'service_key');
+const SERVICE_KEY = path.join(spacesHome(), 'service_key');
 
 // Ensure the SSH service key exists, has correct permissions, and is authorized.
 function ensureServiceKeyAtRuntime() {
@@ -1012,7 +1013,7 @@ function handleConnection(wss, ws, req) {
     args = [
       '-4', // Force IPv4 — localhost may resolve to ::1 which sshd can reject
       '-o', 'StrictHostKeyChecking=accept-new',
-      '-o', `UserKnownHostsFile=${path.join(os.homedir(), '.spaces', 'known_hosts')}`,
+      '-o', `UserKnownHostsFile=${path.join(spacesHome(), 'known_hosts')}`,
       '-i', sshKey,
       '-t',
       `${shellUser}@localhost`,
@@ -1249,7 +1250,7 @@ function handleConnection(wss, ws, req) {
     analyticsRecordSessionEnd(paneId);
     // Clean up hook state file
     try {
-      const hookStateFile = path.join(os.homedir(), '.spaces', 'hook-state', `${paneId}.json`);
+      const hookStateFile = path.join(spacesHome(), 'hook-state', `${paneId}.json`);
       if (fs.existsSync(hookStateFile)) fs.unlinkSync(hookStateFile);
     } catch { /* ignore */ }
     if (session.ws && session.ws.readyState === 1) {
@@ -1443,7 +1444,7 @@ function findSessionCwd(sessionId, username) {
 function persistSessionToDb(paneId, sessionId) {
   try {
     const Database = require('better-sqlite3');
-    const dbPath = path.join(os.homedir(), '.spaces', 'spaces.db');
+    const dbPath = path.join(spacesHome(), 'spaces.db');
     if (!fs.existsSync(dbPath)) {
       console.error(`[Session Persist] DB not found: ${dbPath}`);
       return;

@@ -99,6 +99,19 @@ describe('spaces CLI', () => {
     expect(bad.stderr).toContain('spaces tips off');
   });
 
+  it('a bad SPACES_HOME is one clear line and exit 1, not a stack trace', () => {
+    const file = path.join(home, 'not-a-folder');
+    fs.writeFileSync(file, 'x');
+    for (const [value, msg] of [[file, 'is not a folder'], [home, 'home folder']]) {
+      const r = run(['--version'], { SPACES_HOME: value });
+      expect(r.status, value).toBe(1);
+      expect(r.stderr).toContain('SPACES_HOME');
+      expect(r.stderr).toContain(msg);
+      expect(r.stderr).not.toMatch(/\n\s+at /);
+      expect(r.stdout).not.toContain(version);
+    }
+  });
+
   it('--version and -v print the package version and exit 0', () => {
     for (const flag of ['--version', '-v']) {
       const r = run([flag]);

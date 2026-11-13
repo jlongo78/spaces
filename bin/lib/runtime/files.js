@@ -16,6 +16,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spacesHome } = require('../spaces-home');
 
 /** Largest chunk read or written per call; a download or upload is many calls. */
 const MAX_CHUNK = 1024 * 1024;
@@ -74,11 +75,19 @@ function createPolicy({ devRoots, home = os.homedir() }) {
   // paths checked against it always share the on-disk spelling.
   const roots = [...new Set([...devRoots.map(r => realOrNull(r) || r), ...transcripts])];
   const denied = DENIED_IN_HOME.map(d => path.join(realHome, d));
+  // The server's data folder, wherever SPACES_HOME puts it. Read per call so a
+  // changed environment is honoured. If it cannot be resolved (SPACES_HOME is
+  // a file), refuse everything rather than guess.
+  let failClosed = false;
+  try {
+    const data = spacesHome();
+    denied.push(realOrNull(data) || data);
+  } catch { failClosed = true; }
   const agentDirs = AGENT_DIRS.map(d => path.join(realHome, d));
 
   /** True when the resolved path `p` may be touched at all. */
   function allowed(p) {
-    if (windowsTrick(p)) return false;
+    if (failClosed || windowsTrick(p)) return false;
     if (denied.some(d => inside(p, d))) return false;
     if (agentDirs.some(d => inside(p, d)) && !transcripts.some(t => inside(p, t))) return false;
     return roots.some(r => inside(p, r));

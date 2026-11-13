@@ -268,7 +268,7 @@ export default function SettingsPage() {
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              This toggle writes to <code>~/.spaces/server.json</code>. You can also set the env var <code>SPACES_MULTIUSER=1</code> or pass <code>--multiuser</code> on launch.
+              This toggle writes to <code>~/.spaces/server.json</code> (or <code>server.json</code> in your <code>SPACES_HOME</code> folder). You can also set the env var <code>SPACES_MULTIUSER=1</code> or pass <code>--multiuser</code> on launch.
             </p>
           </div>
         </div>
@@ -407,7 +407,7 @@ export default function SettingsPage() {
             <div>
               <label className="text-muted-foreground text-xs">Spaces Database</label>
               <p className="font-mono text-xs mt-1 p-2 bg-zinc-50 dark:bg-zinc-800 rounded">
-                ~/.spaces/spaces.db
+                ~/.spaces/spaces.db (or in your SPACES_HOME folder)
               </p>
             </div>
           </div>

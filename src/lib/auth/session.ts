@@ -2,8 +2,9 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { IS_MULTIUSER } from '@/lib/flags';
+import { spacesHome } from '@/lib/spaces-home';
 
-const SECRET_PATH = path.join(process.env.HOME || process.env.USERPROFILE || require('os').homedir(), '.spaces', 'session_secret');
+const SECRET_PATH = path.join(spacesHome(process.env.HOME || process.env.USERPROFILE || require('os').homedir()), 'session_secret');
 
 function getSessionSecret(): Buffer {
   // Prefer the env var set by the spaces launcher — guaranteed to match middleware

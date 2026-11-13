@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,9 +21,31 @@ beforeEach(() => {
   fs.writeFileSync(path.join(home, '.ssh', 'id_rsa'), 'k');
   fs.writeFileSync(path.join(server, '.spaces', 'session_secret'), 's');
 });
-afterEach(() => fs.rmSync(path.dirname(home), { recursive: true, force: true }));
+afterEach(() => {
+  vi.unstubAllEnvs();
+  fs.rmSync(path.dirname(home), { recursive: true, force: true });
+});
 
 describe('checkFilePath', () => {
+  it('refuses a custom SPACES_HOME like ~/.spaces, and allows its neighbours', () => {
+    const data = path.join(dev, 'spacesdata');
+    fs.mkdirSync(data, { recursive: true });
+    fs.writeFileSync(path.join(data, 'admin.db'), 'db');
+    fs.writeFileSync(path.join(dev, 'other.txt'), 'ok');
+    vi.stubEnv('SPACES_HOME', data);
+    expect(check(path.join(data, 'admin.db'))).toBeNull();
+    expect(check(path.join(data, 'new.txt'))).toBeNull();
+    expect(check(path.join(dev, 'other.txt'))).toBe(path.join(dev, 'other.txt'));
+  });
+
+  it('refuses everything when SPACES_HOME is a file (fails closed)', () => {
+    const file = path.join(dev, 'afile');
+    fs.writeFileSync(file, 'x');
+    fs.writeFileSync(path.join(dev, 'other.txt'), 'ok');
+    vi.stubEnv('SPACES_HOME', file);
+    expect(check(path.join(dev, 'other.txt'))).toBeNull();
+  });
+
   it('allows files in the dev directories, new ones included', () => {
     expect(check(path.join(dev, 'app', 'a.txt'))).toBe(path.join(dev, 'app', 'a.txt'));
     expect(check(path.join(dev, 'app', 'new.txt'))).toBe(path.join(dev, 'app', 'new.txt'));

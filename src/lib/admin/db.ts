@@ -2,12 +2,12 @@ import { createRequire } from 'module';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
-import os from 'os';
+import { spacesHome } from '@/lib/spaces-home';
 
 const require_ = createRequire(__filename);
 const Database: typeof import('better-sqlite3') = require_('better-sqlite3');
 
-const ADMIN_DB_PATH = path.join(os.homedir(), '.spaces', 'admin.db');
+const ADMIN_DB_PATH = path.join(spacesHome(), 'admin.db');
 
 let _db: ReturnType<typeof Database> | null = null;
 

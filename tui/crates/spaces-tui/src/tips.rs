@@ -7,6 +7,7 @@
 //! on, not the server it talks to, so a `--remote` session follows the
 //! laptop's choice. `SPACES_NO_TIPS=1` turns them off for one run.
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -58,12 +59,45 @@ pub const TIPS: &[&str] = &[
     "tired of tips? ctrl+k, type tips, enter",
 ];
 
+/// The Spaces data folder, read through `var` so tests can supply their own
+/// environment. Mirrors `bin/lib/spaces-home.js`: a set, non-blank
+/// `SPACES_HOME` wins (a leading `~`, `~/` or `~\` expands to the home
+/// directory, and a relative value is made absolute against the current
+/// directory); otherwise `<home>/.spaces`. Unlike the JS side this does not
+/// reject a `SPACES_HOME` that is an existing file: tips are best effort, so
+/// a bad path just means the preferences do not load.
+fn data_dir(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    let home = || {
+        var("USERPROFILE")
+            .filter(|h| !h.is_empty())
+            .or_else(|| var("HOME"))
+            .map(PathBuf::from)
+    };
+    if let Some(raw) = var("SPACES_HOME") {
+        let raw = raw.to_string_lossy();
+        let raw = raw.trim();
+        if !raw.is_empty() {
+            let under_home = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\"));
+            let expanded = if raw == "~" {
+                home()?
+            } else if let Some(rest) = under_home {
+                home()?.join(rest)
+            } else {
+                PathBuf::from(raw)
+            };
+            return if expanded.is_absolute() {
+                Some(expanded)
+            } else {
+                Some(std::env::current_dir().ok()?.join(expanded))
+            };
+        }
+    }
+    Some(home()?.join(".spaces"))
+}
+
 /// This machine's client settings file.
 fn prefs_path() -> Option<PathBuf> {
-    let home = std::env::var_os("USERPROFILE")
-        .filter(|h| !h.is_empty())
-        .or_else(|| std::env::var_os("HOME"))?;
-    Some(PathBuf::from(home).join(".spaces").join("tui.json"))
+    data_dir(|k| std::env::var_os(k)).map(|d| d.join("tui.json"))
 }
 
 fn read_prefs(path: &std::path::Path) -> serde_json::Map<String, serde_json::Value> {
@@ -125,6 +159,46 @@ pub fn random() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An environment lookup over fixed pairs; anything else is unset.
+    fn env_of(pairs: Vec<(&'static str, PathBuf)>) -> impl Fn(&str) -> Option<OsString> {
+        move |k| {
+            pairs
+                .iter()
+                .find(|(name, _)| *name == k)
+                .map(|(_, v)| v.clone().into_os_string())
+        }
+    }
+
+    #[test]
+    fn spaces_home_wins() {
+        let target = std::env::temp_dir().join("sp");
+        let got = data_dir(env_of(vec![
+            ("SPACES_HOME", target.clone()),
+            ("HOME", std::env::temp_dir().join("h")),
+        ]));
+        assert_eq!(got, Some(target));
+    }
+
+    #[test]
+    fn blank_spaces_home_falls_back_to_home_dot_spaces() {
+        let home = std::env::temp_dir().join("h");
+        let got = data_dir(env_of(vec![
+            ("SPACES_HOME", PathBuf::from("  ")),
+            ("HOME", home.clone()),
+        ]));
+        assert_eq!(got, Some(home.join(".spaces")));
+    }
+
+    #[test]
+    fn spaces_home_expands_a_leading_tilde() {
+        let home = std::env::temp_dir().join("h");
+        let got = data_dir(env_of(vec![
+            ("SPACES_HOME", PathBuf::from("~/sp")),
+            ("HOME", home.clone()),
+        ]));
+        assert_eq!(got, Some(home.join("sp")));
+    }
 
     #[test]
     fn every_tip_fits_beside_the_tallies() {

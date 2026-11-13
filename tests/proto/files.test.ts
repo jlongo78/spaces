@@ -1,5 +1,5 @@
 // tests/proto/files.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -34,7 +34,10 @@ beforeEach(() => {
   fs.writeFileSync(path.join(home, '.claude', 'projects', '-app', 's.jsonl'), '{}');
   fs.writeFileSync(path.join(home, 'outside', 'notes.txt'), 'private');
 });
-afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
+afterEach(() => {
+  vi.unstubAllEnvs();
+  fs.rmSync(home, { recursive: true, force: true });
+});
 
 describe('fs.list', () => {
   it('lists folders first, then files, dotfiles included', () => {
@@ -89,6 +92,27 @@ describe('credential folders are refused even inside an allowed root', () => {
     expect(asHome('fs.write', { path: path.join(home, '.spaces', 'config.json'), data: b64('{}'), mode: 'truncate' }).code).toBe('bad_request');
     expect(asHome('fs.write', { path: path.join(home, '.ssh', 'authorized_keys'), data: b64('k'), mode: 'create' }).code).toBe('bad_request');
     expect(asHome('fs.mkdir', { path: path.join(home, '.spaces', 'x') }).code).toBe('bad_request');
+  });
+});
+
+describe('a custom SPACES_HOME is refused like ~/.spaces', () => {
+  it('refuses the data folder inside a dev root, still allows its neighbours', () => {
+    const data = path.join(dev, 'spacesdata');
+    fs.mkdirSync(data, { recursive: true });
+    fs.writeFileSync(path.join(data, 'admin.db'), 'db');
+    fs.writeFileSync(path.join(dev, 'other.txt'), 'ok');
+    vi.stubEnv('SPACES_HOME', data);
+    expect(call('fs.read', { path: path.join(data, 'admin.db') }).ok).toBe(false);
+    expect(call('fs.write', { path: path.join(data, 'x'), data: b64('k'), mode: 'create' }).ok).toBe(false);
+    expect(call('fs.read', { path: path.join(dev, 'other.txt') }).ok).toBe(true);
+  });
+
+  it('refuses everything when SPACES_HOME is a file (fails closed)', () => {
+    const file = path.join(dev, 'afile');
+    fs.writeFileSync(file, 'x');
+    fs.writeFileSync(path.join(dev, 'other.txt'), 'ok');
+    vi.stubEnv('SPACES_HOME', file);
+    expect(call('fs.read', { path: path.join(dev, 'other.txt') }).ok).toBe(false);
   });
 });
 

@@ -15,10 +15,10 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
+const { spacesHome } = require('../spaces-home');
 
-const SPACES_DIR = path.join(os.homedir(), '.spaces');
+const SPACES_DIR = spacesHome();
 const DEFAULT_DB_PATH = path.join(SPACES_DIR, 'network.db');
 const SECRET_PATH = path.join(SPACES_DIR, 'terminal_secret');
 

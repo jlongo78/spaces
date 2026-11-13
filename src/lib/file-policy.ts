@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { spacesHome } from '@/lib/spaces-home';
 
 // What the web app's file viewer may touch. The same rules as the terminal
 // client's file browser (bin/lib/runtime/files.js); the two are separate
@@ -76,6 +77,16 @@ export function checkFilePath(input: string, { homes, roots }: { homes: string[]
 
   const realHomes = [...new Set(homes.map((h) => realOrNull(h) || path.resolve(h)))];
   const transcripts = realHomes.flatMap((h) => TRANSCRIPT_STORES.map((d) => path.join(h, d)));
+  // The server's data folder, wherever SPACES_HOME puts it (read per call).
+  // Unresolvable (SPACES_HOME is a file): refuse everything.
+  let dataHome: string;
+  try {
+    const data = spacesHome();
+    dataHome = realOrNull(data) || data;
+  } catch {
+    return null;
+  }
+  if (inside(target, dataHome)) return null;
   for (const h of realHomes) {
     if (DENIED_IN_HOME.some((d) => inside(target, path.join(h, d)))) return null;
     if (AGENT_DIRS.some((d) => inside(target, path.join(h, d))) && !transcripts.some((t) => inside(target, t))) {

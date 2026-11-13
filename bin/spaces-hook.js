@@ -3,13 +3,21 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
+const { spacesHome } = require('./lib/spaces-home');
+
+// Hooks must never break the agent: a bad SPACES_HOME means exit quietly.
+let HOME_DIR;
+try {
+  HOME_DIR = spacesHome();
+} catch {
+  process.exit(0);
+}
 
 // Load env from config file if a paneId arg is provided (cross-platform)
 const paneIdArg = process.argv[2];
 if (paneIdArg && !process.env.SPACES_PANE_ID) {
   try {
-    const envFile = path.join(os.homedir(), '.spaces', 'hook-env', `${paneIdArg}.json`);
+    const envFile = path.join(HOME_DIR, 'hook-env', `${paneIdArg}.json`);
     const envData = JSON.parse(fs.readFileSync(envFile, 'utf-8'));
     for (const [k, v] of Object.entries(envData)) {
       if (!process.env[k]) process.env[k] = v;
@@ -27,7 +35,7 @@ const authHeaders = () => require('./lib/desktop-auth').clientAuthHeaders(API_UR
 const PANE_NAME = process.env.SPACES_PANE_NAME || 'Claude';
 const BASE_PATH = process.env.SPACES_BASE_PATH || '';
 
-const STATE_DIR = path.join(os.homedir(), '.spaces', 'hook-state');
+const STATE_DIR = path.join(HOME_DIR, 'hook-state');
 const STATE_FILE = PANE_ID ? path.join(STATE_DIR, `${PANE_ID}.json`) : null;
 
 function apiRequest(method, apiPath, body) {

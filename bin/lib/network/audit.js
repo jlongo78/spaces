@@ -15,10 +15,10 @@
  */
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
+const { spacesHome } = require('../spaces-home');
 
-const DEFAULT_PATH = path.join(os.homedir(), '.spaces', 'federation.log');
+const DEFAULT_PATH = path.join(spacesHome(), 'federation.log');
 
 /**
  * Field names never written, whatever a caller passes.

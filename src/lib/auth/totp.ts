@@ -2,11 +2,12 @@ import { createRequire } from 'module';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { spacesHome } from '@/lib/spaces-home';
 
 const require_ = createRequire(__filename);
 const { TOTP, Secret } = require_('otpauth');
 
-const SECRET_PATH = path.join(process.env.HOME || '/home/' + require('os').userInfo().username, '.spaces', 'terminal_secret');
+const SECRET_PATH = path.join(spacesHome(process.env.HOME || '/home/' + require('os').userInfo().username), 'terminal_secret');
 
 function getTerminalSecret(): Buffer {
   if (fs.existsSync(SECRET_PATH)) {

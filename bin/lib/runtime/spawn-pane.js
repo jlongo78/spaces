@@ -3,10 +3,11 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { spacesHome } = require('../spaces-home');
 
 // Shared SSH service key path — used to spawn shells as other OS users when
 // no per-user key is supplied. Mirrors bin/terminal-server.js's SERVICE_KEY.
-const SERVICE_KEY = path.join(os.homedir(), '.spaces', 'service_key');
+const SERVICE_KEY = path.join(spacesHome(), 'service_key');
 
 /**
  * Agent launch table. Moved here from terminal-server.js so both the legacy
@@ -87,6 +88,10 @@ function buildPaneEnv({ paneId, apiPort, sourceEnv = process.env } = {}) {
   for (const k of PANE_ENV_ALLOW) {
     if (sourceEnv[k] !== undefined) env[k] = sourceEnv[k];
   }
+  // The hook and MCP server inside the pane must find the server's data
+  // folder (hook-env, internal_token, hook-state). Pass the resolved absolute
+  // path so a relative SPACES_HOME can't drift with the pane's cwd.
+  if ((sourceEnv.SPACES_HOME || '').trim()) env.SPACES_HOME = spacesHome();
   env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION = 'true';
   env.SPACES_PANE_ID = paneId;
   env.SPACES_API_URL = `http://localhost:${apiPort}`;
@@ -177,7 +182,7 @@ function resolveShell(agentType, { shellUser, sshKeyPath } = {}) {
       args: [
         '-4', // Force IPv4 — localhost may resolve to ::1 which sshd can reject
         '-o', 'StrictHostKeyChecking=accept-new',
-        '-o', `UserKnownHostsFile=${path.join(os.homedir(), '.spaces', 'known_hosts')}`,
+        '-o', `UserKnownHostsFile=${path.join(spacesHome(), 'known_hosts')}`,
         '-i', sshKey,
         '-t',
         `${shellUser}@localhost`,

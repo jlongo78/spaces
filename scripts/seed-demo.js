@@ -36,9 +36,9 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const WebSocket = require('ws');
+const { spacesHome } = require('../bin/lib/spaces-home');
 
 // ── Config ───────────────────────────────────────────────────────────────
 const CWD = process.env.SPACES_DEMO_CWD || process.cwd();
@@ -61,7 +61,7 @@ const PANES = [
 function serverPort() {
   if (process.env.SPACES_PORT) return parseInt(process.env.SPACES_PORT, 10);
   try {
-    const cfg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.spaces', 'server.json'), 'utf-8'));
+    const cfg = JSON.parse(fs.readFileSync(path.join(spacesHome(), 'server.json'), 'utf-8'));
     if (cfg.port) return parseInt(cfg.port, 10);
   } catch { /* default */ }
   return 3457;

@@ -261,6 +261,7 @@ describe('createSessionStore with another app\'s spaces.db', () => {
     const res = store.createWorkspace({ name: 'x' }) as any;
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/another application/);
+    expect(res.error).toMatch(/set SPACES_HOME/);
     expect(res.error).toContain(dbPath);
     store.close();
   });
@@ -272,6 +273,7 @@ describe('createSessionStore with another app\'s spaces.db', () => {
     const res = store.createWorkspace({ name: 'x' }) as any;
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/another application/);
+    expect(res.error).toMatch(/set SPACES_HOME/);
     store.close();
   });
 });

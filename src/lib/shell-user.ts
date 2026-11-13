@@ -2,10 +2,11 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
+import { spacesHome } from '@/lib/spaces-home';
 
-const ADMIN_DB_PATH = path.join(os.homedir(), '.spaces', 'admin.db');
-const SERVICE_KEY = path.join(os.homedir(), '.spaces', 'service_key');
-const KNOWN_HOSTS = path.join(os.homedir(), '.spaces', 'known_hosts');
+const ADMIN_DB_PATH = path.join(spacesHome(), 'admin.db');
+const SERVICE_KEY = path.join(spacesHome(), 'service_key');
+const KNOWN_HOSTS = path.join(spacesHome(), 'known_hosts');
 
 type AdminDb = {
   prepare: (sql: string) => { get: (...args: unknown[]) => unknown };
@@ -61,7 +62,7 @@ function shellQuote(s: string): string {
  */
 function resolveIdentityKey(shellUser: string): string {
   if (/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,31}$/.test(shellUser)) {
-    const perUser = path.join(os.homedir(), '.spaces', 'keys', shellUser);
+    const perUser = path.join(spacesHome(), 'keys', shellUser);
     if (fs.existsSync(perUser)) return perUser;
   }
   return SERVICE_KEY;

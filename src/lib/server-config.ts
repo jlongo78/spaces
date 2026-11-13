@@ -1,8 +1,8 @@
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
+import { spacesHome } from '@/lib/spaces-home';
 
-const SERVER_CONFIG_PATH = path.join(os.homedir(), '.spaces', 'server.json');
+const SERVER_CONFIG_PATH = path.join(spacesHome(), 'server.json');
 
 export interface ServerConfig {
   port?: number;

@@ -108,7 +108,7 @@ export default function MobileSettingsPage() {
             </div>
             <div>
               <span className="text-zinc-500">Database:</span>
-              <span className="font-mono ml-2">~/.spaces/spaces.db</span>
+              <span className="font-mono ml-2">~/.spaces/spaces.db (or in your SPACES_HOME folder)</span>
             </div>
           </div>
         </div>

@@ -225,7 +225,7 @@ function secretMatches(expected, given) {
  * (the server prefers it too, so the two always agree), else
  * ~/.spaces/internal_token; '' when there is none yet.
  */
-function readSecret(spacesDir = path.join(require('os').homedir(), '.spaces')) {
+function readSecret(spacesDir = require('./spaces-home').spacesHome()) {
   const fromEnv = process.env.SPACES_INTERNAL_TOKEN;
   if (fromEnv && fromEnv.trim()) return fromEnv.trim();
   try {

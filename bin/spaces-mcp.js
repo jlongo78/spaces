@@ -6,7 +6,7 @@ const { ListToolsRequestSchema, CallToolRequestSchema } = require('@modelcontext
 const http = require('http');
 
 const fs = require('fs');
-const os = require('os');
+const { spacesHome } = require('./lib/spaces-home');
 
 // Pane-specific identity comes from the parent process (Claude Code) which
 // inherits env from the PTY.  Claude Code isolates MCP server env to only
@@ -31,7 +31,7 @@ const BASE_PATH = process.env.SPACES_BASE_PATH ?? readParentEnv('SPACES_BASE_PAT
 // and sent only to this machine's loopback: a project's .mcp.json can name
 // any SPACES_API_URL, and the owner's credentials must not follow it.
 const SECRET = process.env.SPACES_INTERNAL_TOKEN || readParentEnv('SPACES_INTERNAL_TOKEN')
-  || require('./lib/desktop-auth').readSecret(require('path').join(os.homedir(), '.spaces'));
+  || require('./lib/desktop-auth').readSecret(spacesHome());
 
 function apiRequest(method, path, body) {
   return new Promise((resolve, reject) => {
