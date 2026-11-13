@@ -537,7 +537,7 @@ function launchTui(tuiArgs, { fallbackToBrowser }) {
     // Multiuser mode refuses /proto, so a server started now could never
     // serve this client. Say why instead of stranding one in the background.
     console.error('  The terminal client needs desktop mode, but multiuser mode is on');
-    console.error('  (SPACES_MULTIUSER=1 or "multiuser": true in ~/.spaces/server.json).');
+    console.error(`  (SPACES_MULTIUSER=1 or "multiuser": true in ${CONFIG_PATH}).`);
     console.error('  Run "spaces tui --desktop" to use the terminal client anyway.');
     if (fallbackToBrowser) {
       console.log('  Opening the browser instead.');
@@ -808,7 +808,7 @@ function launchRemote(dest, tuiArgs) {
   const { serverArgs, clientArgs } = splitServerFlags(tuiArgs);
   if (serverArgs.length || cliFlags.port) {
     console.error('  --port, --desktop, --multiuser and --experimental describe this machine\'s server, not the remote\'s.');
-    console.error(`  The remote uses its own ~/.spaces/server.json; change it there (ssh ${dest}).`);
+    console.error(`  The remote uses its own server.json (~/.spaces, or its SPACES_HOME folder); change it there (ssh ${dest}).`);
     process.exit(2);
   }
   if (clientArgs.includes('--url')) {
@@ -889,7 +889,7 @@ function connectRemote(dest, { login = false, localPort: wantedPort = null } = {
   if (remotePort === null) {
     if (r.status === 0 && /^SPACES_MULTIUSER=1/m.test(r.stdout)) {
       console.error(`  Spaces on ${dest} runs in multiuser mode, which the terminal client cannot use.`);
-      console.error('  Set "multiuser": false in ~/.spaces/server.json there and restart it.');
+      console.error('  Set "multiuser": false in its server.json (~/.spaces, or its SPACES_HOME folder) and restart it.');
       process.exit(1);
     }
     const kind = remote.classifyStartFailure(r.status, r.stderr);

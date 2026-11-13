@@ -2,7 +2,6 @@ import { createRequire } from 'module';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
-import os from 'os';
 import { spacesHome } from '@/lib/spaces-home';
 
 const require_ = createRequire(__filename);

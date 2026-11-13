@@ -29,7 +29,9 @@ function resolveTargetHome() {
 }
 
 const TARGET_HOME = resolveTargetHome();
-const IS_OWN_HOME = path.resolve(TARGET_HOME) === path.resolve(os.homedir());
+const IS_OWN_HOME = process.platform === 'win32'
+  ? path.resolve(TARGET_HOME).toLowerCase() === path.resolve(os.homedir()).toLowerCase()
+  : path.resolve(TARGET_HOME) === path.resolve(os.homedir());
 const SPACES_DIR = IS_OWN_HOME ? spacesHome() : path.join(TARGET_HOME, '.spaces');
 if (!IS_OWN_HOME && process.env.SPACES_HOME && process.env.SPACES_HOME.trim()) {
   logWarn(`SPACES_HOME is ignored when installing for another user; using ${SPACES_DIR}`);
@@ -234,7 +236,7 @@ function uninstall() {
     return;
   }
   logOk('Spaces uninstalled');
-  log('User data remains at ~/.spaces/ — remove manually if desired');
+  log(`User data remains at ${SPACES_DIR} — remove manually if desired`);
   console.log('');
 }
 

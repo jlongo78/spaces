@@ -23,9 +23,8 @@
 //! on Windows and `HOME` on POSIX, so [`boot`] sets both on the child process
 //! to a fresh per-test directory, and it also removes `SPACES_HOME` from the
 //! child's environment so a developer's own value cannot override that home.
-//! The directory is
-//! created under the OS temp dir and removed in [`Server`]'s `Drop`
-//! alongside the kill. [`snapshot_and_events_agree_with_the_real_runtime`]
+//! The directory is created under the OS temp dir and removed in [`Server`]'s
+//! `Drop` alongside the kill. [`snapshot_and_events_agree_with_the_real_runtime`]
 //! asserts the snapshot's `panes` array is empty on a freshly booted server
 //! before trusting anything else the test observes — if isolation ever
 //! silently stopped working, that assertion is what would catch it.

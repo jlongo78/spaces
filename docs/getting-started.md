@@ -201,14 +201,30 @@ spaces
 
 A leading `~` means your home folder, and a relative path is taken from the
 folder you run `spaces` in. The folder is created if it is missing. If the
-path is an existing file, Spaces stops and says so. An empty value is the
-same as not setting it. In multiuser mode, each user's data lives under
+path is an existing file, or your home folder itself, Spaces stops and says
+so; use a folder inside it, such as `~/spaces-data`. An empty value is the
+same as not setting it. In multiuser mode, the owner's data is directly in
+`$SPACES_HOME`, and each other user's lives under
 `$SPACES_HOME/users/<name>`.
+
+Keep `SPACES_HOME` set in your shell profile (`~/.bashrc`, `~/.zshrc`, or
+your Windows user environment variables), not just for one command: every
+`spaces` command, including `spaces service stop`, `status`, `logs` and
+`uninstall`, reads its files from that folder.
 
 To change it for a service, set `SPACES_HOME` and run
 `spaces service install` again. The installer records the folder in the
-service and prints `Data folder: ...`. System services, and installs for
-another user, ignore `SPACES_HOME` and print a warning.
+service and prints `Data folder: ...`. This holds for user and system
+services alike, as long as the service runs as you. Only an install for
+another user (a Windows system service set up for a different account)
+ignores `SPACES_HOME`, keeps that user's `~/.spaces`, and prints a warning.
+
+On Windows, a folder inside your user profile is private to you already. A
+folder elsewhere, such as `D:\spaces`, would inherit that drive's
+permissions, which often let every user read it, so when Spaces starts it
+limits the folder to you, SYSTEM and Administrators. It does this when it
+runs as you, not as a system service; for a system service, choose a folder
+inside your profile or set those permissions yourself.
 
 The file browsers in the web app and terminal client keep Spaces' own data
 folder out of reach, so they hide your `SPACES_HOME` the same way.
@@ -228,10 +244,13 @@ spaces upgrade      # install the latest version from npm
 spaces uninstall    # remove the global package
 ```
 
-Uninstalling leaves `~/.spaces/` in place. Delete it yourself to remove your
-spaces, settings and the secret.
+Uninstalling leaves `~/.spaces/` (or your `SPACES_HOME` folder) in place.
+Delete it yourself to remove your spaces, settings and the secret.
 
 ## Files Spaces uses
+
+These paths are under your `SPACES_HOME` folder instead of `~/.spaces/` if
+you set it.
 
 | Path | What |
 | --- | --- |

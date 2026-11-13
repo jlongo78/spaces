@@ -2,7 +2,6 @@ import Database from 'better-sqlite3';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
-import os from 'os';
 import type { NodeRecord, ApiKeyRecord } from '../../types/network';
 import { spacesHome } from '@/lib/spaces-home';
 
