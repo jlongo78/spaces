@@ -77,6 +77,12 @@ describe('claimDatabase', () => {
     db.exec(FOREIGN_WORKSPACES);
     expect(() => claimDatabase(db, '/home/k/.spaces/spaces.db')).toThrow(/\/home\/k\/\.spaces\/spaces\.db/);
   });
+
+  it('tells the user to set SPACES_HOME as well as move the file', () => {
+    const db = new Database(':memory:');
+    db.exec(FOREIGN_WORKSPACES);
+    expect(() => claimDatabase(db, '/x/spaces.db')).toThrow(/set SPACES_HOME/);
+  });
 });
 
 describe('getDb with another app\'s spaces.db', () => {
