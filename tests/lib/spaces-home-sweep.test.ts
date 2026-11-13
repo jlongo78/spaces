@@ -41,4 +41,20 @@ describe('spaces-home sweep', () => {
     }
     expect(offenders, `hardcoded '.spaces':\n${offenders.join('\n')}`).toEqual([]);
   });
+
+  it('requires spaces-home before the first spacesHome( call', () => {
+    const files: string[] = [];
+    for (const d of SCAN_DIRS) walk(path.join(ROOT, d), files);
+    const offenders: string[] = [];
+    for (const f of files) {
+      const rel = path.relative(ROOT, f).split(path.sep).join('/');
+      if (rel === 'bin/lib/spaces-home.js' || rel === 'src/lib/spaces-home.ts') continue;
+      const lines = fs.readFileSync(f, 'utf8').split(/\r?\n/);
+      const call = lines.findIndex((l) => /\bspacesHome\(/.test(l) && !/require\(|import /.test(l));
+      if (call < 0) continue;
+      const req = lines.findIndex((l) => /spaces-home['"]/.test(l));
+      if (req < 0 || req > call) offenders.push(`${rel}:${call + 1}`);
+    }
+    expect(offenders, `spacesHome() used before its require:\n${offenders.join('\n')}`).toEqual([]);
+  });
 });
