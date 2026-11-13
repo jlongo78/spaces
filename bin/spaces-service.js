@@ -8,6 +8,7 @@ const os = require('os');
 const fs = require('fs');
 const readline = require('readline');
 const { spacesHome } = require('./lib/spaces-home');
+const { systemdEnv, plistEnv, cmdSet } = require('./lib/service-env');
 
 let SPACES_DIR = spacesHome();
 let CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
@@ -412,6 +413,12 @@ function linuxServicePath(level) {
   return path.join(userDir, `${SERVICE_NAME}.service`);
 }
 
+// Only user-level installs carry SPACES_HOME (SPACES_DIR is already resolved);
+// system-level services use the target user's <home>/.spaces.
+function persistsSpacesHome(level) {
+  return level !== 'system' && !!(process.env.SPACES_HOME || '').trim();
+}
+
 function linuxUnitFile(level) {
   const config = resolveConfig();
   const nodePath = resolveNodePath();
@@ -431,6 +438,9 @@ function linuxUnitFile(level) {
   }
   if (config.allowedOrigins) {
     envLines.push(`Environment=SPACES_ALLOWED_ORIGINS=${config.allowedOrigins}`);
+  }
+  if (persistsSpacesHome(level)) {
+    envLines.push(systemdEnv('SPACES_HOME', SPACES_DIR));
   }
 
   // Allow users to set API keys (OPENAI_API_KEY, etc.) in ~/.spaces/env
@@ -490,6 +500,7 @@ async function linuxInstall() {
   const unitContent = linuxUnitFile(level);
   const servicePath = linuxServicePath(level);
 
+  log(`Data folder: ${SPACES_DIR}`);
   log(`Writing unit file to ${servicePath}`);
   if (level === 'system') {
     const result = spawnSync('sudo', ['tee', servicePath], {
@@ -665,6 +676,9 @@ function darwinPlistContent(level) {
     envEntries.push(`      <key>SPACES_ALLOWED_ORIGINS</key>`);
     envEntries.push(`      <string>${config.allowedOrigins}</string>`);
   }
+  if (persistsSpacesHome(level)) {
+    envEntries.push(...plistEnv('SPACES_HOME', SPACES_DIR));
+  }
 
   let extraKeys = '';
   if (level === 'system') {
@@ -708,6 +722,7 @@ async function darwinInstall() {
   const level = await promptLevel();
   const plistPath = darwinPlistPath(level);
   const plistContent = darwinPlistContent(level);
+  log(`Data folder: ${SPACES_DIR}`);
 
   // Unload existing (ignore errors)
   try {
@@ -912,6 +927,9 @@ function win32WrapperScript(level) {
   if (config.allowedOrigins) {
     lines.push(`set SPACES_ALLOWED_ORIGINS=${config.allowedOrigins}`);
   }
+  if (persistsSpacesHome(level)) {
+    lines.push(cmdSet('SPACES_HOME', SPACES_DIR));
+  }
   lines.push(`"${nodePath}" "${spacesPath}" >> "${outLog}" 2>&1`);
   lines.push('');
 
@@ -940,6 +958,7 @@ async function win32Install() {
   const wrapperPath = win32WrapperScript(level);
 
   log(`Wrapper script written to ${wrapperPath}`);
+  log(`Data folder: ${SPACES_DIR}`);
 
   // Delete existing task (ignore errors)
   try {
