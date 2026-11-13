@@ -3,7 +3,7 @@
 All notable changes to Spaces are recorded here. The project follows
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.0.10
 
 - Spaces no longer takes over a `~/.spaces/spaces.db` that another
   application created. Another macOS app also named "Spaces" keeps its data

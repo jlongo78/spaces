@@ -1,6 +1,6 @@
 {
   "name": "@jlongo78/agent-spaces",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Agent workspace manager for Claude, Codex, Gemini, and more",
   "bin": {
     "spaces": "./bin/spaces.js",
@@ -122,11 +122,11 @@
     "xterm": "^5.3.0"
   },
   "optionalDependencies": {
-    "@jlongo78/agent-spaces-tui-darwin-arm64": "1.0.9",
-    "@jlongo78/agent-spaces-tui-darwin-x64": "1.0.9",
-    "@jlongo78/agent-spaces-tui-linux-arm64": "1.0.9",
-    "@jlongo78/agent-spaces-tui-linux-x64": "1.0.9",
-    "@jlongo78/agent-spaces-tui-win32-x64": "1.0.9",
+    "@jlongo78/agent-spaces-tui-darwin-arm64": "1.0.10",
+    "@jlongo78/agent-spaces-tui-darwin-x64": "1.0.10",
+    "@jlongo78/agent-spaces-tui-linux-arm64": "1.0.10",
+    "@jlongo78/agent-spaces-tui-linux-x64": "1.0.10",
+    "@jlongo78/agent-spaces-tui-win32-x64": "1.0.10",
     "otpauth": "^9.5.0",
     "qrcode": "^1.5.4"
   }

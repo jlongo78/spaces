@@ -1,6 +1,6 @@
 {
   "name": "@jlongo78/agent-spaces-tui-win32-x64",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Terminal client binary for win32-x64",
   "license": "Apache-2.0",
   "author": "John Longo",
