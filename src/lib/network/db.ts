@@ -4,9 +4,10 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import type { NodeRecord, ApiKeyRecord } from '../../types/network';
+import { spacesHome } from '@/lib/spaces-home';
 
-const NETWORK_DB_PATH = path.join(os.homedir(), '.spaces', 'network.db');
-const SECRET_PATH = path.join(os.homedir(), '.spaces', 'terminal_secret');
+const NETWORK_DB_PATH = path.join(spacesHome(), 'network.db');
+const SECRET_PATH = path.join(spacesHome(), 'terminal_secret');
 
 let _db: Database.Database | null = null;
 

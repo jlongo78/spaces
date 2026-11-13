@@ -4,6 +4,7 @@ import os from 'os';
 import crypto from 'crypto';
 import { IS_MULTIUSER } from '@/lib/flags';
 import { resolveShellUser } from '@/lib/admin';
+import { spacesHome } from '@/lib/spaces-home';
 
 export const config = {
   // Server
@@ -45,8 +46,8 @@ export function getUserPaths(username: string) {
   // so we don't need write access to other users' home directories
   const isLocalUser = resolvedUser === os.userInfo().username;
   const spacesDir = isLocalUser
-    ? path.join(os.homedir(), '.spaces')
-    : path.join(os.homedir(), '.spaces', 'users', username);
+    ? spacesHome()
+    : path.join(spacesHome(), 'users', username);
 
   return {
     claudeDir: path.join(homeDir, '.claude'),

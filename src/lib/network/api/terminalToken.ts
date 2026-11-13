@@ -3,13 +3,14 @@ import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { spacesHome } from '@/lib/spaces-home';
 
 // Signs a short-lived terminal-auth token bound to the API key's user. The
 // matching verifier lives in bin/terminal-server.js — both read the same
 // ~/.spaces/terminal_secret file so PTY-attach requests can be authenticated
 // out-of-band from the Next.js session cookie.
 
-const TERMINAL_SECRET_PATH = path.join(os.homedir(), '.spaces', 'terminal_secret');
+const TERMINAL_SECRET_PATH = path.join(spacesHome(), 'terminal_secret');
 
 let _terminalSecret: Buffer | null = null;
 function terminalSecret(): Buffer {
