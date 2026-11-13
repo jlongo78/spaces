@@ -104,13 +104,13 @@ jobs:
             [ "$pinned" = "$version" ] || { echo "package.json pins ${name}@${pinned}, expected ${version}"; exit 1; }
           done
 
-      - name: Install dependencies
-        run: npm ci
-
-      # The whole suite, before anything is published.
-      - name: tests
-        run: npx vitest run
-
+      # The binaries go out before `npm ci`. The release commit pins the main
+      # package to platform packages of the same version, which do not exist
+      # on npm until this step publishes them, and `npm ci` refuses a lock
+      # file that does not resolve them (v1.0.10's first run failed there).
+      # Publishing them needs only node and the tarballs, not node_modules.
+      # If the tests below then fail, the binaries stay published without a
+      # main package, which installs nothing; a re-run skips them.
       - uses: actions/download-artifact@v4
         with:
           path: ${{ runner.temp }}/binaries
@@ -134,6 +134,30 @@ jobs:
             fi
             npm publish "$dir" --access public --provenance
           done
+
+      # Lock the platform packages just published, retrying while the
+      # registry catches up, then check the lock really names them.
+      - name: lock the platform packages
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund && break
+            [ "$attempt" = 10 ] && { echo "could not lock the platform packages"; exit 1; }
+            echo "registry not caught up yet; retrying in 15s"; sleep 15
+          done
+          for dir in npm/*/; do
+            name=$(node -p "require('./${dir}package.json').name")
+            locked=$(node -p "(require('./package-lock.json').packages['node_modules/${name}'] || {}).version || ''")
+            [ "$locked" = "$version" ] || { echo "lock has ${name}@${locked}, expected ${version}"; exit 1; }
+          done
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The whole suite, before the main package is published.
+      - name: tests
+        run: npx vitest run
 
       # prepublishOnly builds the app; prepack scrubs the standalone output.
       - name: Publish to npm with provenance
