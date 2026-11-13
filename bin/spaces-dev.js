@@ -6,8 +6,12 @@ const { spawn } = require('child_process');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { spacesHome } = require('./lib/spaces-home');
-const SPACES_DIR = spacesHome();
+const { pinSpacesHome } = require('./lib/spaces-home');
+const SPACES_DIR = (() => {
+  // Resolve once and pin SPACES_HOME to the absolute path, so children started
+  // in another cwd (Next, panes) use the same folder. A bad value is one line.
+  try { return pinSpacesHome(); } catch (e) { console.error(`  ${e.message}`); process.exit(1); }
+})();
 const CONFIG_PATH = path.join(SPACES_DIR, 'server.json');
 const SESSION_SECRET_PATH = path.join(SPACES_DIR, 'session_secret');
 const INTERNAL_TOKEN_PATH = path.join(SPACES_DIR, 'internal_token');

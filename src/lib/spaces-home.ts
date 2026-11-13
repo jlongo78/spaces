@@ -17,5 +17,14 @@ export function spacesHome(home?: string): string {
   if (stat && !stat.isDirectory()) {
     throw new Error(`SPACES_HOME (${resolved}) is not a folder`);
   }
+  // The home folder itself would make file browsers deny all of home and
+  // POSIX permission tightening chmod home to 0700.
+  const homeDir = path.resolve(os.homedir());
+  const same = process.platform === 'win32'
+    ? resolved.toLowerCase() === homeDir.toLowerCase()
+    : resolved === homeDir;
+  if (same) {
+    throw new Error(`SPACES_HOME (${resolved}) is your home folder; use a folder inside it instead`);
+  }
   return resolved;
 }

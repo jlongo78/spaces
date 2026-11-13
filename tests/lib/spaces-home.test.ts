@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 // @ts-expect-error plain JS module without types
-import { spacesHome as jsImpl } from '../../bin/lib/spaces-home.js';
+import { spacesHome as jsImpl, pinSpacesHome } from '../../bin/lib/spaces-home.js';
 import { spacesHome as tsImpl } from '@/lib/spaces-home';
 
 describe.each([
@@ -47,8 +47,18 @@ describe.each([
   it('expands a leading ~', () => {
     vi.stubEnv('SPACES_HOME', '~/sp');
     expect(spacesHome()).toBe(path.join(os.homedir(), 'sp'));
-    vi.stubEnv('SPACES_HOME', '~');
-    expect(spacesHome()).toBe(os.homedir());
+  });
+
+  it('refuses the home folder itself', () => {
+    for (const v of ['~', '~/', os.homedir(), os.homedir() + path.sep]) {
+      vi.stubEnv('SPACES_HOME', v);
+      expect(() => spacesHome(), v).toThrow(/SPACES_HOME.*home folder/);
+    }
+  });
+
+  it.runIf(process.platform === 'win32')('refuses the home folder in any letter case on Windows', () => {
+    vi.stubEnv('SPACES_HOME', os.homedir().toUpperCase());
+    expect(() => spacesHome()).toThrow(/SPACES_HOME.*home folder/);
   });
 
   it('expands a leading ~\\ on every platform', () => {
@@ -79,5 +89,27 @@ describe.each([
     vi.stubEnv('SPACES_HOME', missing);
     expect(spacesHome()).toBe(missing);
     expect(fs.existsSync(missing)).toBe(false);
+  });
+});
+
+describe('pinSpacesHome (bin launcher)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('rewrites a relative SPACES_HOME to the resolved absolute path', () => {
+    vi.stubEnv('SPACES_HOME', 'rel/dir');
+    expect(pinSpacesHome()).toBe(path.resolve('rel/dir'));
+    expect(process.env.SPACES_HOME).toBe(path.resolve('rel/dir'));
+  });
+
+  it('expands ~ in the pinned value', () => {
+    vi.stubEnv('SPACES_HOME', '~/sp');
+    pinSpacesHome();
+    expect(process.env.SPACES_HOME).toBe(path.join(os.homedir(), 'sp'));
+  });
+
+  it('leaves an unset or blank SPACES_HOME alone', () => {
+    vi.stubEnv('SPACES_HOME', '  ');
+    expect(pinSpacesHome()).toBe(path.join(os.homedir(), '.spaces'));
+    expect(process.env.SPACES_HOME).toBe('  ');
   });
 });
