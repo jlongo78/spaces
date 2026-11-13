@@ -189,6 +189,38 @@ terminal client and remote session is signed out at once, and restarts a
 running server so it uses the new secret. If Spaces runs as a service,
 restart the service too: `spaces service stop && spaces service start`.
 
+## Where Spaces keeps its data
+
+By default Spaces keeps everything in `~/.spaces/`. To use another folder,
+set `SPACES_HOME` to its path before you run `spaces`:
+
+```bash
+export SPACES_HOME=/data/spaces
+spaces
+```
+
+A leading `~` means your home folder, and a relative path is taken from the
+folder you run `spaces` in. The folder is created if it is missing. If the
+path is an existing file, Spaces stops and says so. An empty value is the
+same as not setting it. In multiuser mode, each user's data lives under
+`$SPACES_HOME/users/<name>`.
+
+To change it for a service, set `SPACES_HOME` and run
+`spaces service install` again. The installer records the folder in the
+service and prints `Data folder: ...`. System services, and installs for
+another user, ignore `SPACES_HOME` and print a warning.
+
+The file browsers in the web app and terminal client keep Spaces' own data
+folder out of reach, so they hide your `SPACES_HOME` the same way.
+
+This is also the fix if another application already uses `~/.spaces`.
+Another macOS app named "Spaces" does. When Spaces finds a database it did
+not create, it names the file and leaves it alone; set `SPACES_HOME` to a
+different folder and Spaces starts with its own data there.
+
+Spaces does not move existing data. To keep your spaces, copy the old
+folder's contents into the new one first.
+
 ## Upgrading and removing
 
 ```bash
