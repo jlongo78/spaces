@@ -8,8 +8,8 @@
 //!
 //! A `boot()` that simply spawned `bin/spaces.js` with only `SPACES_PORT` and
 //! `SPACES_NO_DETECTION_UPDATE` set would not be isolated. `getUserPaths`
-//! (`src/lib/config.ts`) hardcodes `spacesDir` to
-//! `path.join(os.homedir(), '.spaces')` with no env override, and `snapshot()`
+//! (`src/lib/config.ts`) resolves `spacesDir` to `$SPACES_HOME` if set, else
+//! `path.join(os.homedir(), '.spaces')`, and `snapshot()`
 //! (`bin/lib/runtime/index.js`) reads its `panes`/`workspaces` arrays straight
 //! out of `<spacesDir>/spaces.db` — so run unmodified, this test would boot
 //! against a developer's real `~/.spaces/spaces.db`: `session.snapshot`'s
@@ -19,8 +19,11 @@
 //! `workspace.created`" would both go flaky on any machine with existing
 //! activity.
 //!
-//! `os.homedir()` honors `USERPROFILE` on Windows and `HOME` on POSIX, so
-//! [`boot`] sets both on the child process to a fresh per-test directory,
+//! Isolation therefore needs two things. `os.homedir()` honors `USERPROFILE`
+//! on Windows and `HOME` on POSIX, so [`boot`] sets both on the child process
+//! to a fresh per-test directory, and it also removes `SPACES_HOME` from the
+//! child's environment so a developer's own value cannot override that home.
+//! The directory is
 //! created under the OS temp dir and removed in [`Server`]'s `Drop`
 //! alongside the kill. [`snapshot_and_events_agree_with_the_real_runtime`]
 //! asserts the snapshot's `panes` array is empty on a freshly booted server
@@ -116,6 +119,9 @@ async fn boot() -> Server {
         // both so this isolation holds on every platform CI runs it on.
         .env("HOME", &home_dir)
         .env("USERPROFILE", &home_dir)
+        // A developer's own SPACES_HOME would override the home above and
+        // point the server at their real data folder.
+        .env_remove("SPACES_HOME")
         .current_dir(repo_root())
         .stdout(Stdio::from(stdout_file))
         .stderr(Stdio::from(stderr_file))
