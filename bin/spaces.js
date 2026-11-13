@@ -1200,9 +1200,12 @@ function startServer() {
 
   // The secret is only as good as the permissions on it. It is created
   // owner-only, but a file or directory loosened since (a restore, a copy,
-  // a umask) would hand it to every account on the machine. Windows keeps
-  // ~/.spaces inside the owner's profile, whose ACL already does this.
-  if (process.platform !== 'win32') {
+  // a umask) would hand it to every account on the machine. On Windows a
+  // folder inside the owner's profile inherits its owner-only ACL; one
+  // elsewhere (SPACES_HOME) gets owner-only ACLs set explicitly.
+  if (process.platform === 'win32') {
+    require('./lib/data-dir-acl').hardenDataDir(SPACES_DIR);
+  } else {
     try {
       const dirStat = fs.statSync(SPACES_DIR);
       const fileStat = fs.statSync(INTERNAL_TOKEN_PATH);
